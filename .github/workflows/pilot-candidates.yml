@@ -1,0 +1,43 @@
+name: Candidate cohort research artifact
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'facilityrisk/pilot.py'
+      - '.github/workflows/pilot-candidates.yml'
+permissions:
+  contents: read
+jobs:
+  cohort:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Generate 25-row candidate manifest from published source snapshots
+        run: python -m facilityrisk build-pilot --output data/pilot-research-candidates.csv
+      - name: Enforce pilot semantics without inventing no-event controls
+        run: |
+          python - <<'PY'
+          import csv
+          from collections import Counter
+          rows=list(csv.DictReader(open('data/pilot-research-candidates.csv',encoding='utf-8')))
+          assert len(rows)==25,len(rows)
+          assert len({r['cohort_id'] for r in rows})==25
+          roles=Counter(r['cohort_role'] for r in rows)
+          assert roles['retrospective_documented_disruption']==3,roles
+          assert roles['unverified_source_record']==22,roles
+          assert all(r['outcome_status'] not in ('no_event','no_loss','verified_control') for r in rows)
+          assert all(r['pre_event_publication_validation']=='not_completed' for r in rows)
+          print('Candidate rows:',len(rows),'retrospective cases:',roles['retrospective_documented_disruption'])
+          print('Zero confirmed no-loss controls or verified production sites are asserted')
+          PY
+      - name: Preserve public-source screening cohort in CI artifacts, not Pages
+        uses: actions/upload-artifact@v4
+        with:
+          name: facility-pilot-25-unverified-candidates
+          path: data/pilot-research-candidates.csv
+          retention-days: 14
