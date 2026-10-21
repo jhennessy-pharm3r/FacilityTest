@@ -15,6 +15,7 @@ from .intelligence import register_frs_candidates,assess_fema_payload,store_haza
 
 FRS_URL='https://ofmpub.epa.gov/frs_public2/frs_rest_services.get_facilities'
 FEMA_URL='https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/28/query'
+FEMA_ALT_URL='https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer/28/query'
 SOURCE_META={
  'EPA FRS':('https://www.epa.gov/frs/frs-api','https://ofmpub.epa.gov/frs_public2/frs_rest_services.get_facilities?facility_name=pfizer&state_abbr=NC&output=JSON'),
  'EPA ECHO':('https://echo.epa.gov/tools/web-services','https://echodata.epa.gov/echo/dfr_rest_services.get_dfr?p_id=110015778176&output=JSON'),
@@ -101,7 +102,10 @@ def fetch_fema(conn,facility_id,session=None):
             'inSR':4326,'spatialRel':'esriSpatialRelIntersects',
             'outFields':'FLD_ZONE,SFHA_TF,ZONE_SUBTY,DFIRM_ID,EFF_DATE',
             'returnGeometry':'false'}
-    url,payload=json_get(FEMA_URL,params,session)
+    try:url,payload=json_get(FEMA_URL,params,session)
+    except SourceAccessError:
+        # FEMA exposes both ArcGIS and legacy GIS/NFHL paths; try only its official host.
+        url,payload=json_get(FEMA_ALT_URL,params,session)
     archive_raw(conn,'FEMA NFHL',facility_id,url,payload,'Current regulatory flood-zone map; not historical condition at incident date')
     status,desc,zone=assess_fema_payload(payload)
     store_hazard(conn,facility_id,'Flood zone',status,'FEMA NFHL',desc,url,zone,
@@ -176,8 +180,9 @@ def source_probe(conn=None,session=None):
         if not url:
             state='requires_file';detail='Manual/scheduled official dataset export'
         else:
+            probe_url=url
             try:
-                resp=sess.get(url,timeout=18,headers={'User-Agent':'FacilityRisk-Source-Health/0.4','Accept':'application/json'})
+                resp=sess.get(probe_url,timeout=18,headers={'User-Agent':'FacilityRisk-Source-Health/0.4','Accept':'application/json'})
                 resp.raise_for_status()
                 sample=resp.json()
                 if not isinstance(sample,(dict,list)):raise ValueError('Unexpected JSON payload')
@@ -185,7 +190,18 @@ def source_probe(conn=None,session=None):
                 state='reachable';detail=f'HTTP {resp.status_code}; JSON response parsed; schema and facility matches not verified'
             except Exception as e:
                 state='failed';detail=str(e)[:320]
-        out={'source':source,'state':state,'url':url or docs,'details':detail}
+                if source=='FEMA NFHL':
+                    probe_url=FEMA_ALT_URL.rsplit('/28/query',1)[0]+'/28?f=json'
+                    try:
+                        alt=sess.get(probe_url,timeout=18,headers={'User-Agent':'FacilityRisk-Source-Health/0.4','Accept':'application/json'})
+                        alt.raise_for_status()
+                        obj=alt.json()
+                        if not isinstance(obj,dict) or obj.get('error'):
+                            raise ValueError('Invalid FEMA alternate metadata')
+                        state='reachable';detail='Official alternate FEMA NFHL endpoint reachable; layer metadata parsed, site query not verified'
+                    except Exception as e2:
+                        detail=('Primary: '+str(e)[:140]+'; alternate: '+str(e2)[:140])[:320]
+        out={'source':source,'state':state,'url':(probe_url if source=='FEMA NFHL' else url) or docs,'details':detail}
         if conn:record_source_check(conn,source,state,out['url'],detail)
         results.append(out)
     return results

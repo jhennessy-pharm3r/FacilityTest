@@ -1,0 +1,31 @@
+name: Public preview browser smoke
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  pages-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install browser testing requirements
+        run: |
+          python -m pip install 'playwright>=1.54,<2'
+          python -m playwright install --with-deps chromium
+      - name: Run public static website smoke test
+        run: |
+          python -m http.server 8099 --bind 127.0.0.1 >/tmp/facility-http.log 2>&1 &
+          python tests/smoke_pages.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: facility-public-preview-browser
+          path: /tmp/facility-public-browser-smoke.png
+          if-no-files-found: ignore
+          retention-days: 7

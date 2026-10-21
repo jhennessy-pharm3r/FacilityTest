@@ -154,3 +154,29 @@ def test_required_auth_fails_closed_even_localhost_without_token(monkeypatch):
         assert client.get('/api/overview').status_code==401
         assert client.get('/').status_code==401
     monkeypatch.delenv('FACILITY_RISK_REQUIRE_AUTH',raising=False)
+
+
+def test_fema_official_alternate_does_not_bypass_location_gate(db):
+    class FakeResponse:
+        status_code=200
+        url='https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer/28/query?f=json'
+        def raise_for_status(self):pass
+        def json(self):return {'features':[{'attributes':{'FLD_ZONE':'X','SFHA_TF':'F'}}]}
+    class AlternateSession:
+        def get(self,base,**kwargs):
+            if '/arcgis/' in base: raise OSError('Primary route unavailable')
+            return FakeResponse()
+    # Original site is unreviewed, so even a viable fallback must be blocked.
+    with pytest.raises(ValueError,match='manually verified'):
+        fetch_fema(db,'site-baxter-north-cove',session=AlternateSession())
+    review_location(db,'site-baxter-north-cove','site_verified','https://www.fema.gov/','QA reviewer','Reviewed building point')
+    # json_get accepts requests exceptions; synthetic session raises OSError (not requests.ConnectionError),
+    # so use a representative Requests connection exception.
+    from requests.exceptions import ConnectionError as RequestsConnectionError
+    class RequestsSession(AlternateSession):
+        def get(self,base,**kwargs):
+            if '/arcgis/' in base:raise RequestsConnectionError('Primary unavailable')
+            return FakeResponse()
+    out=fetch_fema(db,'site-baxter-north-cove',session=RequestsSession())
+    assert out['status']=='mapped_outside_sfha'
+    assert '/gis/nfhl/' in out['request_url']
