@@ -35,10 +35,17 @@ with sync_playwright() as pw:
     # The real Ireland/Canada catalogs are also loaded. Initial results are
     # paginated; synthetic records need not be in the first 35 entries.
     expect(page.locator('#registry-status')).to_contain_text('source identities',timeout=35000)
+    expect(page.locator('[data-reg-id]').first).to_contain_text('Acme Devices Boston',timeout=15000)
     page.locator('#registry-query').fill('Acme Devices Galway')
     page.locator('#registry-search-button').click()
     expect(page.locator('#registry-results')).to_contain_text('Acme Devices Galway',timeout=15000)
     expect(page.locator('#registry-results')).not_to_contain_text('Acme Devices Boston')
+    page.locator('#registry-source').select_option('Canada NPRI')
+    page.locator('#registry-search-button').click()
+    expect(page.locator('#registry-results')).not_to_contain_text('Acme Devices Galway',timeout=15000)
+    page.locator('#registry-source').select_option('FDA device registration / listing')
+    page.locator('#registry-search-button').click()
+    expect(page.locator('#registry-results')).to_contain_text('Acme Devices Galway',timeout=15000)
     page.locator('[data-reg-id]').first.click()
     expect(page.locator('#registry-detail-container')).to_contain_text('Not assessed')
     page.locator('#registry-track').click()

@@ -10,7 +10,7 @@
  const drugSearch='https://www.fda.gov/drugs/drug-approvals-and-databases/drug-establishments-current-registration-site-decrs';
  const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const fmt=n=>Number(n||0).toLocaleString('en-US');
- let catalogPromise=null,query='',sector='',country='',page=0,result=[],selected=null,meta=null,error='';
+ let catalogPromise=null,query='',sector='',source='',country='',page=0,result=[],selected=null,meta=null,error='';
  let liveOnly=false,manualVisible=false,sourceMessage='';
  const perPage=35;
  const cache=new Map();
@@ -77,7 +77,7 @@
  }
   function createSite(row,fields){return Object.fromEntries(fields.map((key,i)=>[key,row[i]]));}
  function match(row,fields,words){
-   const parts=['name','company','address','city','state','country','fei','registration_number'];
+   const parts=['name','company','address','city','state','country','fei','registration_number','source'];
    const values=parts.map(k=>normalize(row[fields.indexOf(k)]));
    return words.every(w=>values.some(v=>v.includes(w)));
  }
@@ -93,6 +93,7 @@
        <div class="registry-controls">
          <input id="registry-query" class="field registry-search" placeholder="Example: Baxter, Pfizer, Medtronic, 3002808212 or Galway" aria-label="Search facility and licence identities" value="${esc(query)}" autocomplete="off">
          <select id="registry-sector" class="select" aria-label="Product sector"><option value="">All sectors</option><option value="Medical device" ${sector==='Medical device'?'selected':''}>Medical devices</option><option value="Pharmaceutical" ${sector==='Pharmaceutical'?'selected':''}>Pharmaceutical</option><option value="Environmental licence" ${sector==='Environmental licence'?'selected':''}>Environmental licences</option><option value="Environmental reporting" ${sector==='Environmental reporting'?'selected':''}>Environmental reporting</option></select>
+         <select id="registry-source" class="select" aria-label="Regulatory source"><option value="">All official sources</option>${[['FDA device registration / listing','FDA device'],['FDA drug establishment (DECRS)','FDA drug'],['Ireland EPA LEAP','Ireland EPA licences'],['Canada NPRI','Canada NPRI reporters']].map(([value,label])=>`<option value="${esc(value)}" ${source===value?'selected':''}>${esc(label)}</option>`).join('')}</select>
          <input id="registry-country" class="field registry-country" maxlength="2" placeholder="Country (e.g. US)" aria-label="Filter by two-letter ISO country code" value="${esc(country)}">
          <button class="btn primary" id="registry-search-button">Search</button>
        </div>
@@ -128,7 +129,7 @@
  function rowCard(r){return `<button class="registry-record" data-reg-id="${esc(r.id)}" type="button">
     <div class="registry-record-head"><strong>${esc(r.name)}</strong><span class="pill">${esc(r.sector)}</span></div>
     <p class="registry-record-sub">${esc(r.company||'Operator not recorded')} · ${esc([r.city,r.state,r.country].filter(Boolean).join(', ')||'Location not recorded')}</p>
-    <div class="registry-record-meta"><span>${r.fei?'FDA FEI observed: '+esc(r.fei):'FDA FEI not asserted'}</span><span>${esc(r.activities||'Establishment activity unspecified')}</span><span class="registry-record-link">Inspect →</span></div>
+    <div class="registry-record-meta"><span>${r.source==='Canada NPRI'?'NPRI reporter ID: '+esc(r.registration_number):r.source==='Ireland EPA LEAP'?'EPA licence: '+esc(r.registration_number):r.fei?'FDA FEI observed: '+esc(r.fei):'FDA FEI not asserted'}</span><span>${esc(r.activities||'Establishment activity unspecified')}</span><span class="registry-record-link">Inspect →</span></div>
    </button>`;}
  function resultsHTML(){
    if(error)return `<div class="empty">${esc(error)}</div>`;
@@ -146,13 +147,17 @@
      const words=normalize(query).split(/\s+/).filter(Boolean),ids=[],rows=d.rows,fields=d.fields;
      for(let i=0;i<rows.length;i++){
        const x=rows[i];if(sector&&x[fields.indexOf('sector')]!==sector)continue;
+       if(source&&x[fields.indexOf('source')]!==source)continue;
        if(country&&normalize(x[fields.indexOf('country')])!==normalize(country))continue;
        if(match(x,fields,words))ids.push(i);
      }
      result=ids.map(i=>createSite(rows[i],fields));
      result.sort((a,b)=>{
-       const q=normalize(query);const rank=x=>normalize(x.fei)===q?0:normalize(x.name).startsWith(q)?1:normalize(x.company).startsWith(q)?2:3;
-       return rank(a)-rank(b)||a.name.localeCompare(b.name);
+       const q=normalize(query);
+       const rankSource=x=>x.source==='FDA device registration / listing'?0:x.source==='FDA drug establishment (DECRS)'?1:x.source==='Ireland EPA LEAP'?2:3;
+       if(!q)return rankSource(a)-rankSource(b)||a.name.localeCompare(b.name);
+       const rank=x=>normalize(x.fei)===q?0:normalize(x.registration_number)===q?0:normalize(x.name).startsWith(q)?1:normalize(x.company).startsWith(q)?2:3;
+       return rank(a)-rank(b)||rankSource(a)-rankSource(b)||a.name.localeCompare(b.name);
      });page=0;root.innerHTML=resultsHTML();updateStatus();
      if(!rows.length&&query.trim().length>=2)await liveFallback();
    }catch(e){error='Catalog not yet available: '+e.message+'. Official live lookup is being attempted.';updateStatus();await liveFallback();}
@@ -229,7 +234,7 @@
    root.addEventListener('click',async e=>{
      const id=e.target.closest('[data-reg-id]')?.dataset.regId;
      if(id){showDetail(id);return;}
-     if(e.target.closest('#registry-search-button')){query=(document.getElementById('registry-query')?.value||'').trim();sector=document.getElementById('registry-sector')?.value||'';country=(document.getElementById('registry-country')?.value||'').trim().toUpperCase();await search();return;}
+     if(e.target.closest('#registry-search-button')){query=(document.getElementById('registry-query')?.value||'').trim();sector=document.getElementById('registry-sector')?.value||'';source=document.getElementById('registry-source')?.value||'';country=(document.getElementById('registry-country')?.value||'').trim().toUpperCase();await search();return;}
      if(e.target.closest('#registry-prev')){page=Math.max(0,page-1);document.getElementById('registry-results').innerHTML=resultsHTML();return;}
      if(e.target.closest('#registry-next')){page=Math.min(Math.ceil(result.length/perPage)-1,page+1);document.getElementById('registry-results').innerHTML=resultsHTML();return;}
      if(e.target.closest('#registry-close-detail')){selected=null;document.getElementById('registry-detail-container').innerHTML='';return;}
