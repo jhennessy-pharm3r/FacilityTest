@@ -33,3 +33,18 @@ That does **not** mean all physical manufacturing sites in the world can be posi
 ## Important gaps
 
 This is not a complete global pharmaceutical/device plant census. Non-FDA markets (EMA, EudraGMDP, MHRA, Health Canada, PMDA, NMPA and local environmental / labor registries) require additional data integration and individual license checks. A new source should have independent identifiers, freshness, deduplication rules, a source link, and an explicit completeness statement. FDA FEI is not an EPA FRS ID, and a mailing address does not establish a property centroid.
+
+## Independent Irish environmental licensing discovery (2026-10)
+
+The public browser also searches official **Ireland EPA LEAP licence profiles** from
+`https://data.epa.ie/leap/api/v1/LicenceProfile/list`. This is an independent
+regulatory identity population, not FDA-registered manufacturers. LEAP includes
+nonmanufacturing activity such as ports, radiological licences and wastewater
+sites; do not classify every listed entity as pharma, device, or even a factory.
+
+Licence profile numbers, reporting organisation, county, town and licence class
+are preserved, but no precise coordinates or environmental violations are
+inferred. The official-source publisher URL is supplied for each profile.
+To build: `python scripts/build_ireland_leap.py --output web/registry/ireland-leap.json`.
+The scheduled workflow refuses unexpectedly small source results and retains
+the last published file on retrieval failure.

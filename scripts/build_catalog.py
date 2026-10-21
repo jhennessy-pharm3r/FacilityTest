@@ -149,26 +149,54 @@ def run(out,device_archives=None,drug_archive=None,device_only=False):
                 print(f'DECRS download: {url}',flush=True)
                 local_path=download_zip(url)
                 with zipfile.ZipFile(local_path) as inspected:
-                    print('DECRS archive members:', [(m.filename, m.file_size) for m in inspected.infolist()[:20]],flush=True)
+                    print('DECRS archive members:',[(m.filename,m.file_size) for m in inspected.infolist()[:20]],flush=True)
                     for member in inspected.infolist()[:15]:
                         if member.filename.lower().endswith(('.csv','.tsv','.txt','.psv','.dat')):
                             with inspected.open(member) as sample:
-                                print('DECRS member header:',sample.readline()[:350].decode('utf-8-sig',errors='replace').strip(),flush=True)
+                                print('DECRS member header bytes:',repr(sample.readline()[:250]),flush=True)
                             break
-            else:url='test_fixture'
+            else:url='local_official_fixture'
             try:
                 drug_rows=list(parse_drug_zip(local_path))
             finally:
                 if not drug_archive:local_path.unlink(missing_ok=True)
+            # A publication of thousands of sites must not silently shrink to a
+            # handful of successfully parsed lines when the official schema drifts.
+            if not drug_archive and len(drug_rows)<5000:
+                raise ValueError(f'DECRS count {len(drug_rows)} below live-source quality floor 5000')
+            old_count=0
+            prior_path=Path(out)
+            if prior_path.is_file():
+                prior=validate_catalog(json.loads(prior_path.read_text(encoding='utf-8')))
+                old_count=sum(1 for row in prior['rows'] if row[prior['fields'].index('sector')]=='Pharmaceutical')
+            if old_count>=5000 and len(drug_rows)<old_count*0.5 and not drug_archive:
+                raise ValueError(f'DECRS source contracted from {old_count} to {len(drug_rows)} records; human review required')
             records.extend(drug_rows)
             sources['fda_drug']={'status':'imported','source':'FDA Drug Establishments Current Registration Site',
                 'processed_site_records':len(drug_rows),'url':url}
             print(f'Drug registration records parsed: {len(drug_rows):,}',flush=True)
         except Exception as ex:
-            # Other sectors remain incomplete; metadata MUST say so.
+            # Do not turn an endpoint or parser outage into thousands of implied
+            # deregistrations. Preserve the last published valid snapshot, labeled stale.
             sources['fda_drug']={'status':'unavailable','source':'FDA Drug Establishments Current Registration Site',
                 'reason':str(ex)[:350],'url':DECRS}
             print(f'DECRS not imported: {ex}',file=sys.stderr,flush=True)
+            prior_path=Path(out)
+            if prior_path.is_file():
+                try:
+                    prior=validate_catalog(json.loads(prior_path.read_text(encoding='utf-8')))
+                    before=prior['sources'].get('fda_drug',{})
+                    if before.get('status') in ('imported','stale_preserved'):
+                        old_sites=[dict(zip(prior['fields'],row)) for row in prior['rows']
+                                   if row[prior['fields'].index('sector')]=='Pharmaceutical']
+                        if len(old_sites)>=5000:
+                            records.extend(old_sites)
+                            sources['fda_drug'].update(status='stale_preserved',
+                                preserved_site_records=len(old_sites),
+                                last_good_generated_at=before.get('last_good_generated_at') or prior.get('generated_at'))
+                            print(f'Preserved {len(old_sites):,} previously published drug establishments as STALE',flush=True)
+                except (ValueError,KeyError,TypeError) as preserve_error:
+                    print(f'Prior drug snapshot could not be preserved: {preserve_error}',file=sys.stderr,flush=True)
     result=make_catalog(records,sources)
     validate_catalog(result)
     out=Path(out);out.parent.mkdir(parents=True,exist_ok=True)

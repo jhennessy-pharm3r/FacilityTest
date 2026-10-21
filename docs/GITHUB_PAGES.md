@@ -45,3 +45,12 @@ See [Secure deployment blueprint](SECURE_DEPLOYMENT.md) for a locally bound, tok
 ## Next gate
 
 Deploy an authenticated backend in a separate environment with server-side ingestion, audited facility identifiers, and insurer-level access control. Configure Pages as a frontend only if CORS, authentication and client data governance are properly addressed.
+
+
+## Independent Ireland EPA public lookup
+
+`web/registry/ireland-leap.json` is a minimal catalogue of Ireland EPA LEAP
+licence profile identities, updated by the registry workflow and shown alongside
+FDA registrations without automatic deduplication or facility matching. Its
+presence does not establish manufacturing activity, a site coordinate,
+environmental violation or insured property loss. Contact fields are excluded.

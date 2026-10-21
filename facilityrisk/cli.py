@@ -12,7 +12,9 @@ from .intelligence import decide_candidate,review_location,intelligence_quality,
 from .case_studies import seed_cases
 from .security import validate_private_bind
 from .registry_catalog import import_catalog
-from .source_extensions import probe_extensions, import_geo_csv
+from .source_extensions import probe_extensions, import_geo_csv, review_event_candidate
+from .site_workspace import (intake_site, import_official_registry_csv,
+                             search_external_registry, stage_identity_candidate, import_ireland_leap_catalog)
 
 
 def main(argv=None) -> int:
@@ -49,6 +51,40 @@ def main(argv=None) -> int:
     geo.add_argument('--lon-column',default='longitude');geo.add_argument('--date-column',default='date_start')
     geo.add_argument('--title-column',default='description');geo.add_argument('--url-column',default='')
     geo.add_argument('--precision-column',default='');geo.add_argument('--radius-km',type=float,default=25.0)
+    intake=sub.add_parser('intake-site',help='Create a manual unverified research site')
+    intake.add_argument('--name',required=True)
+    intake.add_argument('--company',default='');intake.add_argument('--country',default='')
+    intake.add_argument('--city',default='');intake.add_argument('--state',default='')
+    intake.add_argument('--address',default='');intake.add_argument('--sector',default='')
+    intake.add_argument('--source-url',default='')
+    external=sub.add_parser('import-source-registry',help='Import official registry CSV as source identities only')
+    external.add_argument('csv_path');external.add_argument('--source',required=True)
+    external.add_argument('--source-url',required=True)
+    external.add_argument('--id-column',default='source_id')
+    external.add_argument('--name-column',default='name')
+    external.add_argument('--company-column',default='')
+    external.add_argument('--address-column',default='address')
+    external.add_argument('--city-column',default='')
+    external.add_argument('--state-column',default='')
+    external.add_argument('--country-column',default='country')
+    external.add_argument('--sector-column',default='')
+    external.add_argument('--operations-column',default='')
+    external.add_argument('--notes',default='')
+    ireland=sub.add_parser('import-ireland-leap',help='Import downloaded official LEAP public JSON catalog')
+    ireland.add_argument('catalog_json')
+    search_external=sub.add_parser('search-source-registry')
+    search_external.add_argument('--query',default='')
+    search_external.add_argument('--source',default='')
+    search_external.add_argument('--country',default='')
+    candidate=sub.add_parser('stage-identity-candidate')
+    candidate.add_argument('--facility',required=True)
+    candidate.add_argument('--external-id',required=True)
+    event_review=sub.add_parser('review-external-event')
+    event_review.add_argument('--candidate',required=True)
+    event_review.add_argument('--decision',required=True,choices=['reviewed_relevant','rejected'])
+    event_review.add_argument('--reviewer',required=True)
+    event_review.add_argument('--source-url',required=True)
+    event_review.add_argument('--reason',required=True)
     args=p.parse_args(argv)
     if args.command=='serve':
         validate_private_bind(args.host)
@@ -85,6 +121,25 @@ def main(argv=None) -> int:
             longitude_column=args.lon_column, date_column=args.date_column,
             title_column=args.title_column, url_column=args.url_column,
             precision_column=args.precision_column, radius_km=args.radius_km)
+        elif args.command=='intake-site':
+            output=intake_site(conn,{k:getattr(args,k) for k in
+                ('name','company','country','city','state','address','sector','source_url')},'local-cli')
+        elif args.command=='import-source-registry':
+            output=import_official_registry_csv(conn,args.csv_path,args.source,args.source_url,
+                id_column=args.id_column,name_column=args.name_column,
+                company_column=args.company_column,address_column=args.address_column,
+                city_column=args.city_column,state_column=args.state_column,
+                country_column=args.country_column,sector_column=args.sector_column,
+                operations_column=args.operations_column,notes=args.notes)
+        elif args.command=='import-ireland-leap':
+            output=import_ireland_leap_catalog(conn,args.catalog_json)
+        elif args.command=='search-source-registry':
+            output=search_external_registry(conn,query=args.query,source_key=args.source,country=args.country)
+        elif args.command=='stage-identity-candidate':
+            output=stage_identity_candidate(conn,args.facility,args.external_id,'local-cli')
+        elif args.command=='review-external-event':
+            output=review_event_candidate(conn,args.candidate,args.decision,args.reviewer,
+                                         args.source_url,args.reason)
         else: p.error('unknown command')
         print(json.dumps(output,indent=2,ensure_ascii=False,default=str))
         return 0

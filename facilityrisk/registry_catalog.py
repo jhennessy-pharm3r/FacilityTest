@@ -77,23 +77,43 @@ def first(row,*aliases):
 
 
 def normalize_drug(row):
-    # FDA's downloadable DECRS schema is separately versioned. Missing identities
-    # must fail visibly, not become unnamed facilities or fake FDA identifiers.
-    name=first(row,'establishment name','establishment','firm name','firmname','site name','facility name','establishment_name')
-    fei=ident(first(row,'FEI','FEI Number','FDA Establishment Identifier','fda_fei','fei_number'))
-    duns=ident(first(row,'DUNS','DUNS number','establishment duns','duns_number'))
-    a=first(row,'address','street address','address line 1','address_1','address1','street_address','establishment address')
-    city=first(row,'city','establishment city')
-    country=first(row,'country','country code','iso country code','iso_country_code','establishment country').upper()
-    if not name or not (fei or duns or (a and city)):
-        return None
-    reg=fei or duns
-    return dict(id=sid(SOURCE_DRUG,fei,reg,a,name,country),name=name,company=first(row,'registrant name','registrant','labeler name','firm name') or name,
-       city=city,state=first(row,'state','state province','state code'),country=country,fei=fei,registration_number=reg,
-       activities=first(row,'business operation','business operations','business_operation','operations','activity') or 'Registered drug establishment',
-       sector='Pharmaceutical',address=a,expiry_year=first(row,'registration expiration date','expiration year','expiry year')[:16],
-       source=SOURCE_DRUG,source_records=1)
+    """Map official DECRS columns; never use contact/agent fields as site data.
 
+    FDA's downloadable file has also appeared as tab-delimited Windows-1252 text.
+    FEI and DUNS are distinct administrative identifiers. registration_number is
+    reserved for an explicitly supplied registration number, otherwise DUNS as an
+    observed source lookup key (not asserted to be a registration number).
+    """
+    name=first(row,'establishment name','establishment','firm name','firmname',
+               'site name','facility name','establishment_name','firm legal name')
+    fei=ident(first(row,'FEI','FEI Number','FDA Establishment Identifier',
+                    'fda_fei','fei_number','FDA FEI'))
+    duns=ident(first(row,'DUNS','DUNS number','establishment duns','duns_number',
+                     'firm duns','DUNS No'))
+    a=first(row,'firm address','establishment address','physical address',
+            'address','street address','address line 1','address_1',
+            'address1','street_address','address 1','facility address')
+    city=first(row,'city','establishment city','firm city')
+    country=first(row,'country','country code','country name','iso country code',
+                  'iso_country_code','establishment country').upper()
+    if not name or not (fei or duns or (a and city and country)):
+        return None
+    explicit_registration=ident(first(row,'registration number','drug establishment registration number'))
+    # Schema 1.0 has one secondary-ID column. Prefer a published registration
+    # number, otherwise preserve DUNS as an observed lookup identifier.
+    secondary=explicit_registration or duns
+    return dict(id=sid(SOURCE_DRUG,fei,secondary,a,name,country),name=name,
+        company=first(row,'registrant name','registrant','labeler name',
+                      'owner operator','company name') or name,
+        city=city,state=first(row,'state','state province','state code','province','firm state'),
+        country=country,fei=fei,registration_number=secondary,
+        activities=first(row,'business operation','business operations',
+                         'business_operation','operations','activity',
+                         'business operation codes') or 'Registered drug establishment',
+        sector='Pharmaceutical',address=a,
+        expiry_year=first(row,'registration expiration date','expiration year',
+                          'expiry year','expiration date','registration expires')[:16],
+        source=SOURCE_DRUG,source_records=1)
 
 def merge(target, record):
     key=record['id']
@@ -111,31 +131,49 @@ def merge(target, record):
 
 
 def parse_drug_zip(path:Path):
-    """Yield rows from simple headered CSV/TSV/pipe files in an FDA ZIP download.
+    """Stream a bounded, headered FDA DECRS CSV/TSV/pipe archive.
 
-    Unrecognized schema raises ValueError so the data source is never counted as
-    ingested when only an opaque binary or non-establishment export was received.
+    Reject unexpected file types, unrecognized establishment headers and archives
+    with no usable site identifiers. Official text may be Windows-1252 encoded,
+    may start with a whitespace-prefixed header and may contain a trailing tab.
+    Only establishment data is retained; agents, phone and contacts are ignored.
     """
     valid=0
+    max_member_size=500_000_000
     with zipfile.ZipFile(path) as z:
-        for member in z.infolist():
-            if member.is_dir() or member.file_size>500_000_000: continue
-            if not member.filename.lower().endswith(('.csv','.txt','.tsv','.psv','.dat')):continue
-            with z.open(member) as raw:
-                text=io.TextIOWrapper(raw,encoding='utf-8-sig',errors='replace',newline='')
+        members=[m for m in z.infolist() if not m.is_dir()
+                 and m.filename.lower().endswith(('.csv','.txt','.tsv','.psv','.dat'))
+                 and 'excluded' not in m.filename.lower()]
+        if not members:raise ValueError('DECRS ZIP contains no supported establishment text file')
+        for member in members:
+            if member.file_size>max_member_size:
+                raise ValueError('DECRS member exceeds maximum uncompressed size')
+            with z.open(member) as file:
+                buffered=io.BufferedReader(file)
+                preview=buffered.peek(65536)[:65536]
+                try:
+                    preview.decode('utf-8-sig')
+                    encoding='utf-8-sig'
+                except UnicodeDecodeError:
+                    encoding='cp1252'
+                text=io.TextIOWrapper(buffered,encoding=encoding,errors='strict',newline='')
                 first_line=text.readline()
-                delim=max((',',first_line.count(',')),('\t',first_line.count('\t')),('|',first_line.count('|')) ,key=lambda x:x[1])[0]
-                if not delim or delim not in first_line:continue
-                reader=csv.DictReader(__import__('itertools').chain([first_line],text),delimiter=delim)
-                hdr={normal_key(x) for x in (reader.fieldnames or [])}
-                if not hdr.intersection({'establishmentname','firmname','facilityname','sitename','establishment'}):continue
+                delimiter=max((',',first_line.count(',')),
+                              ('\t',first_line.count('\t')),
+                              ('|',first_line.count('|')),key=lambda x:x[1])
+                if delimiter[1]==0:continue
+                reader=csv.DictReader(__import__('itertools').chain([first_line],text),
+                                      delimiter=delimiter[0])
+                hdr={normal_key(x) for x in (reader.fieldnames or []) if x}
+                if not hdr.intersection({'establishmentname','firmname','facilityname',
+                                         'sitename','establishment','firmlegalname'}):
+                    continue
                 for row in reader:
                     value=normalize_drug(row)
                     if value:
                         valid+=1
                         yield value
-    if not valid:raise ValueError('DECRS ZIP lacked recognizable establishment fields; source not ingested')
-
+    if not valid:raise ValueError('DECRS ZIP lacked recognizable establishment fields or identifiers')
 
 def make_catalog(records,source_status,*,generated_at=None):
     distinct={}

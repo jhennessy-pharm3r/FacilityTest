@@ -4,6 +4,7 @@
  'use strict';
  const script=document.getElementById('registry-ui-script');
  const catalogURL=new URL('./registry/catalog.json',script?.src||document.baseURI);
+ const irelandURL=new URL('./registry/ireland-leap.json',script?.src||document.baseURI);
  const sourceSearch='https://www.accessdata.fda.gov/scripts/cdrh/cfdocs/cfRL/rl.cfm';
  const drugSearch='https://www.fda.gov/drugs/drug-approvals-and-databases/drug-establishments-current-registration-site-decrs';
  const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -15,33 +16,61 @@
  let debounce=null, searchGeneration=0;
  function normalize(v){return String(v||'').normalize('NFKD').toLowerCase();}
  function catalog(){
-   if(!catalogPromise){catalogPromise=fetch(catalogURL,{cache:'no-store'}).then(r=>{
-       if(!r.ok)throw Error('Catalog HTTP '+r.status);return r.json();
-     }).then(d=>{
-       if(d?.schema_version!=='1.0'||!Array.isArray(d.rows)||!Array.isArray(d.fields))throw Error('Unsupported catalog format');
+   if(!catalogPromise){
+     catalogPromise=(async()=>{
+       const response=await fetch(catalogURL,{cache:'no-store'});
+       if(!response.ok)throw Error('FDA catalog HTTP '+response.status);
+       const d=await response.json();
+       if(d?.schema_version!=='1.0'||!Array.isArray(d.rows)||!Array.isArray(d.fields))
+         throw Error('Unsupported FDA catalog format');
+       try{
+         const second=await fetch(irelandURL,{cache:'no-store'});
+         if(!second.ok)throw Error('Ireland EPA HTTP '+second.status);
+         const ie=await second.json();
+         if(ie?.schema_version!=='1.0'||!Array.isArray(ie.rows)||
+            JSON.stringify(ie.fields)!==JSON.stringify(d.fields))
+             throw Error('Ireland EPA catalog schema mismatch');
+         d.rows=d.rows.concat(ie.rows);
+         d.sources={...d.sources,...ie.sources};
+         const counts={...(d.summary?.country_counts||{})};
+         for(const [code,n] of Object.entries(ie.summary?.country_counts||{}))
+           counts[code]=(counts[code]||0)+Number(n||0);
+         d.summary={...d.summary,country_counts:counts,
+           countries:Object.keys(counts).length,distinct_source_entities:d.rows.length};
+         d.ireland_generated_at=ie.generated_at;
+       }catch(err){
+         d.sources={...d.sources,ireland_leap:{status:'unavailable',
+           reason:String(err.message||err),
+           url:'https://data.epa.ie/leap/api/v1/LicenceProfile/list'}};
+       }
        meta=d;return d;
-     }).catch(e=>{catalogPromise=null;throw e;});}
+     })().catch(err=>{catalogPromise=null;throw err;});
+   }
    return catalogPromise;
  }
- function createSite(row,fields){return Object.fromEntries(fields.map((key,i)=>[key,row[i]]));}
+  function createSite(row,fields){return Object.fromEntries(fields.map((key,i)=>[key,row[i]]));}
  function match(row,fields,words){
    const parts=['name','company','address','city','state','country','fei','registration_number'];
    const values=parts.map(k=>normalize(row[fields.indexOf(k)]));
    return words.every(w=>values.some(v=>v.includes(w)));
  }
- function sourceText(c){const v=c.sources||{};return Object.entries(v).map(([key,src])=>`${key==='fda_device'?'Medical device':'Pharmaceutical'}: ${src.status||'unknown'}${src.reason?' ('+src.reason+')':''}`).join(' · ');}
- function render(){
-   return `<div class="page-heading"><div><div class="eyebrow">GLOBAL ESTABLISHMENT DISCOVERY</div><h1>All registered facilities</h1><p class="subhead">Find pharmaceutical and medical-device sites beyond the original research sample. Search company, facility, FDA FEI, address or city.</p></div></div>
-     <div class="registry-lead"><div><strong>Search the FDA establishment universe</strong><span>The United States market includes foreign sites. This is a registry search—not a list of facilities with completed risk assessments.</span></div><a href="${sourceSearch}" target="_blank" rel="noopener noreferrer">FDA device registry ↗</a></div>
+ function sourceText(c){
+   const labels={fda_device:'Medical device',fda_drug:'Pharmaceutical',ireland_leap:'Ireland EPA licences'};
+   return Object.entries(c.sources||{}).map(([key,src])=>
+      `${labels[key]||key}: ${src.status||'unknown'}${src.reason?' ('+src.reason+')':''}`).join(' · ');
+ }
+  function render(){
+   return `<div class="page-heading"><div><div class="eyebrow">GLOBAL ESTABLISHMENT DISCOVERY</div><h1>All registered facilities</h1><p class="subhead">Search independent FDA establishment and Irish EPA licence identities. Search company, site, FEI, licence reference or location.</p></div></div>
+     <div class="registry-lead"><div><strong>Search official regulatory identities</strong><span>FDA registrations include foreign sites; Ireland EPA licences are a separate source. Neither establishes a verified manufacturing property or insurance risk rating.</span></div><a href="${sourceSearch}" target="_blank" rel="noopener noreferrer">FDA device registry ↗</a></div>
      <section class="panel registry-panel">
        <div class="registry-controls">
-         <input id="registry-query" class="field registry-search" placeholder="Example: Baxter, Pfizer, Medtronic, 3002808212 or Galway" aria-label="Search all FDA establishments" value="${esc(query)}" autocomplete="off">
-         <select id="registry-sector" class="select" aria-label="Product sector"><option value="">All sectors</option><option value="Medical device" ${sector==='Medical device'?'selected':''}>Medical devices</option><option value="Pharmaceutical" ${sector==='Pharmaceutical'?'selected':''}>Pharmaceutical</option></select>
+         <input id="registry-query" class="field registry-search" placeholder="Example: Baxter, Pfizer, Medtronic, 3002808212 or Galway" aria-label="Search facility and licence identities" value="${esc(query)}" autocomplete="off">
+         <select id="registry-sector" class="select" aria-label="Product sector"><option value="">All sectors</option><option value="Medical device" ${sector==='Medical device'?'selected':''}>Medical devices</option><option value="Pharmaceutical" ${sector==='Pharmaceutical'?'selected':''}>Pharmaceutical</option><option value="Environmental licence" ${sector==='Environmental licence'?'selected':''}>Environmental licences</option></select>
          <input id="registry-country" class="field registry-country" maxlength="2" placeholder="Country (e.g. US)" aria-label="Filter by two-letter ISO country code" value="${esc(country)}">
          <button class="btn primary" id="registry-search-button">Search</button>
        </div>
        <div class="registry-status" id="registry-status">Opening full facility catalog…</div>
-       <div id="registry-results"><div class="empty">Loading the available FDA facility catalog…</div></div>
+       <div id="registry-results"><div class="empty">Loading available FDA and Irish EPA records…</div></div>
      </section>
      <section class="panel registry-manual-panel">
        <div class="panel-header"><div><h2>Facility not in the registry?</h2><span class="overline">You can start an investigation for any named facility. Its identity and hazard records remain unverified.</span></div><button class="btn tiny" id="registry-manual-toggle">${manualVisible?'Hide':'Create research entry'}</button></div>
@@ -56,9 +85,11 @@
   if(!meta){el.textContent='Opening establishment catalog…';return;}
   const count=meta.summary?.distinct_source_entities??meta.rows?.length??0;
   const d=meta.generated_at?new Date(meta.generated_at).toLocaleDateString('en-US'):'Not yet populated';
-  el.textContent=`${fmt(count)} distinct FDA source identities · ${fmt(meta.summary?.countries)} countries · Dataset: ${d} · ${sourceText(meta)}. Site and risk verification are separate.`;
+  el.textContent=`${fmt(count)} separate regulatory source identities · ${fmt(meta.summary?.countries)} countries · FDA dataset: ${d} · ${sourceText(meta)}. Separate source identities may represent the same property; site and risk verification are separate.`;
  }
- function sourceLink(r){if(r.sector==='Pharmaceutical')return drugSearch;
+ function sourceLink(r){
+   if(r.source==='Ireland EPA LEAP' && /^[A-Z][A-Z0-9-]{2,40}$/.test(r.registration_number||''))return 'https://leap.epa.ie/licence-profile/'+encodeURIComponent(r.registration_number);
+   if(r.sector==='Pharmaceutical')return drugSearch;
    if(r.fei) return `https://api.fda.gov/device/registrationlisting.json?search=registration.fei_number:${encodeURIComponent(r.fei)}&limit=1`;
    if(r.registration_number)return `https://api.fda.gov/device/registrationlisting.json?search=registration.registration_number:${encodeURIComponent(r.registration_number)}&limit=1`;
    return sourceSearch;
@@ -66,18 +97,18 @@
  function rowCard(r){return `<button class="registry-record" data-reg-id="${esc(r.id)}" type="button">
     <div class="registry-record-head"><strong>${esc(r.name)}</strong><span class="pill">${esc(r.sector)}</span></div>
     <p class="registry-record-sub">${esc(r.company||'Operator not recorded')} · ${esc([r.city,r.state,r.country].filter(Boolean).join(', ')||'Location not recorded')}</p>
-    <div class="registry-record-meta"><span>${r.fei?'FDA FEI observed: '+esc(r.fei):'FDA FEI unavailable'}</span><span>${esc(r.activities||'Establishment activity unspecified')}</span><span class="registry-record-link">Inspect →</span></div>
+    <div class="registry-record-meta"><span>${r.fei?'FDA FEI observed: '+esc(r.fei):'FDA FEI not asserted'}</span><span>${esc(r.activities||'Establishment activity unspecified')}</span><span class="registry-record-link">Inspect →</span></div>
    </button>`;}
  function resultsHTML(){
    if(error)return `<div class="empty">${esc(error)}</div>`;
-   if(!result.length)return `<div class="empty">${meta?.rows?.length?'No matching registrations in the available FDA catalog.':'The downloadable registry has not been populated.'} Absence is not evidence the facility does not exist. Try another name, official lookup, or create a research entry.</div>`;
+   if(!result.length)return `<div class="empty">${meta?.rows?.length?'No matching identities in the available regulatory source catalogs.':'The downloadable registry has not been populated.'} Absence is not evidence the facility does not exist. Try another name, official lookup, or create a research entry.</div>`;
    return `<div class="registry-count">${fmt(result.length)} matched source identities · showing ${fmt(page*perPage+1)}–${fmt(Math.min(result.length,(page+1)*perPage))}</div><div class="registry-list">${result.slice(page*perPage,(page+1)*perPage).map(rowCard).join('')}</div><div class="registry-pagination"><button class="btn tiny" id="registry-prev" ${page===0?'disabled':''}>← Previous</button><span>Page ${page+1} of ${Math.ceil(result.length/perPage)}</span><button class="btn tiny" id="registry-next" ${(page+1)*perPage>=result.length?'disabled':''}>Next →</button></div>`;
  }
  async function search(){
    const root=document.getElementById('registry-results');if(!root)return;
    const generation=++searchGeneration;
    if(query.trim().length===1){result=[];page=0;root.innerHTML='<div class="empty">Use at least two characters to search, or clear the field to browse every entry.</div>';return;}
-   error='';root.innerHTML='<div class="empty">Opening FDA establishment records…</div>';
+   error='';root.innerHTML='<div class="empty">Opening official source records…</div>';
    try {
      const d=await catalog();
      if(generation!==searchGeneration)return;
@@ -115,14 +146,14 @@
      el.innerHTML=`<p class="registry-status">${esc(sourceMessage)}</p>${resultsHTML()}`;
    }catch(err){el.innerHTML=`<div class="empty">The full catalog is not ready, and direct FDA lookup could not complete (${esc(err.message)}). <a target="_blank" rel="noopener noreferrer" href="${esc(sourceSearch)}">Search the official FDA database</a> or create a manual investigation entry below.</div>`;}
  }
- function detailHTML(r){return `<section class="panel registry-detail"><div class="panel-header"><div><h2>${esc(r.name)}</h2><span class="overline">${esc(r.sector)} · FDA source identity (not independently matched)</span></div><button class="btn tiny" id="registry-close-detail">Close</button></div>
+ function detailHTML(r){return `<section class="panel registry-detail"><div class="panel-header"><div><h2>${esc(r.name)}</h2><span class="overline">${esc(r.sector)} · ${esc(r.source)} source identity (not independently site-matched)</span></div><button class="btn tiny" id="registry-close-detail">Close</button></div>
    <div class="registry-detail-body"><div class="registry-detail-grid">${[
      ['Reported operator',r.company],['Registered address',[r.address,r.city,r.state,r.country].filter(Boolean).join(', ')],
-     ['Observed FDA FEI',r.fei],['Registration number',r.registration_number],['Recorded operations',r.activities],
+     ['Observed FDA FEI',r.fei],[r.source==='Ireland EPA LEAP'?'Irish EPA licence profile':r.sector==='Pharmaceutical'?'Other source ID / DUNS':'Registration number',r.registration_number],['Recorded operations',r.activities],
      ['Expiry / validity field',r.expiry_year],['Source listing records',r.source_records],['Environmental and physical hazard score','Not assessed']
    ].map(([k,v])=>`<div><small>${esc(k)}</small><b>${esc(v||'Not recorded')}</b></div>`).join('')}</div>
-     <div class="registry-risk-warning">FDA registration does not verify the physical property boundary, active manufacturing status, environmental compliance, hazard exposure, or insurance loss likelihood. These require independent source matching and location review.</div>
-     <div class="registry-actions"><a class="btn" target="_blank" rel="noopener noreferrer" href="${esc(sourceLink(r))}">View FDA source ↗</a><button class="btn primary" id="registry-track" data-reg-track="${esc(r.id)}">Add to research workspace</button></div>
+     <div class="registry-risk-warning">Registration or licensing does not verify the property boundary, active manufacturing status, environmental compliance, hazard exposure, or insurance loss likelihood. These require independent source matching and location review.</div>
+     <div class="registry-actions"><a class="btn" target="_blank" rel="noopener noreferrer" href="${esc(sourceLink(r))}">View official source ↗</a><button class="btn primary" id="registry-track" data-reg-track="${esc(r.id)}">Add to research workspace</button></div>
     </div></section>`;}
  function showDetail(id){selected=result.find(r=>r.id===id)||null;const root=document.getElementById('registry-detail-container');if(!root)return;
    root.innerHTML=selected?detailHTML(selected):'';if(selected)root.scrollIntoView({block:'nearest',behavior:'smooth'});
@@ -133,7 +164,24 @@
      alert('Added as an unverified research entry to this browser session. No automatic risk rating or site match was created.');
      return id;
    }
-   if(data.id?.startsWith('manual-')){alert('Manual research tracking is available in the private browser preview. Connect an authenticated backend for persistent entries.');return;}
+   if(data.source==='Ireland EPA LEAP'){
+     const r=await fetch('/api/facilities/intake',{method:'POST',
+       headers:{'Content-Type':'application/json'},
+       body:JSON.stringify({name:data.name,company:data.company,country:data.country,
+           city:data.city,state:data.state,sector:data.sector,source_url:sourceLink(data)})});
+     if(!r.ok)throw Error('Research intake unavailable: '+(await r.text()).slice(0,180));
+     alert('Ireland EPA licence opened as an unverified research site, not a verified plant.');
+     return (await r.json()).facility_id;
+   }
+   if(data.id?.startsWith('manual-')){
+     const r=await fetch('/api/facilities/intake',{method:'POST',
+       headers:{'Content-Type':'application/json'},
+       body:JSON.stringify({name:data.name,company:data.company,country:data.country,
+         city:data.city,address:data.address,sector:data.sector})});
+     if(!r.ok)throw Error('Manual intake unavailable: '+(await r.text()).slice(0,180));
+     alert('Unverified site saved to the private research workspace. No risk score was assigned.');
+     return (await r.json()).facility_id;
+   }
    const r=await fetch('/api/registry/'+encodeURIComponent(data.id)+'/track',{method:'POST'});
    if(!r.ok){let msg=await r.text();throw Error('Tracking not enabled on the private server: '+msg.slice(0,150));}
    alert('Created an unverified research workspace entry.');

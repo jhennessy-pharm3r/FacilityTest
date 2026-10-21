@@ -19,7 +19,7 @@ jobs:
           python - <<'PY'
           import subprocess,sys
           paths=subprocess.check_output(['git','ls-files'],text=True).splitlines()
-          allowed={'web/public-demo.json','web/case-studies.json','web/registry/catalog.json'}
+          allowed={'web/public-demo.json','web/case-studies.json','web/registry/catalog.json','web/registry/ireland-leap.json'}
           bad=[x for x in paths if x.startswith('data/') or x.lower().endswith(('.sqlite','.sqlite3','.xlsx','.xls','.csv','.csv.gz','.db')) or (x.endswith('.json') and x not in allowed)]
           if bad:
               print('Restricted data/source files tracked: '+', '.join(bad));sys.exit(1)
