@@ -1,5 +1,7 @@
 name: Public source connectivity check
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
   schedule:
     - cron: '31 9 * * 1' # weekly UTC; connectivity only, not a data refresh
