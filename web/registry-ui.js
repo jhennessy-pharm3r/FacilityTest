@@ -182,12 +182,15 @@
      el.innerHTML=`<p class="registry-status">${esc(sourceMessage)}</p>${resultsHTML()}`;
    }catch(err){el.innerHTML=`<div class="empty">The full catalog is not ready, and direct FDA lookup could not complete (${esc(err.message)}). <a target="_blank" rel="noopener noreferrer" href="${esc(sourceSearch)}">Search the official FDA database</a> or create a manual investigation entry below.</div>`;}
  }
- function detailHTML(r){return `<section class="panel registry-detail"><div class="panel-header"><div><h2>${esc(r.name)}</h2><span class="overline">${esc(r.sector)} · ${esc(r.source)} source identity (not independently site-matched)</span></div><button class="btn tiny" id="registry-close-detail">Close</button></div>
+ function detailHTML(r){const conflict=(meta?.identity_conflicts||[]).find(x=>x.id===r.id);
+  const conflictWarning=conflict?`<div class="registry-risk-warning"><strong>Possible site-identity conflict.</strong> Official source values differ: ${esc(Object.entries(conflict.conflicting_fields).map(([k,v])=>k+": "+v.join(" / ")).join(" · "))}. Review the physical address and operator before assuming one site.</div>`:"";
+  return `<section class="panel registry-detail"><div class="panel-header"><div><h2>${esc(r.name)}</h2><span class="overline">${esc(r.sector)} · ${esc(r.source)} source identity (not independently site-matched)</span></div><button class="btn tiny" id="registry-close-detail">Close</button></div>
    <div class="registry-detail-body"><div class="registry-detail-grid">${[
      ['Reported operator',r.company],['Registered address',[r.address,r.city,r.state,r.country].filter(Boolean).join(', ')],
      ['Observed FDA FEI',r.fei],[r.source==='Canada NPRI'?'Canada NPRI ID':r.source==='Ireland EPA LEAP'?'Irish EPA licence profile':r.sector==='Pharmaceutical'?'Other source ID / DUNS':'Registration number',r.registration_number],['Recorded operations',r.activities],
      ['Expiry / validity field',r.expiry_year],['Source listing records',r.source_records],['Environmental and physical hazard score','Not assessed']
    ].map(([k,v])=>`<div><small>${esc(k)}</small><b>${esc(v||'Not recorded')}</b></div>`).join('')}</div>
+     ${conflictWarning}
      <div class="registry-risk-warning">Registration or licensing does not verify the property boundary, active manufacturing status, environmental compliance, hazard exposure, or insurance loss likelihood. These require independent source matching and location review.</div>
      <div class="registry-actions"><a class="btn" target="_blank" rel="noopener noreferrer" href="${esc(sourceLink(r))}">View official source ↗</a><button class="btn primary" id="registry-track" data-reg-track="${esc(r.id)}">Add to research workspace</button></div>
     </div></section>`;}
