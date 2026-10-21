@@ -15,6 +15,7 @@ from .registry_catalog import init_registry, registry_search
 from .source_extensions import catalog as extension_catalog, review_event_candidate
 from .fei_api import lookup_fei
 from .assessment import build_assessment, render_assessment_html
+from .research import start_research,research_history,run_source,SourceNotEligible
 from .site_workspace import (SOURCES as REGULATOR_SOURCES, intake_site, search_external_registry,
                              track_external_registry_site, stage_identity_candidate,
                              suggest_regulatory_matches)
@@ -227,6 +228,34 @@ def facility_detail(facility_id:str,c=Depends(conn_dependency)):
     return {'facility':site,'domains':domain,'sources':source_breakdown(c,facility_id),
             'sec_findings':sec,'latest_evidence':latest,
             'source_snapshots':items(c,'SELECT id,source,url,retrieved_at,notes FROM raw_snapshots WHERE facility_id=? ORDER BY retrieved_at DESC',(facility_id,))}
+
+
+@app.get('/api/facilities/{facility_id}/research')
+def facility_research_status(facility_id:str,c=Depends(conn_dependency)):
+    try:return research_history(c,facility_id)
+    except ValueError as e:raise HTTPException(404,str(e)) from e
+
+
+@app.post('/api/facilities/{facility_id}/research')
+def facility_research_start(facility_id:str,request:Request,c=Depends(conn_dependency)):
+    if __import__('os').environ.get('FACILITY_RISK_ENABLE_WRITES')!='1':
+        raise HTTPException(403,'Research planning writes are disabled')
+    try:return start_research(c,facility_id,request.state.actor)
+    except ValueError as e:raise HTTPException(404,str(e)) from e
+
+
+@app.post('/api/facilities/{facility_id}/research/run-source')
+async def facility_research_run_source(facility_id:str,request:Request,c=Depends(conn_dependency)):
+    if __import__('os').environ.get('FACILITY_RISK_ENABLE_WRITES')!='1':
+        raise HTTPException(403,'Research source actions are disabled')
+    payload=await request.json()
+    if not isinstance(payload,dict):raise HTTPException(422,'Expected source request object')
+    try:
+        return run_source(c,facility_id,payload.get('source',''),request.state.actor,
+                          start=payload.get('start',''),end=payload.get('end',''),
+                          radius_km=float(payload.get('radius_km',150)))
+    except SourceNotEligible as e:raise HTTPException(409,str(e)) from e
+    except (ValueError,TypeError) as e:raise HTTPException(422,str(e)) from e
 
 
 @app.get('/api/facilities/{facility_id}/assessment')
