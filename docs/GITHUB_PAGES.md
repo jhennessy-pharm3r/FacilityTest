@@ -54,3 +54,8 @@ licence profile identities, updated by the registry workflow and shown alongside
 FDA registrations without automatic deduplication or facility matching. Its
 presence does not establish manufacturing activity, a site coordinate,
 environmental violation or insured property loss. Contact fields are excluded.
+
+
+## Canadian NPRI source catalogue
+
+`web/registry/canada-npri.json` is populated exclusively from Canada's official NPRI ArcGIS reporting-facility layer, currently described as 2024. It is published by a separate automated workflow so a transient Canadian source outage does not block updates of the FDA or Irish-source catalogs. The browser adds the source identities without cross-source deduplication or assigned underwriting scores. Geographic coordinates and private analyst matching are not in the public file. Records are labeled *Environmental reporting*; reporting is not an enforcement finding or known insurance loss.

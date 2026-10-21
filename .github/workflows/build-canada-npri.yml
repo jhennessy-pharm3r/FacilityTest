@@ -1,0 +1,51 @@
+name: Canadian NPRI reporting-facility refresh
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '19 7 * * 3'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/build_canada_npri.py'
+      - '.github/workflows/build-canada-npri.yml'
+permissions:
+  contents: write
+concurrency:
+  group: canada-npri-publish
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Fetch official Canada NPRI source entities
+        run: python scripts/build_canada_npri.py --output web/registry/canada-npri.json --min-rows 1000
+      - name: Validate published source cohort
+        run: |
+          python - <<'PY'
+          import json
+          from facilityrisk.registry_catalog import validate_catalog
+          d=validate_catalog(json.load(open('web/registry/canada-npri.json',encoding='utf-8')))
+          assert len(d['rows'])>=1000, 'NPRI cohort unexpectedly small'
+          assert d['sources']['canada_npri']['status']=='imported'
+          assert d['summary']['countries']==1
+          assert all(x[d['fields'].index('country')]=='CA' for x in d['rows'])
+          assert all(x[d['fields'].index('sector')]=='Environmental reporting' for x in d['rows'])
+          assert all(not x[d['fields'].index('fei')] for x in d['rows'])
+          assert d['summary']['reported_years']=={'2024':len(d['rows'])}, 'NPRI ArcGIS layer reporting year changed: manual review needed'
+          print('Canada NPRI source identities:',len(d['rows']))
+          PY
+      - name: Publish only minimal public-source catalog
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add web/registry/canada-npri.json
+          if git diff --cached --quiet; then echo 'No changes'; exit 0; fi
+          git commit -m 'Data: refresh Canadian NPRI reporting identities [skip ci]'
+          git push origin HEAD:main

@@ -5,6 +5,7 @@
  const script=document.getElementById('registry-ui-script');
  const catalogURL=new URL('./registry/catalog.json',script?.src||document.baseURI);
  const irelandURL=new URL('./registry/ireland-leap.json',script?.src||document.baseURI);
+ const canadaURL=new URL('./registry/canada-npri.json',script?.src||document.baseURI);
  const sourceSearch='https://www.accessdata.fda.gov/scripts/cdrh/cfdocs/cfRL/rl.cfm';
  const drugSearch='https://www.fda.gov/drugs/drug-approvals-and-databases/drug-establishments-current-registration-site-decrs';
  const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -43,6 +44,32 @@
            reason:String(err.message||err),
            url:'https://data.epa.ie/leap/api/v1/LicenceProfile/list'}};
        }
+       try {
+         const response=await fetch(canadaURL,{cache:'no-store'});
+         if(!response.ok)throw Error('Canada NPRI HTTP '+response.status);
+         const ca=await response.json();
+         if(ca?.schema_version!=='1.0'||!Array.isArray(ca.rows)||
+            JSON.stringify(ca.fields)!==JSON.stringify(d.fields))
+           throw Error('Canadian NPRI catalog schema mismatch');
+         const seen=new Set(d.rows.map(row=>row[0]));
+         for(const row of ca.rows){
+           if(seen.has(row[0]))throw Error('Duplicate identity key between independent catalogs');
+           seen.add(row[0]);
+         }
+         d.rows=d.rows.concat(ca.rows);
+         d.sources={...d.sources,...ca.sources};
+         const counts={...(d.summary?.country_counts||{})};
+         for(const [code,n] of Object.entries(ca.summary?.country_counts||{}))
+           counts[code]=(counts[code]||0)+Number(n||0);
+         d.summary={...d.summary,country_counts:counts,
+            countries:Object.keys(counts).length,
+            distinct_source_entities:d.rows.length};
+         d.canada_generated_at=ca.generated_at;
+       }catch(err){
+         d.sources={...d.sources,canada_npri:{
+           status:'unavailable',reason:String(err.message||err),
+           url:'https://maps-cartes.ec.gc.ca/arcgis/rest/services/STB_DGST/NPRI/MapServer/0'}};
+       }
        meta=d;return d;
      })().catch(err=>{catalogPromise=null;throw err;});
    }
@@ -55,22 +82,22 @@
    return words.every(w=>values.some(v=>v.includes(w)));
  }
  function sourceText(c){
-   const labels={fda_device:'Medical device',fda_drug:'Pharmaceutical',ireland_leap:'Ireland EPA licences'};
+   const labels={fda_device:'Medical device',fda_drug:'Pharmaceutical',ireland_leap:'Ireland EPA licences',canada_npri:'Canada NPRI reporters'};
    return Object.entries(c.sources||{}).map(([key,src])=>
       `${labels[key]||key}: ${src.status||'unknown'}${src.reason?' ('+src.reason+')':''}`).join(' · ');
  }
   function render(){
-   return `<div class="page-heading"><div><div class="eyebrow">GLOBAL ESTABLISHMENT DISCOVERY</div><h1>All registered facilities</h1><p class="subhead">Search independent FDA establishment and Irish EPA licence identities. Search company, site, FEI, licence reference or location.</p></div></div>
-     <div class="registry-lead"><div><strong>Search official regulatory identities</strong><span>FDA registrations include foreign sites; Ireland EPA licences are a separate source. Neither establishes a verified manufacturing property or insurance risk rating.</span></div><a href="${sourceSearch}" target="_blank" rel="noopener noreferrer">FDA device registry ↗</a></div>
+   return `<div class="page-heading"><div><div class="eyebrow">GLOBAL ESTABLISHMENT DISCOVERY</div><h1>All registered facilities</h1><p class="subhead">Search FDA establishments, Ireland EPA licences and Canada's NPRI reporting facilities by company, site, FEI, source ID or location.</p></div></div>
+     <div class="registry-lead"><div><strong>Search official regulatory identities</strong><span>FDA registrations, Irish EPA licences and Canada NPRI reports are separate regulatory populations. Source records are not verified manufacturing properties or insurance risk ratings.</span></div><a href="${sourceSearch}" target="_blank" rel="noopener noreferrer">FDA device registry ↗</a></div>
      <section class="panel registry-panel">
        <div class="registry-controls">
          <input id="registry-query" class="field registry-search" placeholder="Example: Baxter, Pfizer, Medtronic, 3002808212 or Galway" aria-label="Search facility and licence identities" value="${esc(query)}" autocomplete="off">
-         <select id="registry-sector" class="select" aria-label="Product sector"><option value="">All sectors</option><option value="Medical device" ${sector==='Medical device'?'selected':''}>Medical devices</option><option value="Pharmaceutical" ${sector==='Pharmaceutical'?'selected':''}>Pharmaceutical</option><option value="Environmental licence" ${sector==='Environmental licence'?'selected':''}>Environmental licences</option></select>
+         <select id="registry-sector" class="select" aria-label="Product sector"><option value="">All sectors</option><option value="Medical device" ${sector==='Medical device'?'selected':''}>Medical devices</option><option value="Pharmaceutical" ${sector==='Pharmaceutical'?'selected':''}>Pharmaceutical</option><option value="Environmental licence" ${sector==='Environmental licence'?'selected':''}>Environmental licences</option><option value="Environmental reporting" ${sector==='Environmental reporting'?'selected':''}>Environmental reporting</option></select>
          <input id="registry-country" class="field registry-country" maxlength="2" placeholder="Country (e.g. US)" aria-label="Filter by two-letter ISO country code" value="${esc(country)}">
          <button class="btn primary" id="registry-search-button">Search</button>
        </div>
        <div class="registry-status" id="registry-status">Opening full facility catalog…</div>
-       <div id="registry-results"><div class="empty">Loading available FDA and Irish EPA records…</div></div>
+       <div id="registry-results"><div class="empty">Loading available FDA, Irish EPA and Canadian NPRI records…</div></div>
      </section>
      <section class="panel registry-manual-panel">
        <div class="panel-header"><div><h2>Facility not in the registry?</h2><span class="overline">You can start an investigation for any named facility. Its identity and hazard records remain unverified.</span></div><button class="btn tiny" id="registry-manual-toggle">${manualVisible?'Hide':'Create research entry'}</button></div>
@@ -89,6 +116,10 @@
  }
  function sourceLink(r){
    if(r.source==='Ireland EPA LEAP' && /^[A-Z][A-Z0-9-]{2,40}$/.test(r.registration_number||''))return 'https://leap.epa.ie/licence-profile/'+encodeURIComponent(r.registration_number);
+   if(r.source==='Canada NPRI' && /^\d+$/.test(r.registration_number||'')){
+     const where=encodeURIComponent('NpriID='+r.registration_number);
+     return 'https://maps-cartes.ec.gc.ca/arcgis/rest/services/STB_DGST/NPRI/MapServer/0/query?where='+where+'&outFields=*&returnGeometry=false&f=pjson';
+   }
    if(r.sector==='Pharmaceutical')return drugSearch;
    if(r.fei) return `https://api.fda.gov/device/registrationlisting.json?search=registration.fei_number:${encodeURIComponent(r.fei)}&limit=1`;
    if(r.registration_number)return `https://api.fda.gov/device/registrationlisting.json?search=registration.registration_number:${encodeURIComponent(r.registration_number)}&limit=1`;
@@ -149,7 +180,7 @@
  function detailHTML(r){return `<section class="panel registry-detail"><div class="panel-header"><div><h2>${esc(r.name)}</h2><span class="overline">${esc(r.sector)} · ${esc(r.source)} source identity (not independently site-matched)</span></div><button class="btn tiny" id="registry-close-detail">Close</button></div>
    <div class="registry-detail-body"><div class="registry-detail-grid">${[
      ['Reported operator',r.company],['Registered address',[r.address,r.city,r.state,r.country].filter(Boolean).join(', ')],
-     ['Observed FDA FEI',r.fei],[r.source==='Ireland EPA LEAP'?'Irish EPA licence profile':r.sector==='Pharmaceutical'?'Other source ID / DUNS':'Registration number',r.registration_number],['Recorded operations',r.activities],
+     ['Observed FDA FEI',r.fei],[r.source==='Canada NPRI'?'Canada NPRI ID':r.source==='Ireland EPA LEAP'?'Irish EPA licence profile':r.sector==='Pharmaceutical'?'Other source ID / DUNS':'Registration number',r.registration_number],['Recorded operations',r.activities],
      ['Expiry / validity field',r.expiry_year],['Source listing records',r.source_records],['Environmental and physical hazard score','Not assessed']
    ].map(([k,v])=>`<div><small>${esc(k)}</small><b>${esc(v||'Not recorded')}</b></div>`).join('')}</div>
      <div class="registry-risk-warning">Registration or licensing does not verify the property boundary, active manufacturing status, environmental compliance, hazard exposure, or insurance loss likelihood. These require independent source matching and location review.</div>
@@ -164,13 +195,13 @@
      alert('Added as an unverified research entry to this browser session. No automatic risk rating or site match was created.');
      return id;
    }
-   if(data.source==='Ireland EPA LEAP'){
+   if(data.source==='Ireland EPA LEAP' || data.source==='Canada NPRI'){
      const r=await fetch('/api/facilities/intake',{method:'POST',
        headers:{'Content-Type':'application/json'},
        body:JSON.stringify({name:data.name,company:data.company,country:data.country,
            city:data.city,state:data.state,sector:data.sector,source_url:sourceLink(data)})});
      if(!r.ok)throw Error('Research intake unavailable: '+(await r.text()).slice(0,180));
-     alert('Ireland EPA licence opened as an unverified research site, not a verified plant.');
+     alert('Regulatory source observation opened as an unverified research entry. No plant identity or risk status has been confirmed.');
      return (await r.json()).facility_id;
    }
    if(data.id?.startsWith('manual-')){
