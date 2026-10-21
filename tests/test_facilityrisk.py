@@ -12,6 +12,7 @@ from facilityrisk.app import app
 from facilityrisk.db import connect, initialize, quality_report, one
 from facilityrisk.ingest import ingest_workbook, ORIGIN
 from facilityrisk.match import preview_match, haversine_km
+from facilityrisk.intelligence import review_location
 from facilityrisk.connectors import (fetch_usgs, fetch_aqueduct, fetch_echo,
                                      ingest_noaa_csv, SourceAccessError)
 
@@ -38,6 +39,10 @@ def database(tmp_path,monkeypatch):
         c.execute('''INSERT INTO sources(id,name,description,url,origin) VALUES(?,?,?,?,?)''',
                   ('epa','EPA ECHO','Test documentation','https://echo.epa.gov','Test fixture'))
         c.commit()
+        review_location(c,'site-one','site_verified','https://example.org/map/site-one',
+                        'QA reviewer','Building point independently checked')
+        review_location(c,'site-north','site_verified','https://example.org/map/site-north',
+                        'QA reviewer','Building point independently checked')
     return path
 
 
@@ -138,8 +143,11 @@ def test_noaa_nearby_not_site_loss_and_high_latitude(database,tmp_path):
         stats=ingest_noaa_csv(c,p,radius_km=40)
         assert stats['rows_seen']==4 and stats['rows_without_coordinates']==1
         assert stats['records_near_site']==2
-        assert c.execute("SELECT COUNT(*) FROM evidence WHERE source='NOAA (CSV)'").fetchone()[0]==2
-        assert all('no insured-site impact' in r['evidence_scope'] for r in c.execute("SELECT evidence_scope FROM evidence WHERE source='NOAA (CSV)'").fetchall())
+        assert c.execute("SELECT COUNT(*) FROM evidence WHERE source='NOAA (CSV)'").fetchone()[0]==0
+        rows=c.execute("SELECT * FROM external_event_candidates WHERE source_key='noaa'").fetchall()
+        assert len(rows)==2 and all(r['status']=='pending' for r in rows)
+        assert stats['new_candidates']==2
+        assert ingest_noaa_csv(c,p,radius_km=40)['new_candidates']==0
 
 
 def test_import_replaces_workbook_evidence_without_removing_live(tmp_path):
@@ -168,3 +176,18 @@ def test_import_replaces_workbook_evidence_without_removing_live(tmp_path):
         assert one(c,"SELECT id FROM evidence WHERE id='removed-analyst-record'") is None
         assert one(c,"SELECT id FROM evidence WHERE id='live-pipeline-record'") is not None
         assert second['evidence']==990
+
+def test_moved_site_blocks_all_geographic_connectors(database,tmp_path):
+    with connect(database) as c:
+        c.execute("UPDATE facilities SET latitude=41 WHERE id='site-one'")
+        c.commit()
+        with pytest.raises(ValueError,match='reviewed current'):
+            fetch_usgs(c,'site-one','2024-01-01','2024-12-31',session=FakeSession({'features':[]}))
+        with pytest.raises(ValueError,match='reviewed current'):
+            fetch_aqueduct(c,'site-one',session=FakeSession({'features':[]}))
+        p=tmp_path/'empty-noaa.csv'
+        p.write_text('EVENT_ID,EVENT_TYPE,BEGIN_LAT,BEGIN_LON\\n1,Wind,41,-75\\n')
+        # The other, independently reviewed Arctic site is still eligible.
+        out=ingest_noaa_csv(c,p)
+        assert out['records_near_site']==0
+        assert c.execute("SELECT COUNT(*) FROM external_event_candidates WHERE facility_id='site-one'").fetchone()[0]==0

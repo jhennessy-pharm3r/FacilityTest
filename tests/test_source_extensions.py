@@ -31,7 +31,7 @@ def _csv(path, rows):
 
 def test_catalog_has_complete_source_scope_and_never_claims_ingestion(db):
     rows = catalog(db)
-    assert len(rows) == len(SOURCES) == 14
+    assert len(rows) == len(SOURCES) == 15
     assert all(r['probe_state'] == 'not_tested' and r['staged_candidates'] == 0 for r in rows)
     assert all(r['documentation'].startswith('https://') for r in rows)
 
