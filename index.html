@@ -19,7 +19,8 @@
     <div class="side-label">WORKSPACE</div>
     <nav id="side-nav" aria-label="Primary">
       <button class="nav-item active" data-page="overview"><span class="nav-symbol">&#9638;</span> Overview</button>
-      <button class="nav-item" data-page="facilities"><span class="nav-symbol">&#9635;</span> Facilities <span id="side-facility-count" class="nav-count"></span></button>
+      <button class="nav-item" data-page="registry"><span class="nav-symbol">⌕</span> All registered facilities</button>
+      <button class="nav-item" data-page="facilities"><span class="nav-symbol">&#9635;</span> Research cases <span id="side-facility-count" class="nav-count"></span></button>
       <button class="nav-item" data-page="evidence"><span class="nav-symbol">&#9637;</span> Evidence search</button>
       <button class="nav-item" data-page="disclosures"><span class="nav-symbol">&#9776;</span> SEC disclosures</button>
       <button class="nav-item" data-page="sources"><span class="nav-symbol">&#9783;</span> Data sources</button>
@@ -36,7 +37,7 @@
   </aside>
   <div class="main-area">
     <header class="topbar"><div class="breadcrumbs">PANDORA <span>/</span> FACILITY RISK <span>/</span> <strong id="breadcrumb-page">OVERVIEW</strong></div><div class="topbar-actions"><span class="top-indicator"><span></span> PUBLIC PREVIEW</span><span class="top-divider"></span><div class="top-avatar">P3</div></div></header>
-    <div class="public-preview-banner" role="note"><div><strong>PUBLIC RESEARCH PREVIEW</strong><span><span id="public-data-label">Public examples</span> · No live government-feed connections. Load a private JSON snapshot locally in your browser; it is not uploaded to GitHub.</span></div><div class="public-preview-actions"><button id="public-data-import" class="btn primary">Load private snapshot</button><button id="public-data-reset" class="btn" hidden>Reset</button><input id="public-data-file" hidden type="file" accept=".json,application/json" aria-label="Select private research JSON"/></div></div>
+    <div class="public-preview-banner" role="note"><div><strong>PUBLIC RESEARCH PREVIEW</strong><span><span id="public-data-label">Public examples</span> · FDA facility catalog is public registration data; completed risk research is limited. Private snapshots are loaded only in your browser.</span></div><div class="public-preview-actions"><button id="public-data-import" class="btn primary">Load private snapshot</button><button id="public-data-reset" class="btn" hidden>Reset</button><input id="public-data-file" hidden type="file" accept=".json,application/json" aria-label="Select private research JSON"/></div></div>
     <main id="view-root" aria-live="polite"><div class="loading-card">Loading facility research...</div></main>
     <footer class="app-footer"><span>PHARM3R &middot; FACILITY RISK INTELLIGENCE</span><span>Exploratory evidence only. Not an insurance rating or loss prediction.</span></footer>
   </div>
@@ -46,6 +47,7 @@
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 <script defer id="public-api-script" src="./web/public-api.js"></script>
 <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script defer id="registry-ui-script" src="./web/registry-ui.js"></script>
 <script defer src="./web/intelligence-ui.js"></script>
 <script defer src="./web/app.js"></script>
 </body>

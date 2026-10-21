@@ -130,6 +130,23 @@
     if(r==='source-fields')return {items:[],total:0};
     throw new Error('Unknown public preview route: '+r);
   }
+  async function addFacility(item) {
+    const d=await getData();
+    if(!item || !item.id || !item.name)throw new Error('Facility identity fields are required');
+    const id='research-'+String(item.id).replace(/[^a-zA-Z0-9_-]/g,'-').slice(0,90);
+    if(d.facilities.some(f=>f.id===id))return id;
+    if(d.facilities.length>=15000)throw new Error('This browser research workspace reached its maximum size');
+    d.facilities.push({id,name:String(item.name).slice(0,160),company:String(item.company||item.name).slice(0,160),
+      country:String(item.country||'Unknown'),address:[item.address,item.city,item.state,item.country].filter(Boolean).join(', ').slice(0,400),
+      fei:item.fei||null,latitude:null,longitude:null,activity:item.activities||'Not assessed',site_case:'New unverified research request',
+      research_summary:'FDA/public registry entry or manual request. Facility match and risk indicators have NOT been validated.',
+      data_gaps:'No property geocode, verified environmental crosswalk, insurance values or site-specific hazard screening. Unknown is not low risk.',
+      origin:item.source||'Manual unsourced research request'});
+    datasetLabel=datasetLabel==='Public examples'?'Public examples + browser research entries':datasetLabel;
+    refreshMetadata();
+    window.dispatchEvent(new Event('facilityrisk:dataset-changed'));
+    return id;
+  }
   function refreshMetadata() {
     const label=document.getElementById('public-data-label');if(label)label.textContent=datasetLabel;
     const reset=document.getElementById('public-data-reset');if(reset)reset.hidden=datasetLabel==='Public examples';
@@ -150,6 +167,6 @@
     if(resetBtn)resetBtn.addEventListener('click',reset);
     refreshMetadata();
   }
-  window.PublicRiskAPI={query,importFile,reset,getData,assertDataset};
+  window.PublicRiskAPI={query,importFile,reset,getData,assertDataset,addFacility};
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',initControls);else initControls();
 })();

@@ -1,0 +1,47 @@
+name: FDA facility registry update
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 6 * * 1'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/build_catalog.py'
+      - 'facilityrisk/registry_catalog.py'
+      - '.github/workflows/build-registry.yml'
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install bounded streaming JSON parser
+        run: python -m pip install 'ijson>=3.3,<4'
+      - name: Refresh all available FDA registration/listing partitions
+        run: python scripts/build_catalog.py --output web/registry/catalog.json
+      - name: Validate published facility catalog
+        run: |
+          python - <<'PY'
+          import json
+          from facilityrisk.registry_catalog import validate_catalog
+          d=validate_catalog(json.load(open('web/registry/catalog.json',encoding='utf-8')))
+          assert len(d['rows'])>1000, 'Unexpectedly small catalog; refusing deployment'
+          assert d['sources']['fda_device']['status']=='imported'
+          print('Public registered source entities:',len(d['rows']))
+          print('Drug coverage:',d['sources'].get('fda_drug'))
+          PY
+      - name: Publish non-personal establishment catalog
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add web/registry/catalog.json
+          if git diff --cached --quiet; then echo 'No catalog changes'; exit 0; fi
+          git commit -m 'Data: refresh FDA facility registration search catalog [skip ci]'
+          git push origin HEAD:main

@@ -1,0 +1,210 @@
+"""Searchable FDA establishment catalog, kept separate from evaluated risk evidence.
+
+The openFDA device download contains listing records, not distinct physical sites.
+We collapse exact FDA registration/FEI identities within each source while retaining
+source record counts. Device and drug registries remain separate until an audited
+physical-site crosswalk can establish equivalence.
+"""
+from __future__ import annotations
+
+from collections import Counter
+from datetime import datetime, timezone
+from hashlib import sha256
+from pathlib import Path
+import csv
+import io
+import json
+import re
+import sqlite3
+import zipfile
+
+FIELDS = ('id','name','company','city','state','country','fei','registration_number',
+          'activities','sector','address','expiry_year','source','source_records')
+SOURCE_DEVICE = 'FDA device registration / listing'
+SOURCE_DRUG = 'FDA drug establishment (DECRS)'
+MAX_ROWS = 1_000_000
+
+
+def clean(value, limit=250):
+    if value is None: return ''
+    if isinstance(value,(list,dict)): return ''
+    return re.sub(r'\s+',' ',str(value)).strip()[:limit]
+
+
+def ident(value):
+    return re.sub(r'\D','',clean(value))
+
+
+def sid(source, fei, reg, address, name, country):
+    # Preserve FDA FEI as an observed identity, not as a verified physical-site match.
+    # Registration number prevents distinct establishments being merged on similar names.
+    if fei: key='fei:'+fei
+    elif reg: key='registration:'+reg
+    else: key='site:'+clean(country).lower()+'|'+clean(name).lower()+'|'+clean(address).lower()
+    return source.lower().split()[1]+'-'+sha256(key.encode('utf-8')).hexdigest()[:20]
+
+
+def normalize_device(raw):
+    r=raw.get('registration') or {}
+    if not isinstance(r,dict): return None
+    oo=r.get('owner_operator') or {}
+    if not isinstance(oo,dict): oo={}
+    name=clean(r.get('name'))
+    if not name: return None
+    fei=ident(r.get('fei_number'))
+    reg=ident(r.get('registration_number'))
+    a=clean(' '.join(str(r.get(k) or '') for k in ('address_line_1','address_line_2')))
+    country=clean(r.get('iso_country_code'),4).upper()
+    roles=raw.get('establishment_type') or []
+    if isinstance(roles,str): roles=[roles]
+    roles=[clean(x,80) for x in roles if clean(x)]
+    return dict(id=sid(SOURCE_DEVICE,fei,reg,a,name,country),name=name,company=clean(oo.get('firm_name')) or name,
+       city=clean(r.get('city')),state=clean(r.get('state_code')),country=country,fei=fei,
+       registration_number=reg,activities='; '.join(dict.fromkeys(roles))[:300],sector='Medical device',address=a,
+       expiry_year=clean(r.get('reg_expiry_date_year'),4),source=SOURCE_DEVICE,source_records=1)
+
+
+def normal_key(k):
+    return re.sub(r'[^a-z0-9]','',str(k).casefold().lstrip('\ufeff'))
+
+
+def first(row,*aliases):
+    mapping={normal_key(k):v for k,v in row.items() if k}
+    for k in aliases:
+        val=mapping.get(normal_key(k))
+        if val and clean(val): return clean(val)
+    return ''
+
+
+def normalize_drug(row):
+    # FDA's downloadable DECRS schema is separately versioned. Missing identities
+    # must fail visibly, not become unnamed facilities or fake FDA identifiers.
+    name=first(row,'establishment name','establishment','firm name','firmname','site name','facility name','establishment_name')
+    fei=ident(first(row,'FEI','FEI Number','FDA Establishment Identifier','fda_fei','fei_number'))
+    duns=ident(first(row,'DUNS','DUNS number','establishment duns','duns_number'))
+    a=first(row,'address','street address','address line 1','address_1','address1','street_address','establishment address')
+    city=first(row,'city','establishment city')
+    country=first(row,'country','country code','iso country code','iso_country_code','establishment country').upper()
+    if not name or not (fei or duns or (a and city)):
+        return None
+    reg=fei or duns
+    return dict(id=sid(SOURCE_DRUG,fei,reg,a,name,country),name=name,company=first(row,'registrant name','registrant','labeler name','firm name') or name,
+       city=city,state=first(row,'state','state province','state code'),country=country,fei=fei,registration_number=reg,
+       activities=first(row,'business operation','business operations','business_operation','operations','activity') or 'Registered drug establishment',
+       sector='Pharmaceutical',address=a,expiry_year=first(row,'registration expiration date','expiration year','expiry year')[:16],
+       source=SOURCE_DRUG,source_records=1)
+
+
+def merge(target, record):
+    key=record['id']
+    if key not in target:
+        target[key]=record.copy();return
+    old=target[key]
+    old['source_records']+=1
+    # Preserve alternate operation roles, but never assert physical identity across FDA sectors.
+    roles=list(dict.fromkeys(filter(None,old['activities'].split('; ')+record['activities'].split('; '))))
+    old['activities']='; '.join(roles)[:300]
+    for k in ('name','company','city','state','country','address','fei','registration_number','expiry_year'):
+        if not old[k] and record[k]: old[k]=record[k]
+    if record['address'] and old['address'] and normal_key(record['address'])!=normal_key(old['address']):
+        old['identity_warning']='Same reported identifier occurs with different street addresses; site review required'
+
+
+def parse_drug_zip(path:Path):
+    """Yield rows from simple headered CSV/TSV/pipe files in an FDA ZIP download.
+
+    Unrecognized schema raises ValueError so the data source is never counted as
+    ingested when only an opaque binary or non-establishment export was received.
+    """
+    valid=0
+    with zipfile.ZipFile(path) as z:
+        for member in z.infolist():
+            if member.is_dir() or member.file_size>500_000_000: continue
+            if not member.filename.lower().endswith(('.csv','.txt','.tsv','.psv','.dat')):continue
+            with z.open(member) as raw:
+                text=io.TextIOWrapper(raw,encoding='utf-8-sig',errors='replace',newline='')
+                first_line=text.readline()
+                delim=max((',',first_line.count(',')),('\t',first_line.count('\t')),('|',first_line.count('|')) ,key=lambda x:x[1])[0]
+                if not delim or delim not in first_line:continue
+                reader=csv.DictReader(__import__('itertools').chain([first_line],text),delimiter=delim)
+                hdr={normal_key(x) for x in (reader.fieldnames or [])}
+                if not hdr.intersection({'establishmentname','firmname','facilityname','sitename','establishment'}):continue
+                for row in reader:
+                    value=normalize_drug(row)
+                    if value:
+                        valid+=1
+                        yield value
+    if not valid:raise ValueError('DECRS ZIP lacked recognizable establishment fields; source not ingested')
+
+
+def make_catalog(records,source_status,*,generated_at=None):
+    distinct={}
+    for x in records:
+        if x and x.get('id'):merge(distinct,x)
+    data=sorted(distinct.values(),key=lambda x:(x.get('name','').casefold(),x['id']))
+    country_counts=Counter(x['country'] for x in data if x['country'])
+    sector_counts=Counter(x['sector'] for x in data)
+    return {'schema_version':'1.0','generated_at':generated_at or datetime.now(timezone.utc).isoformat(timespec='seconds'),
+        'fields':list(FIELDS),'rows':[[rec.get(k,'') for k in FIELDS] for rec in data],
+        'summary':{'distinct_source_entities':len(data),'source_rows':sum(int(x['source_records']) for x in data),
+                   'countries':len(country_counts),'by_sector':dict(sector_counts),'country_counts':dict(country_counts.most_common(300))},
+        'sources':source_status,
+        'coverage_note':'FDA registrations linked to the US market, including foreign establishments. Not a worldwide census, a verified site map, or an insurance-risk rating. Historical device listings may be present. Device and drug records are kept separate until independently matched.'}
+
+
+def validate_catalog(d):
+    if not isinstance(d,dict) or d.get('schema_version')!='1.0' or d.get('fields')!=list(FIELDS):
+        raise ValueError('Unsupported registry catalog schema')
+    if not isinstance(d.get('rows'),list) or len(d['rows'])>MAX_ROWS:raise ValueError('Invalid registry row count')
+    ids=set()
+    for r in d['rows']:
+        if not isinstance(r,list) or len(r)!=len(FIELDS) or not isinstance(r[0],str) or not r[0] or r[0] in ids:
+            raise ValueError('Invalid or duplicate registry row')
+        ids.add(r[0])
+    return d
+
+
+def expand(r):return dict(zip(FIELDS,r))
+
+
+def init_registry(conn):
+    conn.executescript('''
+    CREATE TABLE IF NOT EXISTS registry_facilities (
+      id TEXT PRIMARY KEY, name TEXT NOT NULL, company TEXT, city TEXT, state TEXT,
+      country TEXT, fei TEXT, registration_number TEXT, activities TEXT, sector TEXT,
+      address TEXT, expiry_year TEXT, source TEXT, source_records INTEGER);
+    CREATE INDEX IF NOT EXISTS ix_registry_name ON registry_facilities(name);
+    CREATE INDEX IF NOT EXISTS ix_registry_fei ON registry_facilities(fei);
+    CREATE INDEX IF NOT EXISTS ix_registry_country ON registry_facilities(country);
+    CREATE TABLE IF NOT EXISTS registry_import_meta (source TEXT PRIMARY KEY, checked_at TEXT, details_json TEXT);
+    ''')
+
+
+def import_catalog(conn,path):
+    d=validate_catalog(json.loads(Path(path).read_text(encoding='utf-8')))
+    init_registry(conn)
+    with conn:
+        conn.execute('DELETE FROM registry_facilities')
+        conn.executemany('''INSERT INTO registry_facilities VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',d['rows'])
+        conn.execute('INSERT OR REPLACE INTO registry_import_meta VALUES (?,?,?)',('catalog',d['generated_at'],json.dumps({'summary':d.get('summary'),'sources':d.get('sources')})))
+    return {'imported_facilities':len(d['rows']),'generated_at':d['generated_at'],'source_status':d.get('sources')}
+
+
+def registry_search(conn,q='',country='',sector='',limit=50,offset=0):
+    init_registry(conn)
+    where=[];params=[]
+    if q:
+        words=[x for x in q.casefold().strip().split() if x]
+        for word in words:
+            where.append('('+' OR '.join('LOWER('+x+') LIKE ?' for x in ('name','company','address','city','state','fei','registration_number'))+')')
+            params.extend(['%'+word+'%']*7)
+    if country:
+        where.append('country=?');params.append(country.upper())
+    if sector:
+        where.append('sector=?');params.append(sector)
+    clause=(' WHERE '+' AND '.join(where)) if where else ''
+    total=conn.execute('SELECT COUNT(*) FROM registry_facilities'+clause,params).fetchone()[0]
+    sort=' ORDER BY CASE WHEN fei=? THEN 0 WHEN LOWER(name) LIKE ? THEN 1 ELSE 2 END,name,id' if q else ' ORDER BY name,id'
+    sort_params=[q,q.lower()+'%'] if q else []
+    rows=conn.execute('SELECT * FROM registry_facilities'+clause+sort+' LIMIT ? OFFSET ?',params+sort_params+[limit,offset]).fetchall()
+    return {'items':[dict(x) for x in rows],'total':total,'limit':limit,'offset':offset}
