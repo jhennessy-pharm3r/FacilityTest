@@ -3,16 +3,44 @@
 Uses only public demo fixtures, never the analyst workbook or insured data.
 """
 from playwright.sync_api import sync_playwright,expect
+import json
+import sys
+import shutil
+from pathlib import Path
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+from facilityrisk.registry_catalog import FIELDS,make_catalog,normalize_device
 
 BASE='http://127.0.0.1:8099/'
 
 with sync_playwright() as pw:
-    browser=pw.chromium.launch(headless=True,args=['--no-sandbox'])
+    browser=pw.chromium.launch(headless=True,args=['--no-sandbox'],executable_path=shutil.which('chromium'))
     page=browser.new_page(viewport={'width':1480,'height':950},device_scale_factor=1)
     errors=[]
     page.on('pageerror',lambda e:errors.append(str(e)))
+    # Synthetic FDA registry response validates unrestricted catalog search,
+    # separate from the three public research case studies.
+    sample=make_catalog([
+        normalize_device({'registration':{'name':'Acme Devices Galway','fei_number':'3000000011',
+            'city':'Galway','iso_country_code':'IE','address_line_1':'14 Research St',
+            'owner_operator':{'firm_name':'Acme Global'}},'establishment_type':['Manufacture Medical Device']}),
+        normalize_device({'registration':{'name':'Acme Devices Boston','fei_number':'3000000012',
+            'city':'Boston','iso_country_code':'US','address_line_1':'15 Research St',
+            'owner_operator':{'firm_name':'Acme Global'}},'establishment_type':['Manufacture Medical Device']})
+    ],{'fda_device':{'status':'imported'},'fda_drug':{'status':'not_requested'}})
+    page.route('**/registry/catalog.json',lambda route:route.fulfill(status=200,content_type='application/json',body=json.dumps(sample)))
+    page.on('dialog',lambda dialog:dialog.accept())
     page.goto(BASE,wait_until='domcontentloaded',timeout=45000)
-    expect(page.locator('#view-root h1')).to_contain_text('Facility Risk Intelligence',timeout=30000)
+    page.locator('[data-page="registry"]').first.click()
+    expect(page.locator('#view-root h1')).to_contain_text('All registered facilities',timeout=15000)
+    page.locator('#registry-query').fill('Galway')
+    page.locator('#registry-search-button').click()
+    expect(page.locator('#registry-results')).to_contain_text('Acme Devices Galway',timeout=15000)
+    expect(page.locator('#registry-results')).not_to_contain_text('Acme Devices Boston')
+    page.locator('[data-reg-id]').first.click()
+    expect(page.locator('#registry-detail-container')).to_contain_text('Not assessed')
+    page.locator('#registry-track').click()
+    page.locator('[data-page="facilities"]').first.click()
+    expect(page.locator('#facility-cards')).to_contain_text('Acme Devices Galway',timeout=15000)
     page.locator('[data-page="cases"]').first.click()
     expect(page.locator('#intel-content')).to_contain_text('Pfizer Rocky Mount',timeout=15000)
     expect(page.locator('#intel-content')).to_contain_text('Amgen Juncos',timeout=15000)

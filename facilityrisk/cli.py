@@ -11,6 +11,7 @@ from .advanced_sources import discover_frs, fetch_verified_echo, fetch_fema, ing
 from .intelligence import decide_candidate,review_location,intelligence_quality,verify_fei
 from .case_studies import seed_cases
 from .security import validate_private_bind
+from .registry_catalog import import_catalog
 
 
 def main(argv=None) -> int:
@@ -19,6 +20,7 @@ def main(argv=None) -> int:
     sub.add_parser('init-db')
     ing=sub.add_parser('ingest-workbook');ing.add_argument('xlsx')
     sub.add_parser('qa')
+    reg=sub.add_parser('import-registry');reg.add_argument('catalog_json')
     exp=sub.add_parser('export-browser',help='Create PRIVATE JSON snapshot to load in GitHub Pages; never commit the JSON')
     exp.add_argument('output_json')
     srv=sub.add_parser('serve');srv.add_argument('--port',type=int,default=8765);srv.add_argument('--host',default='127.0.0.1')
@@ -49,6 +51,7 @@ def main(argv=None) -> int:
         initialize(conn)
         if args.command=='init-db': output={'status':'initialized'}
         elif args.command=='qa':output={**quality_report(conn),'intelligence':intelligence_quality(conn)}
+        elif args.command=='import-registry':output=import_catalog(conn,args.catalog_json)
         elif args.command=='ingest-workbook':output=ingest_workbook(conn,args.xlsx)
         elif args.command=='export-browser':output=export_browser_snapshot(conn,args.output_json)
         elif args.command=='refresh-usgs':output=fetch_usgs(conn,args.facility,args.start,args.end,args.radius_km,args.min_magnitude)

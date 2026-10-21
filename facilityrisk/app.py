@@ -11,10 +11,11 @@ from .match import preview_match
 from .intelligence import get_intelligence, intelligence_quality, decide_candidate, review_location, make_underwriting_profile, verify_fei
 from .security import add_security
 from .advanced_sources import SOURCE_META
+from .registry_catalog import init_registry, registry_search
 
 ROOT=Path(__file__).resolve().parent.parent
 WEB=ROOT/'web'
-app=FastAPI(title='Pharm3r Facility Risk Intelligence',version='0.4.0',
+app=FastAPI(title='Pharm3r Facility Risk Intelligence',version='0.5.0',
             description='Evidence research prototype; not an actuarially calibrated risk score.')
 app.mount('/assets',StaticFiles(directory=WEB),name='assets')
 add_security(app)
@@ -34,7 +35,7 @@ def index():
 
 @app.get('/api/health')
 def health(c=Depends(conn_dependency)):
-    return {'status':'ok','version':'0.4.0'}
+    return {'status':'ok','version':'0.5.0'}
 
 
 @app.get('/api/overview')
@@ -54,6 +55,58 @@ def overview(c=Depends(conn_dependency)):
                ORDER BY e.last_imported DESC, e.date_raw DESC LIMIT 8''')
     return {'stats':q,'facilities':sites,'domains':domains,'sources':sources,
             'latest':latest,'recent_ingestions':runs,'model_status':'evidence review; no loss prediction score'}
+
+
+@app.get('/api/registry/status')
+def registry_status(c=Depends(conn_dependency)):
+    init_registry(c)
+    info=one(c,"SELECT details_json,checked_at FROM registry_import_meta WHERE source='catalog'")
+    return {'records':one(c,'SELECT COUNT(*) AS n FROM registry_facilities')['n'],
+            'generated_at':info['checked_at'] if info else None,
+            'metadata':__import__('json').loads(info['details_json']) if info else {},
+            'coverage':'FDA drug/device registration data, not the entire world facility population'}
+
+
+@app.get('/api/registry')
+def registry(q:str='',country:str='',sector:str='',limit:int=Query(50,ge=1,le=100),
+             offset:int=Query(0,ge=0),c=Depends(conn_dependency)):
+    if not q.strip():
+        return {'items':[],'total':0,'limit':limit,'offset':offset,'message':'Enter company, FEI, city, or location to search'}
+    return registry_search(c,q=q[:120],country=country[:8],sector=sector[:50],limit=limit,offset=offset)
+
+
+@app.get('/api/registry/{registry_id}')
+def registry_detail(registry_id:str,c=Depends(conn_dependency)):
+    init_registry(c)
+    result=one(c,'SELECT * FROM registry_facilities WHERE id=?',(registry_id,))
+    if not result: raise HTTPException(404,'Registry establishment not found')
+    return result
+
+
+@app.post('/api/registry/{registry_id}/track')
+def track_registry_site(registry_id:str,request:Request,c=Depends(conn_dependency)):
+    import os
+    from .ingest import utcnow
+    from .intelligence import audit
+    if os.environ.get('FACILITY_RISK_ENABLE_WRITES')!='1':
+        raise HTTPException(403,'Research workspace writes are disabled')
+    init_registry(c)
+    item=one(c,'SELECT * FROM registry_facilities WHERE id=?',(registry_id,))
+    if not item:raise HTTPException(404,'Registry establishment not found')
+    fid='registry-'+registry_id
+    with c:
+        c.execute('''INSERT OR IGNORE INTO facilities(id,name,company,activity,address,country,fei,
+                 site_case,research_summary,source_coverage_note,data_gaps,origin,last_imported)
+                 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)''',(
+                 fid,item['name'],item['company'],item['activities'],
+                 ', '.join(filter(None,[item['address'],item['city'],item['state'],item['country']])),
+                 item['country'],item['fei'] or None,'Research requested',
+                 'Imported from an FDA registration/listing record; physical site and risk evidence are not yet independently verified.',
+                 'FDA registry observation only. No EPA or FDA inspection crosswalk established.',
+                 'Risk exposure unknown: site coordinates, construction, flood and fire protection, environmental matching, utilities and business interruption are not assessed.',
+                 item['source']+' (catalog; observed)',utcnow()))
+        audit(c,'registry_site_tracked',fid,request.state.actor,{'registry_id':registry_id,'source':item['source']})
+    return {'facility_id':fid,'status':'tracked_unverified','warning':'Registration is not evidence of physical-site risk or verified coordinates'}
 
 
 @app.get('/api/facilities')
