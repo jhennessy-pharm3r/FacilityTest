@@ -19,6 +19,7 @@ import tempfile
 import time
 import urllib.parse
 import urllib.request
+import urllib.error
 import zipfile
 
 ROOT=Path(__file__).resolve().parent.parent
@@ -48,13 +49,39 @@ def get_bytes(url,limit=15_000_000):
 
 
 def download_zip(url):
-    if urllib.parse.urlparse(url).scheme!='https':raise ValueError('HTTPS required')
+    """Fetch official archive, with FDA-only public browser-agent compatibility.
+
+    GitHub-hosted test: accessdata FDA HEAD/GET returned 404 with the catalog
+    agent, but 200/206 with a browser-compatible agent and ZIP magic. This is
+    a public FDA file, not a credentialed endpoint. The fallback is limited
+    to the official accessdata host and rejects invalid/oversized ZIP content.
+    """
+    p=urllib.parse.urlparse(url)
+    if p.scheme!='https':raise ValueError('HTTPS required')
+    def open_archive():
+        request=urllib.request.Request(url,headers=HEADERS)
+        try:
+            return urllib.request.urlopen(request,timeout=180)
+        except urllib.error.HTTPError as error:
+            if (error.code not in (403,404)
+                or p.hostname not in ('www.accessdata.fda.gov','accessdata.fda.gov')):
+                raise
+            print('Official FDA archive returned '+str(error.code)+
+                  ' to data-client agent; retrying public browser-compatible agent',flush=True)
+            browser_headers=dict(HEADERS)
+            browser_headers['User-Agent']='Mozilla/5.0 (compatible; Pharm3r-FacilityRisk-Archive/0.6)'
+            browser_headers['Accept']='application/zip,application/octet-stream,*/*'
+            return urllib.request.urlopen(urllib.request.Request(url,headers=browser_headers),timeout=180)
     f=tempfile.NamedTemporaryFile(suffix='.zip',delete=False)
     path=Path(f.name)
     try:
         with f:
-            req=urllib.request.Request(url,headers=HEADERS)
-            with urllib.request.urlopen(req,timeout=180) as res:
+            with open_archive() as res:
+                final=urllib.parse.urlparse(res.geturl())
+                if p.hostname in ('www.accessdata.fda.gov','accessdata.fda.gov') and (
+                    final.scheme!='https' or final.hostname not in
+                    ('www.accessdata.fda.gov','accessdata.fda.gov')):
+                    raise ValueError('FDA archive redirect moved to unexpected host')
                 total=0
                 while True:
                     data=res.read(1024*1024)
