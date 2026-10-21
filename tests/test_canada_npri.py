@@ -48,3 +48,29 @@ def test_npri_same_public_npri_id_on_separate_object_records_stays_separate():
                              [5,6])
     assert len(data['rows'])==2
     assert data['summary']['repeated_npri_identifiers']==1
+
+
+def test_npri_arcgis_pagination_and_disallow_partial_response(monkeypatch):
+    from scripts.build_canada_npri import refresh
+    ids=list(range(1,1602))
+    queries=[]
+    def endpoint(params):
+        queries.append(params)
+        if params.get('returnIdsOnly')=='true':
+            return {'objectIds':ids}
+        selected=[int(x) for x in params['objectIds'].split(',')]
+        return {'features':[feature(oid,npri_id=100000+oid) for oid in selected]}
+    monkeypatch.setattr('scripts.build_canada_npri.get_json',endpoint)
+    catalog=refresh(min_rows=1000)
+    assert len(catalog['rows'])==1601
+    assert len(queries)==4
+    assert [len(q['objectIds'].split(',')) for q in queries[1:]]==[800,800,1]
+    assert all(q['returnGeometry']=='false' for q in queries[1:])
+    assert all('Latitude' not in q['outFields'] for q in queries[1:])
+    def incomplete(params):
+        if params.get('returnIdsOnly')=='true':
+            return {'objectIds':[5,6]}
+        return {'features':[feature(5)]}
+    monkeypatch.setattr('scripts.build_canada_npri.get_json',incomplete)
+    with pytest.raises(ValueError,match='incomplete'):
+        refresh(min_rows=1)
