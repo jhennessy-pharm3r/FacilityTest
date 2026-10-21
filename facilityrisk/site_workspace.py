@@ -215,7 +215,11 @@ def import_ireland_leap_catalog(conn, path):
             or not re.fullmatch(r'[A-Z][A-Z0-9-]{2,40}',ident)):
             raise ValueError('Invalid Irish EPA source row; catalog not imported')
         uri='https://leap.epa.ie/licence-profile/'+ident
-        parsed.append(('external-'+stable_id('IE_LEAP',ident),'IE_LEAP',ident,
+        # The publisher may repeat a visible licence/profile number. Preserve
+        # the GUID-derived catalog row ID as a distinct source identity.
+        source_identity=ident+'@'+_text(row['id'],80)
+        parsed.append(('external-'+stable_id('IE_LEAP',source_identity),
+                       'IE_LEAP',source_identity,
                        _text(row['name'],160),_text(row['company'],160),
                        '',_text(row['city'],120),_text(row['state'],120),'IE',
                        _text(row['sector'],120),_text(row['activities'],300),
