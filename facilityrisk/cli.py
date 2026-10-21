@@ -14,7 +14,7 @@ from .security import validate_private_bind
 from .registry_catalog import import_catalog
 from .source_extensions import probe_extensions, import_geo_csv, review_event_candidate
 from .site_workspace import (intake_site, import_official_registry_csv,
-                             search_external_registry, stage_identity_candidate, import_ireland_leap_catalog)
+                             search_external_registry, stage_identity_candidate, import_ireland_leap_catalog, import_canada_npri_catalog)
 
 
 def main(argv=None) -> int:
@@ -72,6 +72,8 @@ def main(argv=None) -> int:
     external.add_argument('--notes',default='')
     ireland=sub.add_parser('import-ireland-leap',help='Import downloaded official LEAP public JSON catalog')
     ireland.add_argument('catalog_json')
+    canada=sub.add_parser('import-canada-npri',help='Import official Canadian NPRI public JSON catalog')
+    canada.add_argument('catalog_json')
     search_external=sub.add_parser('search-source-registry')
     search_external.add_argument('--query',default='')
     search_external.add_argument('--source',default='')
@@ -133,6 +135,8 @@ def main(argv=None) -> int:
                 operations_column=args.operations_column,notes=args.notes)
         elif args.command=='import-ireland-leap':
             output=import_ireland_leap_catalog(conn,args.catalog_json)
+        elif args.command=='import-canada-npri':
+            output=import_canada_npri_catalog(conn,args.catalog_json)
         elif args.command=='search-source-registry':
             output=search_external_registry(conn,query=args.query,source_key=args.source,country=args.country)
         elif args.command=='stage-identity-candidate':
