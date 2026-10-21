@@ -116,48 +116,78 @@ def fetch_fema(conn,facility_id,session=None):
 
 
 def ingest_fda_inspections_csv(conn,path):
-    """Use authorized FDA Inspection Database CSV export; never guess FEIs.
+    """Quarantine FDA inspections until source FEI/site identity is verified.
 
-    Schema drift reported as an error rather than silently skipping records.
+    The source may supply a valid FEI without proving which physical building
+    or insured address is involved. Observed FEI rows must not be promoted to
+    a facility finding automatically.
     """
+    import hashlib
     path=Path(path)
+    if not path.is_file():raise ValueError('FDA inspection CSV not found')
+    sha=hashlib.sha256(path.read_bytes()).hexdigest()
     def key(v):return re.sub(r'[^a-z0-9]','',str(v).lower())
-    with path.open(encoding='utf-8-sig',newline='') as f:
-        reader=csv.DictReader(f)
+    with path.open(encoding='utf-8-sig',newline='') as file:
+        reader=csv.DictReader(file)
         if not reader.fieldnames:raise ValueError('Missing FDA CSV header')
         names={key(n):n for n in reader.fieldnames}
-        def col(*possibles):
-            for p in possibles:
-                if key(p) in names:return names[key(p)]
-            raise ValueError('FDA CSV missing required field: '+str(possibles))
+        def col(*aliases):
+            for alias in aliases:
+                if key(alias) in names:return names[key(alias)]
+            raise ValueError('FDA CSV missing required field: '+str(aliases))
         fei_col=col('FEI Number','FEI','FEI #','FEI_NUM')
         date_col=col('Inspection End Date','End Date','Inspection Date','Inspection EndDate')
         cls_col=col('Classification','Final Classification','Inspection Classification')
-        extra_col=names.get('firmname') or names.get('companyname')
-        sites={str(x['fei']):x for x in conn.execute("SELECT id,fei FROM facilities WHERE fei IS NOT NULL")}
-        linked=0;skipped=0
-        for r in reader:
-            fei=str(r.get(fei_col,'')).strip()
-            if fei not in sites:skipped+=1;continue
-            date=str(r.get(date_col,'')).strip()
-            classif=str(r.get(cls_col,'')).strip()
-            if not date or not classif:skipped+=1;continue
-            fid=sites[fei]['id']
-            eid=stable_id('fda_inspection_csv',fid,fei,date,classif)
-            conn.execute('''INSERT OR IGNORE INTO evidence
-            (id,facility_id,source,program,date_raw,record_type,finding,record_ref,evidence_scope,
-             match_quality,source_url,limitations,risk_domain,origin,last_imported)
-             VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
-            (eid,fid,'FDA inspections (CSV)','FDA Data Dashboard',date,'Inspection final classification',
-             f'FDA listed inspection final classification: {classif}',fei,'FEI-specific inspection',
-             'FEI exact match to analyst registry, not verified independent FEI registry',
-             'https://www.fda.gov/about-fda/performance-data/fda-data-dashboard',
-             'FDA inspections reflect regulatory assessments; classifications not proof of insured property damage.',
-             'Manufacturing regulation','FDA public inspection CSV (user-provided)',utcnow()))
-            linked+=1
+        firm_col=names.get('firmname') or names.get('companyname')
+        sites={}
+        for site in conn.execute("SELECT id,fei FROM facilities WHERE fei IS NOT NULL"):
+            sites.setdefault(str(site['fei']),[]).append(site['id'])
+        verified={(row['facility_id'],row['identifier']) for row in conn.execute("""
+            SELECT facility_id,identifier FROM identity_links
+            WHERE namespace='FDA_FEI' AND status='verified'""")}
+        linked=0;pending=0;skipped=0
+        for record in reader:
+            fei=str(record.get(fei_col) or '').strip()
+            date=str(record.get(date_col) or '').strip()
+            classification=str(record.get(cls_col) or '').strip()
+            if not fei or not date or not classification:
+                skipped+=1
+                continue
+            associated=sites.get(fei,[])
+            if not associated:
+                skipped+=1
+                continue
+            for site_id in associated:
+                if (site_id,fei) not in verified:
+                    observation_id=stable_id('fda_unverified_inspection',site_id,fei,date,classification)
+                    result=conn.execute("""INSERT OR IGNORE INTO regulatory_observations
+                      (id,facility_id,source,source_id,observed_date,observation,
+                       status,source_url,source_sha256,retrieved_at)
+                       VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                       (observation_id,site_id,'FDA inspections',fei,date,
+                        'Final classification '+classification+'; firm '+str(record.get(firm_col) or ''),
+                        'identity_pending',
+                        'https://www.fda.gov/about-fda/performance-data/fda-data-dashboard',
+                        sha,utcnow()))
+                    pending+=max(0,result.rowcount)
+                    continue
+                eid=stable_id('fda_inspection_csv',site_id,fei,date,classification)
+                cursor=conn.execute("""INSERT OR IGNORE INTO evidence
+                   (id,facility_id,source,program,date_raw,record_type,finding,record_ref,
+                    evidence_scope,match_quality,source_url,limitations,risk_domain,origin,last_imported)
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                   (eid,site_id,'FDA inspections (CSV)','FDA Data Dashboard',date,
+                    'Inspection final classification','FDA final classification: '+classification,fei,
+                    'Regulatory observation, not an insured site loss',
+                    'Independently reviewed FEI/site identifier',
+                    'https://www.fda.gov/about-fda/performance-data/fda-data-dashboard',
+                    'FDA classification does not establish property damage or operational interruption.',
+                    'Manufacturing regulation','FDA official source with reviewed FEI',utcnow()))
+                linked+=max(0,cursor.rowcount)
     conn.commit()
-    return {'linked':linked,'unmatched_or_incomplete':skipped,
-            'caveat':'Requires official FDA export and verified FEI identity before production rating'}
+    return {'linked':linked,'identity_pending':pending,
+            'unmatched_or_incomplete':skipped,'source_sha256':sha,
+            'caveat':'Unverified FEI records remain review-only observations.'}
 
 
 def record_source_check(conn,source,state,url,details='',count=None):
