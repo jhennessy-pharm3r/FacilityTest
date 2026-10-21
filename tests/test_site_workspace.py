@@ -101,7 +101,7 @@ def test_bad_source_data_cannot_mutate_registry(db,tmp_path):
     with pytest.raises(ValueError,match='Duplicate source identifier'):
         import_official_registry_csv(db,file,'CA_NPRI','https://open.canada.ca/',
                                      id_column='NPRI ID',name_column='Site',
-                                     country_column='Country')
+                                     country_column='Country',address_column='')
     assert search_external_registry(db)['total']==0
     with pytest.raises(ValueError,match='Unsupported'):
         import_official_registry_csv(db,file,'BAD_UNKNOWN','https://example.org/',
