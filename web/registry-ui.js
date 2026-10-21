@@ -164,6 +164,15 @@
      alert('Added as an unverified research entry to this browser session. No automatic risk rating or site match was created.');
      return id;
    }
+   if(data.source==='Ireland EPA LEAP'){
+     const r=await fetch('/api/facilities/intake',{method:'POST',
+       headers:{'Content-Type':'application/json'},
+       body:JSON.stringify({name:data.name,company:data.company,country:data.country,
+           city:data.city,state:data.state,sector:data.sector,source_url:sourceLink(data)})});
+     if(!r.ok)throw Error('Research intake unavailable: '+(await r.text()).slice(0,180));
+     alert('Ireland EPA licence opened as an unverified research site, not a verified plant.');
+     return (await r.json()).facility_id;
+   }
    if(data.id?.startsWith('manual-')){
      const r=await fetch('/api/facilities/intake',{method:'POST',
        headers:{'Content-Type':'application/json'},
