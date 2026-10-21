@@ -13,6 +13,7 @@ from .security import add_security
 from .advanced_sources import SOURCE_META
 from .registry_catalog import init_registry, registry_search
 from .source_extensions import catalog as extension_catalog, review_event_candidate
+from .fei_api import lookup_fei
 from .site_workspace import (SOURCES as REGULATOR_SOURCES, intake_site, search_external_registry,
                              track_external_registry_site, stage_identity_candidate,
                              suggest_regulatory_matches)
@@ -360,6 +361,21 @@ async def review_frs_match(candidate_id:str,request:Request,c=Depends(conn_depen
     p=await request.json()
     try:return decide_candidate(c,candidate_id,p.get('decision',''),request.state.actor,p.get('evidence_url',''),p.get('note',''))
     except ValueError as e:raise HTTPException(422,str(e)) from e
+
+
+@app.post('/api/facilities/{facility_id}/fei-lookup')
+def facility_fda_fei_lookup(facility_id:str,request:Request,c=Depends(conn_dependency)):
+    if __import__('os').environ.get('FACILITY_RISK_ENABLE_WRITES')!='1':
+        raise HTTPException(403,'FDA FEI lookup is disabled')
+    try:
+        return lookup_fei(c,facility_id,request.state.actor)
+    except ValueError as e:
+        message=str(e)
+        if message=='Unknown facility':raise HTTPException(404,message) from e
+        if 'credentials not configured' in message:raise HTTPException(503,message) from e
+        raise HTTPException(422,message) from e
+    except __import__('requests').RequestException as e:
+        raise HTTPException(502,'FDA FEI lookup failed; source availability not confirmed') from e
 
 
 @app.post('/api/facilities/{facility_id}/fei-review')
