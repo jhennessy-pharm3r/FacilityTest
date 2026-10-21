@@ -66,6 +66,15 @@ CREATE TABLE IF NOT EXISTS ingestion_runs (
  finished_at TEXT, status TEXT NOT NULL, imported_count INTEGER NOT NULL DEFAULT 0,
  source_sha256 TEXT, details_json TEXT
 );
+CREATE TABLE IF NOT EXISTS regulatory_observations (
+ id TEXT PRIMARY KEY, facility_id TEXT NOT NULL REFERENCES facilities(id) ON DELETE CASCADE,
+ source TEXT NOT NULL, source_id TEXT NOT NULL, observed_date TEXT,
+ observation TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'identity_pending'
+ CHECK(status IN ('identity_pending','reviewed','rejected')),
+ source_url TEXT NOT NULL, source_sha256 TEXT NOT NULL, retrieved_at TEXT NOT NULL,
+ reviewer TEXT, reviewed_at TEXT, review_note TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_reg_observations_site ON regulatory_observations(facility_id,status);
 CREATE TABLE IF NOT EXISTS raw_snapshots (
  id TEXT PRIMARY KEY, source TEXT NOT NULL, facility_id TEXT,
  url TEXT NOT NULL, retrieved_at TEXT NOT NULL, response_json TEXT NOT NULL,
