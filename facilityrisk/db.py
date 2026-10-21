@@ -142,6 +142,14 @@ def quality_report(conn: sqlite3.Connection) -> dict:
     dangling = scalar(conn, 'SELECT COUNT(*) FROM evidence e LEFT JOIN facilities f ON f.id=e.facility_id WHERE f.id IS NULL')
     if dangling:
         failures.append(f'{dangling} orphan evidence rows')
+    # A changed coordinate invalidates an old review; do not silently use a
+    # historical approval to permit property-level hazards at a new location.
+    stale_site_reviews=scalar(conn,'''SELECT COUNT(*) FROM location_reviews l
+      JOIN facilities f ON f.id=l.facility_id
+      WHERE l.precision IN ('site_verified','property_polygon')
+        AND (l.reviewed_latitude IS NULL OR l.reviewed_longitude IS NULL
+             OR f.latitude IS NULL OR f.longitude IS NULL
+             OR l.reviewed_latitude<>f.latitude OR l.reviewed_longitude<>f.longitude)''')
     duplicates = items(conn, 'SELECT fei,COUNT(*) AS n FROM facilities WHERE fei IS NOT NULL GROUP BY fei HAVING n>1')
     for r in duplicates:
         failures.append(f"Duplicated FEI: {r['fei']}")
@@ -150,7 +158,8 @@ def quality_report(conn: sqlite3.Connection) -> dict:
     tracked_without_evidence=scalar(conn,'''SELECT COUNT(*) FROM facilities f
              WHERE NOT EXISTS (SELECT 1 FROM evidence e WHERE e.facility_id=f.id)''')
     external_entries=scalar(conn,'SELECT COUNT(*) FROM external_registry_entities')
-    return dict(external_registry_entities=external_entries,
+    return dict(stale_or_legacy_coordinate_reviews=stale_site_reviews,
+                external_registry_entities=external_entries,
                 external_source_imports=import_sources,
                 research_sites_without_evidence=tracked_without_evidence,
                 facilities=facilities, evidence=evidences, sec_findings=findings,
