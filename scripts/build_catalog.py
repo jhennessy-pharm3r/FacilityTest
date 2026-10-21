@@ -27,6 +27,7 @@ from facilityrisk.registry_catalog import make_catalog,normalize_device,parse_dr
 
 META='https://api.fda.gov/download.json'
 DECRS='https://www.fda.gov/drugs/drug-approvals-and-databases/drug-establishments-current-registration-site-decrs'
+DECRS_DIRECT_ZIP='https://www.accessdata.fda.gov/cder/drls_reg.zip'
 HEADERS={'User-Agent':'Pharm3r-FacilityRisk-ResearchCatalog/0.5 (+github.com/jhennessy-pharm3r/FacilityTest)','Accept':'application/json,text/html,*/*'}
 MAX_DOWNLOAD=180*1024*1024
 
@@ -140,9 +141,20 @@ def run(out,device_archives=None,drug_archive=None,device_only=False):
         local_path=Path(drug_archive) if drug_archive else None
         try:
             if not local_path:
-                url=drug_zip_url(get_bytes(DECRS).decode('utf-8',errors='replace'))
+                try:
+                    url=drug_zip_url(get_bytes(DECRS).decode('utf-8',errors='replace'))
+                except Exception as page_error:
+                    url=DECRS_DIRECT_ZIP
+                    print(f'DECRS listing page unavailable ({page_error}); using official direct ZIP link',flush=True)
                 print(f'DECRS download: {url}',flush=True)
                 local_path=download_zip(url)
+                with zipfile.ZipFile(local_path) as inspected:
+                    print('DECRS archive members:', [(m.filename, m.file_size) for m in inspected.infolist()[:20]],flush=True)
+                    for member in inspected.infolist()[:15]:
+                        if member.filename.lower().endswith(('.csv','.tsv','.txt','.psv','.dat')):
+                            with inspected.open(member) as sample:
+                                print('DECRS member header:',sample.readline()[:350].decode('utf-8-sig',errors='replace').strip(),flush=True)
+                            break
             else:url='test_fixture'
             try:
                 drug_rows=list(parse_drug_zip(local_path))
