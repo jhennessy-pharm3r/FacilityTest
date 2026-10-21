@@ -190,6 +190,58 @@ def import_official_registry_csv(conn, path, source_key, source_url, *,
             'scope':'Unverified source identities; no cross-agency matches or risk conclusions'}
 
 
+
+def import_ireland_leap_catalog(conn, path):
+    """Import the separately published, minimal *official* LEAP snapshot locally.
+
+    Does not infer a physical address from county/town or join licence numbers to
+    manufacturing FEIs. Refuses non-LEAP rows so an FDA catalog cannot be
+    accidentally imported under an Irish environmental namespace.
+    """
+    import json
+    from .registry_catalog import FIELDS, validate_catalog
+    file_path=Path(path)
+    if not file_path.is_file():raise ValueError('LEAP catalog file not found')
+    digest=hashlib.sha256(file_path.read_bytes()).hexdigest()
+    d=validate_catalog(json.loads(file_path.read_text(encoding='utf-8')))
+    if d.get('sources',{}).get('ireland_leap',{}).get('status')!='imported':
+        raise ValueError('Not an imported official Irish EPA LEAP catalog')
+    if len(d['rows'])<1:raise ValueError('LEAP catalog contains no source identities')
+    parsed=[]
+    for item in d['rows']:
+        row=dict(zip(FIELDS,item))
+        ident=_text(row.get('registration_number'),80)
+        if (row['source']!='Ireland EPA LEAP' or row['country']!='IE' or row['fei']
+            or not re.fullmatch(r'[A-Z][A-Z0-9-]{2,40}',ident)):
+            raise ValueError('Invalid Irish EPA source row; catalog not imported')
+        uri='https://leap.epa.ie/licence-profile/'+ident
+        parsed.append(('external-'+stable_id('IE_LEAP',ident),'IE_LEAP',ident,
+                       _text(row['name'],160),_text(row['company'],160),
+                       '',_text(row['city'],120),_text(row['state'],120),'IE',
+                       _text(row['sector'],120),_text(row['activities'],300),
+                       uri,digest,utcnow()))
+    initialize_workspace(conn)
+    with conn:
+        conn.executemany("""INSERT INTO external_registry_entities VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+           ON CONFLICT(source_key,source_identifier) DO UPDATE SET
+              name=excluded.name,company=excluded.company,
+              city=excluded.city,state=excluded.state,country=excluded.country,
+              sector=excluded.sector,operations=excluded.operations,
+              source_url=excluded.source_url,source_sha256=excluded.source_sha256,
+              imported_at=excluded.imported_at""",parsed)
+        conn.execute("""INSERT INTO external_registry_imports VALUES (?,?,?,?,?,?,?)
+           ON CONFLICT(source_key) DO UPDATE SET source_url=excluded.source_url,
+              source_sha256=excluded.source_sha256,imported_at=excluded.imported_at,
+              read_rows=excluded.read_rows,valid_rows=excluded.valid_rows,
+              notes=excluded.notes""",
+              ('IE_LEAP','https://data.epa.ie/leap/api/v1/LicenceProfile/list',
+               digest,utcnow(),len(parsed),len(parsed),
+               'Source-reported licence profiles; includes nonmanufacturing facilities'))
+        audit(conn,'leap_catalog_import','IE_LEAP','local-import',
+              {'sha256':digest,'profiles':len(parsed),'published_at':d.get('generated_at')})
+    return {'source':'IE_LEAP','imported_source_identities':len(parsed),
+            'file_sha256':digest,'status':'source_records_unverified'}
+
 def search_external_registry(conn,query='',source_key='',country='',limit=50,offset=0):
     initialize_workspace(conn)
     words=_text(query,160).casefold().split()
