@@ -195,10 +195,9 @@ def search_external_registry(conn,query='',source_key='',country='',limit=50,off
     words=_text(query,160).casefold().split()
     clauses=[];args=[]
     for word in words:
-        escaped=word.replace('\\','\\\\').replace('%','\\%').replace('_','\\_')
-        clauses.append('('+' OR '.join("LOWER("+f+") LIKE ? ESCAPE '\\\\'"
-               for f in ('name','company','address','city','source_identifier'))+')')
-        args.extend(['%'+escaped+'%']*5)
+        clauses.append('('+' OR '.join('instr(LOWER('+f+'), ?) > 0'
+                        for f in ('name','company','address','city','source_identifier'))+')')
+        args.extend([word]*5)
     if source_key:
         clauses.append('source_key=?');args.append(source_key)
     if country:
