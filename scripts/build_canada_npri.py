@@ -35,7 +35,7 @@ MAX_OBJECTS=100000
 
 def clean(value,limit=250):
     if value is None or isinstance(value,(dict,list)):return ''
-    return re.sub(r'\\s+',' ',str(value)).strip()[:limit]
+    return re.sub(r'\s+',' ',str(value)).strip()[:limit]
 
 
 def get_json(params):
