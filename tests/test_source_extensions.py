@@ -2,6 +2,7 @@
 import csv
 import pytest
 from facilityrisk.db import connect, initialize
+from facilityrisk.intelligence import review_location
 from facilityrisk.source_extensions import (SOURCES, catalog, probe_extensions,
                                             import_geo_csv, review_event_candidate)
 
@@ -58,9 +59,8 @@ def test_incident_import_needs_reviewed_site_point_and_is_not_evidence(db, tmp_p
                 url_column='url', precision_column='precision', radius_km=10)
     with pytest.raises(ValueError, match='independently reviewed'):
         import_geo_csv(db, path, 'phmsa', **opts)
-    db.execute("""INSERT INTO location_reviews(facility_id,precision,reviewer,verified_at)
-                  VALUES ('site-reviewed','site_verified','QA','2026-10-21')""")
-    db.commit()
+    review_location(db,'site-reviewed','site_verified','https://example.org/reviewed-site-point',
+                    'QA reviewer','Verified physical site point with source record')
     out = import_geo_csv(db, path, 'phmsa', **opts)
     assert out['rows_seen'] == 2 and out['new_candidates'] == 1
     assert db.execute('SELECT COUNT(*) FROM evidence').fetchone()[0] == 0
@@ -74,9 +74,8 @@ def test_candidate_review_requires_evidence_and_does_not_create_evidence(db, tmp
     _csv(path, [{'event_id':'event-1','latitude':35.835,'longitude':-82.002,
                  'date':'2024-01-01','summary':'Nearby incident',
                  'url':'https://example.org/event-1','precision':'exact'}])
-    db.execute("""INSERT INTO location_reviews(facility_id,precision,reviewer,verified_at)
-                  VALUES ('site-reviewed','site_verified','QA','2026-10-21')""")
-    db.commit()
+    review_location(db,'site-reviewed','site_verified','https://example.org/reviewed-site-point',
+                    'QA reviewer','Verified physical site point with source record')
     import_geo_csv(db,path,'nrc',id_column='event_id',date_column='date',
                    title_column='summary',url_column='url',precision_column='precision')
     cid=db.execute('SELECT id FROM external_event_candidates').fetchone()[0]
@@ -93,8 +92,7 @@ def test_csv_rejects_unknown_schema_and_nonincident_sources(db,tmp_path):
     path.write_text('record,position\n1,2\n',encoding='utf-8')
     with pytest.raises(ValueError,match='no incident-level CSV'):
         import_geo_csv(db,path,'eia861')
-    db.execute("""INSERT INTO location_reviews(facility_id,precision,reviewer,verified_at)
-                  VALUES ('site-reviewed','site_verified','QA','2026-10-21')""")
-    db.commit()
+    review_location(db,'site-reviewed','site_verified','https://example.org/reviewed-site-point',
+                    'QA reviewer','Verified physical site point with source record')
     with pytest.raises(ValueError,match='missing required columns'):
         import_geo_csv(db,path,'nrc')
