@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import uuid
 import sqlite3
+import math
 from datetime import datetime, timezone
 from .ingest import stable_id, utcnow
 from .match import haversine_km
@@ -34,7 +35,8 @@ CREATE TABLE IF NOT EXISTS match_candidates (
 CREATE TABLE IF NOT EXISTS location_reviews (
  facility_id TEXT PRIMARY KEY REFERENCES facilities(id) ON DELETE CASCADE,
  precision TEXT NOT NULL CHECK(precision IN ('city','approximate','site_verified','property_polygon')),
- method TEXT, evidence_url TEXT, reviewer TEXT, verified_at TEXT, note TEXT
+ method TEXT, evidence_url TEXT, reviewer TEXT, verified_at TEXT, note TEXT,
+ reviewed_latitude REAL, reviewed_longitude REAL
 );
 CREATE TABLE IF NOT EXISTS historical_events (
  id TEXT PRIMARY KEY, facility_id TEXT NOT NULL REFERENCES facilities(id) ON DELETE CASCADE,
@@ -80,6 +82,12 @@ CREATE TABLE IF NOT EXISTS audit_events (
 
 def initialize_intelligence(conn):
     conn.executescript(EXT_SCHEMA)
+    # Additive migration: existing historical coordinate reviews cannot prove
+    # which location was reviewed. They remain gated until re-reviewed.
+    columns={row['name'] for row in conn.execute('PRAGMA table_info(location_reviews)')}
+    for column in ('reviewed_latitude','reviewed_longitude'):
+        if column not in columns:
+            conn.execute('ALTER TABLE location_reviews ADD COLUMN '+column+' REAL')
     # Analyst-provided FEI is "observed", not independently verified.
     for r in conn.execute("SELECT id,fei FROM facilities WHERE fei IS NOT NULL AND trim(fei)<>''"):
         conn.execute('''INSERT OR IGNORE INTO identity_links(id,facility_id,namespace,identifier,status,provenance_note,created_at)
@@ -94,22 +102,57 @@ def audit(conn,action,subject,actor,details):
                  (uuid.uuid4().hex,action,subject,actor,utcnow(),json.dumps(details,sort_keys=True)))
 
 
+def is_reviewed_site_coordinate(site, review):
+    """Only the *currently stored* point, not an old reviewed site name, is approved."""
+    if not site or not review or review['precision'] not in ('site_verified','property_polygon'):
+        return False
+    try:
+        lat=float(site['latitude']);lon=float(site['longitude'])
+        checked_lat=float(review['reviewed_latitude'])
+        checked_lon=float(review['reviewed_longitude'])
+    except (TypeError,ValueError,KeyError,IndexError):
+        return False
+    return (all(math.isfinite(v) for v in (lat,lon,checked_lat,checked_lon))
+            and -90<=lat<=90 and -180<=lon<=180
+            and lat==checked_lat and lon==checked_lon)
+
+
 def review_location(conn,facility_id,precision,evidence_url,reviewer,note='',method='document-and-map-review'):
-    if precision not in ('city','approximate','site_verified','property_polygon'):raise ValueError('Unsupported location precision')
-    if precision in ('site_verified','property_polygon') and not(evidence_url.startswith('https://') and reviewer.strip()):
+    if precision not in ('city','approximate','site_verified','property_polygon'):
+        raise ValueError('Unsupported location precision')
+    approved=precision in ('site_verified','property_polygon')
+    if approved and not(isinstance(evidence_url,str) and evidence_url.startswith('https://')
+                        and isinstance(reviewer,str) and reviewer.strip()):
         raise ValueError('Site verification requires an HTTPS evidence URL and named reviewer')
     site=conn.execute('SELECT latitude,longitude FROM facilities WHERE id=?',(facility_id,)).fetchone()
-    if not site:raise ValueError('Unknown facility')
-    if precision in ('site_verified','property_polygon') and (site['latitude'] is None or site['longitude'] is None):
-        raise ValueError('Facility is missing coordinates')
+    if site is None:raise ValueError('Unknown facility')
+    checked_lat,checked_lon=None,None
+    if approved:
+        try:
+            checked_lat=float(site['latitude']);checked_lon=float(site['longitude'])
+        except (TypeError,ValueError):
+            raise ValueError('Facility is missing valid site coordinates') from None
+        if not (math.isfinite(checked_lat) and math.isfinite(checked_lon)
+                and -90<=checked_lat<=90 and -180<=checked_lon<=180):
+            raise ValueError('Site coordinates are outside valid geographic bounds')
     when=utcnow()
-    conn.execute('''INSERT INTO location_reviews VALUES(?,?,?,?,?,?,?)
-      ON CONFLICT(facility_id) DO UPDATE SET precision=excluded.precision,method=excluded.method,
-        evidence_url=excluded.evidence_url,reviewer=excluded.reviewer,verified_at=excluded.verified_at,note=excluded.note''',
-        (facility_id,precision,method,evidence_url,reviewer,when,note))
-    audit(conn,'location_review',facility_id,reviewer,{'precision':precision,'source':evidence_url})
+    conn.execute('''INSERT INTO location_reviews
+      (facility_id,precision,method,evidence_url,reviewer,verified_at,note,
+       reviewed_latitude,reviewed_longitude) VALUES(?,?,?,?,?,?,?,?,?)
+      ON CONFLICT(facility_id) DO UPDATE SET precision=excluded.precision,
+        method=excluded.method,evidence_url=excluded.evidence_url,
+        reviewer=excluded.reviewer,verified_at=excluded.verified_at,
+        note=excluded.note,reviewed_latitude=excluded.reviewed_latitude,
+        reviewed_longitude=excluded.reviewed_longitude''',
+        (facility_id,precision,method,evidence_url,reviewer,when,note,
+         checked_lat,checked_lon))
+    audit(conn,'location_review',facility_id,reviewer or 'anonymous',
+          {'precision':precision,'source':evidence_url,
+           'reviewed_latitude':checked_lat,'reviewed_longitude':checked_lon})
     conn.commit()
-    return {'facility_id':facility_id,'precision':precision,'reviewed_at':when}
+    return {'facility_id':facility_id,'precision':precision,'reviewed_at':when,
+            'point_locked_to_review':approved}
+
 
 
 def verify_fei(conn,facility_id,reviewer,evidence_url,note):
