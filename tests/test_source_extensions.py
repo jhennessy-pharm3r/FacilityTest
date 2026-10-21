@@ -43,7 +43,7 @@ def test_source_probe_html_is_only_documentation_reachable(db):
     class Session:
         def get(self, url, **kwargs): return Response()
     rows = probe_extensions(db, Session())
-    assert len(rows) == 14
+    assert len(rows) == 15
     assert {r['state'] for r in rows} == {'docs_reachable','schema_reachable'}
     assert all(r['state'] not in ('validated','ingested') for r in rows)
 
