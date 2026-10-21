@@ -21,6 +21,13 @@ from .match import haversine_km
 # These are researched source capabilities, not assertions of successful live
 # ingestion. Data access, attribution, date semantics and licensing are separate gates.
 SOURCES = (
+    dict(key='noaa', name='NOAA Storm Events Details', priority='High',
+         category='Severe weather / regional events', coverage='U.S. reported storms',
+         access='Official annual Storm Events Details CSV',
+         integration='review_only_geo_csv', probe_kind='html',
+         documentation='https://www.ncei.noaa.gov/stormevents/',
+         test='Require independently reviewed point and separate contextual event from site loss.',
+         limitation='Storm coordinates and regional damage do not establish an insured facility claim.'),
     dict(key='nrc', name='USCG National Response Center', priority='High',
          category='Chemical release / incident', coverage='U.S. incident reports',
          access='Official report lookup / export; initial reports unverified',

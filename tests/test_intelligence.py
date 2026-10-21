@@ -95,7 +95,14 @@ def test_fda_csv_import_remains_fei_scoped(db,tmp_path):
         writer.writerow({'FEI Number':'1025114','Inspection End Date':'2023-10-01','Classification':'VAI','Firm Name':'Baxter'})
         writer.writerow({'FEI Number':'9999999','Inspection End Date':'2024-01-01','Classification':'OAI','Firm Name':'Other'})
     result=ingest_fda_inspections_csv(db,path)
-    assert result['linked']==1 and result['unmatched_or_incomplete']==1
+    assert result['linked']==0 and result['identity_pending']==1
+    assert result['unmatched_or_incomplete']==1
+    assert db.execute("SELECT COUNT(*) FROM evidence WHERE source='FDA inspections (CSV)'").fetchone()[0]==0
+    assert db.execute("SELECT status FROM regulatory_observations").fetchone()[0]=='identity_pending'
+    verify_fei(db,'site-baxter-north-cove','FDA reviewer',
+               'https://www.fda.gov/','Reviewed official FEI and physical establishment')
+    second=ingest_fda_inspections_csv(db,path)
+    assert second['linked']==1
     assert db.execute("SELECT COUNT(*) FROM evidence WHERE source='FDA inspections (CSV)'").fetchone()[0]==1
 
 

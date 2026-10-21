@@ -31,7 +31,7 @@ def _csv(path, rows):
 
 def test_catalog_has_complete_source_scope_and_never_claims_ingestion(db):
     rows = catalog(db)
-    assert len(rows) == len(SOURCES) == 14
+    assert len(rows) == len(SOURCES) == 15
     assert all(r['probe_state'] == 'not_tested' and r['staged_candidates'] == 0 for r in rows)
     assert all(r['documentation'].startswith('https://') for r in rows)
 
@@ -43,7 +43,7 @@ def test_source_probe_html_is_only_documentation_reachable(db):
     class Session:
         def get(self, url, **kwargs): return Response()
     rows = probe_extensions(db, Session())
-    assert len(rows) == 14
+    assert len(rows) == 15
     assert {r['state'] for r in rows} == {'docs_reachable','schema_reachable'}
     assert all(r['state'] not in ('validated','ingested') for r in rows)
 
