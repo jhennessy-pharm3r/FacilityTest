@@ -246,6 +246,73 @@ def import_ireland_leap_catalog(conn, path):
     return {'source':'IE_LEAP','imported_source_identities':len(parsed),
             'file_sha256':digest,'status':'source_records_unverified'}
 
+
+def import_canada_npri_catalog(conn, path):
+    """Import public Canada NPRI reporting identities into the private review catalog.
+
+    Source's OBJECTID-level identity is preserved; reported street address is
+    not considered an independently verified property coordinate. No row gets a
+    verified crosswalk or a loss inference from regulatory reporting alone.
+    """
+    import json
+    from urllib.parse import quote
+    from .registry_catalog import FIELDS, validate_catalog
+
+    file_path=Path(path)
+    if not file_path.is_file():
+        raise ValueError('NPRI public catalog file not found')
+    content=file_path.read_bytes()
+    digest=hashlib.sha256(content).hexdigest()
+    document=validate_catalog(json.loads(content.decode('utf-8-sig')))
+    if document.get('sources',{}).get('canada_npri',{}).get('status')!='imported':
+        raise ValueError('Not an imported Canada NPRI public-source catalog')
+    if not document['rows']:
+        raise ValueError('Canada NPRI catalog contains no source identities')
+    records=[]
+    for item in document['rows']:
+        row=dict(zip(FIELDS,item))
+        npri_id=_text(row['registration_number'],40)
+        internal_id=_text(row['id'],100)
+        if not (row['country']=='CA' and row['source']=='Canada NPRI'
+                and row['sector']=='Environmental reporting'
+                and not row['fei'] and npri_id.isdigit()
+                and re.fullmatch(r'ca-npri-[a-f0-9]{20}',internal_id)):
+            raise ValueError('Invalid NPRI source row; rejecting entire import')
+        record_identifier=npri_id+'@'+internal_id
+        original='https://maps-cartes.ec.gc.ca/arcgis/rest/services/STB_DGST/NPRI/MapServer/0/query?where='+quote('NpriID='+npri_id,safe='')+'&outFields=*&returnGeometry=false&f=pjson'
+        records.append(('external-'+stable_id('CA_NPRI',record_identifier),
+                        'CA_NPRI',record_identifier,_text(row['name'],160),
+                        _text(row['company'],160),_text(row['address'],240),
+                        _text(row['city'],120),_text(row['state'],80),'CA',
+                        _text(row['sector'],120),_text(row['activities'],300),
+                        original,digest,utcnow()))
+    if len({x[2] for x in records})!=len(records):
+        raise ValueError('Duplicate Canadian source record identity')
+    initialize_workspace(conn)
+    with conn:
+        conn.executemany("""INSERT INTO external_registry_entities VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+          ON CONFLICT(source_key,source_identifier) DO UPDATE SET
+          name=excluded.name,company=excluded.company,address=excluded.address,
+          city=excluded.city,state=excluded.state,country=excluded.country,
+          sector=excluded.sector,operations=excluded.operations,
+          source_url=excluded.source_url,source_sha256=excluded.source_sha256,
+          imported_at=excluded.imported_at""",records)
+        conn.execute("""INSERT INTO external_registry_imports VALUES (?,?,?,?,?,?,?)
+          ON CONFLICT(source_key) DO UPDATE SET source_url=excluded.source_url,
+          source_sha256=excluded.source_sha256,imported_at=excluded.imported_at,
+          read_rows=excluded.read_rows,valid_rows=excluded.valid_rows,
+          notes=excluded.notes""",
+          ('CA_NPRI',
+           'https://maps-cartes.ec.gc.ca/arcgis/rest/services/STB_DGST/NPRI/MapServer/0',
+           digest,utcnow(),len(records),len(records),
+           'Public reporting source; NOT proof of plant operations, emissions violations or insured loss'))
+        audit(conn,'npri_catalog_import','CA_NPRI','local-import',
+              {'sha256':digest,'source_rows':len(records),
+               'published_at':document.get('generated_at'),
+               'reporting_years':document.get('summary',{}).get('reported_years')})
+    return {'source':'CA_NPRI','imported_source_identities':len(records),
+            'file_sha256':digest,'status':'source_records_unverified'}
+
 def search_external_registry(conn,query='',source_key='',country='',limit=50,offset=0):
     initialize_workspace(conn)
     words=_text(query,160).casefold().split()
