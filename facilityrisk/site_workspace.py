@@ -79,7 +79,7 @@ def initialize_workspace(conn):
 def _text(value, maximum=250):
     if value is None or isinstance(value,(dict,list)):
         return ''
-    return re.sub(r'\\s+', ' ', str(value)).strip()[:maximum]
+    return re.sub(r'\s+', ' ', str(value)).strip()[:maximum]
 
 
 def _url(value):
@@ -358,6 +358,104 @@ def track_external_registry_site(conn,record_id,actor):
                'source_identifier':row['source_identifier']})
     return {'facility_id':fid,'status':'unverified','source_identity':'observed'}
 
+
+
+_COUNTRY_ALIASES = {
+    'CANADA':'CA','CA':'CA','IRELAND':'IE','IE':'IE',
+    'UNITED STATES':'US','UNITED STATES OF AMERICA':'US','USA':'US','US':'US',
+    'UNITED KINGDOM':'GB','GREAT BRITAIN':'GB','GB':'GB',
+    'SWITZERLAND':'CH','CH':'CH','JAPAN':'JP','JP':'JP',
+    'CHINA':'CN','CN':'CN'
+}
+
+def _country_code(country):
+    country=_text(country,80).upper()
+    return _COUNTRY_ALIASES.get(country,country if len(country)==2 and country.isalpha() else '')
+
+
+def _words(value):
+    return {word for word in re.findall(r'[a-z0-9]+',_text(value,500).casefold())
+            if word not in {'the','of','inc','ltd','limited','llc','corporation',
+                            'company','facility','building','road','rd','street','st',
+                            'avenue','ave','drive','dr','unit','industrial','plant'} and len(word)>2}
+
+
+def suggest_regulatory_matches(conn,facility_id,source_key='',limit=20):
+    """Read-only screening; no foreign source identifier becomes verified.
+
+    Rank reported source sites within the same country using name/operator,
+    city and non-generic address token agreement. Similarity is a screening
+    heuristic, not proof that two records describe one property.
+    """
+    site=conn.execute('SELECT * FROM facilities WHERE id=?',(facility_id,)).fetchone()
+    if site is None:raise ValueError('Unknown facility')
+    if source_key and source_key not in SOURCES:raise ValueError('Unknown regulatory source')
+    country=_country_code(site['country'])
+    if not country:
+        return {'items':[],'total_candidates':0,'status':'insufficient_location',
+                'reason':'Confirm the site country before requesting cross-source identity suggestions',
+                'auto_matched':0}
+    initialize_workspace(conn)
+    sql="""SELECT id,source_key,source_identifier,name,company,address,city,state,
+                  country,sector,source_url
+           FROM external_registry_entities WHERE upper(country)=?"""
+    params=[country]
+    if source_key:
+        sql+=' AND source_key=?';params.append(source_key)
+    sql+=' ORDER BY source_key,id'
+    rows=conn.execute(sql,params).fetchall()
+    site_address=_text(site['address'],500).casefold()
+    name=_text(site['name'],160)
+    operator=_text(site['company'],160)
+    site_address_words=_words(site_address)
+    suggestions=[]
+    for record in rows:
+        name_score=name_similarity(name,record['name']) if name else 0.0
+        operator_score=name_similarity(operator,record['company']) if operator else 0.0
+        city=_text(record['city'],120).casefold()
+        # Facility address often includes city and country as free text;
+        # only a nontrivial city name can count as corroborating context.
+        city_match=bool(len(city)>=4 and
+                        re.search(r'(?<![a-z0-9])'+re.escape(city)+r'(?![a-z0-9])',site_address))
+        site_street_overlap=site_address_words & _words(record['address'])
+        overlap=bool(len(site_street_overlap)>=2)
+        if name_score<0.52 and operator_score<0.60:
+            continue
+        if city and not city_match and not overlap and max(name_score,operator_score)<0.88:
+            continue
+        ranking=round(0.45*name_score+0.35*operator_score+
+                      0.12*int(city_match)+0.08*int(overlap),3)
+        if ranking<0.39:
+            continue
+        signals=[]
+        if name_score>=0.65:signals.append('reported site name similarity')
+        if operator_score>=0.65:signals.append('reported operator name similarity')
+        if city_match:signals.append('reported city appears in site address')
+        if overlap:signals.append('reported street tokens overlap')
+        suggestions.append({
+            'external_id':record['id'],
+            'namespace':record['source_key'],
+            'source_identifier':record['source_identifier'],
+            'reported_name':record['name'],
+            'reported_company':record['company'],
+            'reported_address':record['address'],
+            'reported_city':record['city'],
+            'reported_country':record['country'],
+            'source_url':record['source_url'],
+            'name_similarity':name_score,
+            'operator_similarity':operator_score,
+            'candidate_sort_score':ranking,
+            'screening_signals':signals,
+            'verification':'pending_manual_review'
+        })
+    suggestions.sort(key=lambda x:(-x['candidate_sort_score'],x['namespace'],
+                                   x['source_identifier']))
+    return {'items':suggestions[:max(1,min(int(limit),50))],
+            'total_candidates':len(suggestions),
+            'country':country,'site_id':facility_id,
+            'status':'review_required','auto_matched':0,
+            'caveat':'Heuristic candidates only; no physical-site or ownership equivalence asserted. '
+                     'Evidence URL and reviewer rationale are required for a verified identifier.'}
 
 def stage_identity_candidate(conn,facility_id,external_id,actor):
     """Present independent regulatory record for review; never silently link."""
