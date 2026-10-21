@@ -421,7 +421,9 @@ def suggest_regulatory_matches(conn,facility_id,source_key='',limit=20):
         overlap=bool(len(site_street_overlap)>=2)
         if name_score<0.52 and operator_score<0.60:
             continue
-        if city and not city_match and not overlap and max(name_score,operator_score)<0.88:
+        # A conflicting known city should exclude even an identically named
+        # company; different plants can share the same owner and trade name.
+        if city and site_address and not city_match and not overlap:
             continue
         ranking=round(0.45*name_score+0.35*operator_score+
                       0.12*int(city_match)+0.08*int(overlap),3)
