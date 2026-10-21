@@ -247,6 +247,8 @@ def import_geo_csv(conn, file_path, source_key, *,
        SELECT f.id,f.latitude,f.longitude FROM facilities f
        JOIN location_reviews l ON l.facility_id=f.id
        WHERE l.precision IN ('site_verified','property_polygon')
+         AND l.reviewed_latitude=f.latitude
+         AND l.reviewed_longitude=f.longitude
          AND f.latitude BETWEEN -90 AND 90
          AND f.longitude BETWEEN -180 AND 180
     """)]
