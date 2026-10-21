@@ -396,10 +396,17 @@ def suggest_regulatory_matches(conn,facility_id,source_key='',limit=20):
                 'reason':'Confirm the site country before requesting cross-source identity suggestions',
                 'auto_matched':0}
     initialize_workspace(conn)
+    # Local source imports may retain a publisher's country name rather than
+    # two-letter ISO. Compare normalized aliases without altering the original
+    # source-reported value or merging cross-registry identities.
+    country_aliases=list(dict.fromkeys([country]+[
+        key for key,value in _COUNTRY_ALIASES.items() if value==country
+    ]))
+    placeholders=','.join('?' for _ in country_aliases)
     sql="""SELECT id,source_key,source_identifier,name,company,address,city,state,
                   country,sector,source_url
-           FROM external_registry_entities WHERE upper(country)=?"""
-    params=[country]
+           FROM external_registry_entities WHERE upper(country) IN ("""+placeholders+')'
+    params=list(country_aliases)
     if source_key:
         sql+=' AND source_key=?';params.append(source_key)
     sql+=' ORDER BY source_key,id'
