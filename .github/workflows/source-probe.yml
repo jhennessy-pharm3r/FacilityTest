@@ -22,6 +22,7 @@ jobs:
         shell: bash
         run: |
           python -m facilityrisk probe-sources > source-health-report.json
+          python -m facilityrisk probe-extended-sources > extended-source-report.json
           python - <<'PY'
           import json
           data=json.load(open('source-health-report.json'))
@@ -32,5 +33,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: public-source-connection-status
-          path: source-health-report.json
+          path: |
+            source-health-report.json
+            extended-source-report.json
           retention-days: 14
