@@ -32,9 +32,10 @@ with sync_playwright() as pw:
     page.goto(BASE,wait_until='domcontentloaded',timeout=45000)
     page.locator('[data-page="registry"]').first.click()
     expect(page.locator('#view-root h1')).to_contain_text('All registered facilities',timeout=15000)
-    expect(page.locator('#registry-results')).to_contain_text('Acme Devices Galway',timeout=15000)
-    expect(page.locator('#registry-results')).to_contain_text('Acme Devices Boston',timeout=15000)
-    page.locator('#registry-query').fill('Galway')
+    # The real Ireland/Canada catalogs are also loaded. Initial results are
+    # paginated; synthetic records need not be in the first 35 entries.
+    expect(page.locator('#registry-status')).to_contain_text('source identities',timeout=35000)
+    page.locator('#registry-query').fill('Acme Devices Galway')
     page.locator('#registry-search-button').click()
     expect(page.locator('#registry-results')).to_contain_text('Acme Devices Galway',timeout=15000)
     expect(page.locator('#registry-results')).not_to_contain_text('Acme Devices Boston')
@@ -66,14 +67,22 @@ with sync_playwright() as pw:
     if len(public_catalog.get('rows',[]))>1000:
         page.unroute('**/registry/catalog.json')
         page.goto(BASE,wait_until='domcontentloaded',timeout=45000)
-        expected_count=public_catalog['summary']['distinct_source_entities']
-        expect(page.locator('#registry-status')).to_contain_text(f'{expected_count:,}',timeout=35000)
+        page.locator('[data-page="registry"]').first.click()
+        expected_count=len(public_catalog['rows'])
+        for source_file in ('ireland-leap.json','canada-npri.json'):
+            extra=Path(__file__).resolve().parents[1]/'web/registry'/source_file
+            if extra.is_file():
+                companion=json.loads(extra.read_text(encoding='utf-8'))
+                assert companion['schema_version']=='1.0' and companion['fields']==public_catalog['fields']
+                expected_count+=len(companion['rows'])
+        expect(page.locator('#registry-status')).to_contain_text(
+            f'{expected_count:,} separate regulatory source identities',timeout=45000)
         assert page.locator('[data-reg-id]').count()==35, 'Expected paginated all-facilities browsing'
         example=next(dict(zip(public_catalog['fields'],r)) for r in public_catalog['rows'] if r[6] and len(r[6])>=7)
         page.locator('#registry-query').fill(example['fei'])
         page.locator('#registry-search-button').click()
         expect(page.locator('#registry-results')).to_contain_text(example['name'],timeout=35000)
-        print('Real FDA catalog tested:',expected_count,'source identities')
+        print('Real cross-source catalog browser checked:',expected_count,'distinct regulatory identities')
     page.screenshot(path='/tmp/facility-public-browser-smoke.png',full_page=True)
     assert not errors, 'JavaScript runtime exceptions: '+'; '.join(errors)
     print('Public preview browser routes and facility underwriting drawer passed.')
