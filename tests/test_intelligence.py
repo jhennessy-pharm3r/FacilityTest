@@ -180,3 +180,83 @@ def test_fema_official_alternate_does_not_bypass_location_gate(db):
     out=fetch_fema(db,'site-baxter-north-cove',session=RequestsSession())
     assert out['status']=='mapped_outside_sfha'
     assert '/gis/nfhl/' in out['request_url']
+
+def test_changed_coordinates_revoke_old_property_review(db,tmp_path):
+    from facilityrisk.db import quality_report
+    from facilityrisk.source_extensions import import_geo_csv
+    fid='site-baxter-north-cove'
+    review_location(db,fid,'site_verified','https://www.fema.gov/','Site reviewer',
+                    'Original property point inspected with public record')
+    before=get_intelligence(db,fid)
+    assert before['location']['precision']=='site_verified'
+    assert before['location']['review_valid_for_current_coordinates'] is True
+    assert intelligence_quality(db)['verified_site_locations']==1
+    db.execute('UPDATE facilities SET latitude=?,longitude=? WHERE id=?',(35.95,-82.02,fid))
+    db.commit()
+    after=get_intelligence(db,fid)
+    assert after['location']['precision']=='review_stale'
+    assert after['location']['original_review_precision']=='site_verified'
+    assert after['location']['review_valid_for_current_coordinates'] is False
+    assert intelligence_quality(db)['verified_site_locations']==0
+    assert quality_report(db)['stale_or_legacy_coordinate_reviews']==1
+    with pytest.raises(ValueError,match='current point'):
+        fetch_fema(db,fid)
+    csv_file=tmp_path/'incident.csv'
+    csv_file.write_text('id,latitude,longitude,date_start,description\n'
+                        'nearby,35.95,-82.02,2025-01-01,Nearby incident\n',encoding='utf-8')
+    with pytest.raises(ValueError,match='No independently reviewed'):
+        import_geo_csv(db,csv_file,'phmsa')
+    review_location(db,fid,'site_verified','https://www.fema.gov/','Site reviewer',
+                    'Reviewed updated building site point against authoritative documentation')
+    assert intelligence_quality(db)['verified_site_locations']==1
+    assert get_intelligence(db,fid)['location']['precision']=='site_verified'
+    result=import_geo_csv(db,csv_file,'phmsa')
+    assert result['new_candidates']==1
+    assert db.execute('SELECT COUNT(*) FROM evidence').fetchone()[0]==0
+
+
+def test_property_review_rejects_invalid_coordinate_and_clears_downgrade(db):
+    fid='site-baxter-north-cove'
+    db.execute('UPDATE facilities SET latitude=999 WHERE id=?',(fid,))
+    db.commit()
+    with pytest.raises(ValueError,match='outside valid geographic bounds'):
+        review_location(db,fid,'site_verified','https://example.org/location',
+                        'QA inspector','Checked property point')
+    assert db.execute('SELECT COUNT(*) FROM location_reviews').fetchone()[0]==0
+    db.execute('UPDATE facilities SET latitude=35.834 WHERE id=?',(fid,))
+    db.commit()
+    review_location(db,fid,'site_verified','https://example.org/location',
+                    'QA inspector','Reviewed building')
+    assert intelligence_quality(db)['verified_site_locations']==1
+    review_location(db,fid,'approximate','','QA inspector',
+                    'Previous source withdrawn, precision downgraded')
+    point=db.execute('SELECT * FROM location_reviews WHERE facility_id=?',(fid,)).fetchone()
+    assert point['reviewed_latitude'] is None
+    assert point['reviewed_longitude'] is None
+    assert intelligence_quality(db)['verified_site_locations']==0
+
+
+def test_preexisting_coordinate_review_is_untrusted_until_rereview(db):
+    from facilityrisk.db import quality_report
+    fid='site-baxter-north-cove'
+    db.execute('DROP TABLE location_reviews')
+    db.execute("""CREATE TABLE location_reviews (
+      facility_id TEXT PRIMARY KEY REFERENCES facilities(id) ON DELETE CASCADE,
+      precision TEXT NOT NULL CHECK(precision IN ('city','approximate','site_verified','property_polygon')),
+      method TEXT,evidence_url TEXT,reviewer TEXT,verified_at TEXT,note TEXT)""")
+    db.execute("""INSERT INTO location_reviews
+     VALUES (?,'site_verified','manual','https://example.org/old','Old reviewer',
+             '2026-09-01','This predates coordinate-snapshot migration')""",(fid,))
+    db.commit()
+    # Runs a migration against a real legacy table; no review point is invented.
+    initialize(db)
+    record=db.execute('SELECT reviewed_latitude,reviewed_longitude FROM location_reviews WHERE facility_id=?',(fid,)).fetchone()
+    assert record['reviewed_latitude'] is None and record['reviewed_longitude'] is None
+    assert intelligence_quality(db)['verified_site_locations']==0
+    assert get_intelligence(db,fid)['location']['precision']=='review_stale'
+    assert quality_report(db)['stale_or_legacy_coordinate_reviews']==1
+    with pytest.raises(ValueError,match='current point'):
+        fetch_fema(db,fid)
+    review_location(db,fid,'site_verified','https://example.org/current-property',
+                    'New reviewer','Revalidated precise coordinate and property record')
+    assert intelligence_quality(db)['verified_site_locations']==1
