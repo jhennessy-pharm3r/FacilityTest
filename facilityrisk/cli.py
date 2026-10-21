@@ -16,6 +16,7 @@ from .source_extensions import probe_extensions, import_geo_csv, review_event_ca
 from .fei_api import lookup_fei
 from .assessment import export_assessment
 from .pilot import export_pilot_manifest
+from .legacy_audit import audit_legacy_attribution
 from .research import start_research,research_history,run_source
 from .site_workspace import (intake_site, import_official_registry_csv,
                              search_external_registry, stage_identity_candidate, import_ireland_leap_catalog, import_canada_npri_catalog)
@@ -93,6 +94,10 @@ def main(argv=None) -> int:
     event_review.add_argument('--reviewer',required=True)
     event_review.add_argument('--source-url',required=True)
     event_review.add_argument('--reason',required=True)
+    legacy=sub.add_parser('audit-attribution',
+                         help='Dry-run attribution audit; use --apply to quarantine suspect older evidence')
+    legacy.add_argument('--apply',action='store_true')
+    legacy.add_argument('--reviewer',default='')
     pilot=sub.add_parser('build-pilot',help='Create 25-row UNVERIFIED source-based research pilot')
     pilot.add_argument('--output',default='data/pilot-research-candidates.csv')
     research=sub.add_parser('plan-research',help='Create a durable, explicit facility research plan')
@@ -136,6 +141,8 @@ def main(argv=None) -> int:
         elif args.command=='refresh-fema':output=fetch_fema(conn,args.facility)
         elif args.command=='refresh-verified-echo':output=fetch_verified_echo(conn,args.facility)
         elif args.command=='ingest-fda-inspections-csv':output=ingest_fda_inspections_csv(conn,args.csv_path)
+        elif args.command=='audit-attribution':
+            output=audit_legacy_attribution(conn,apply=args.apply,actor=args.reviewer)
         elif args.command=='build-pilot':
             output=export_pilot_manifest(args.output)
         elif args.command=='plan-research':

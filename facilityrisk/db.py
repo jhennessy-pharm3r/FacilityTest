@@ -107,6 +107,8 @@ def initialize(conn: sqlite3.Connection) -> None:
     initialize_workspace(conn)
     from .research import initialize_research
     initialize_research(conn)
+    from .legacy_audit import initialize_legacy
+    initialize_legacy(conn)
     conn.commit()
 
 
@@ -169,7 +171,13 @@ def quality_report(conn: sqlite3.Connection) -> dict:
     tracked_without_evidence=scalar(conn,'''SELECT COUNT(*) FROM facilities f
              WHERE NOT EXISTS (SELECT 1 FROM evidence e WHERE e.facility_id=f.id)''')
     external_entries=scalar(conn,'SELECT COUNT(*) FROM external_registry_entities')
-    return dict(stale_or_legacy_coordinate_reviews=stale_site_reviews,
+    from .legacy_audit import audit_legacy_attribution
+    unsafe=audit_legacy_attribution(conn)
+    quarantined=scalar(conn,'SELECT COUNT(*) FROM legacy_evidence_quarantine')
+    return dict(legacy_attribution_pending=unsafe['flagged'],
+                legacy_attribution_reasons=unsafe['by_reason'],
+                legacy_evidence_quarantined=quarantined,
+                stale_or_legacy_coordinate_reviews=stale_site_reviews,
                 external_registry_entities=external_entries,
                 external_source_imports=import_sources,
                 research_sites_without_evidence=tracked_without_evidence,
