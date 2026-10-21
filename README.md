@@ -131,3 +131,22 @@ python -m facilityrisk lookup-fda-fei --facility site-baxter-north-cove
 ```
 
 The lookup submits **only the facility's observed FEI** to the official authenticated FDA endpoint, archives a minimal firm-name/physical-address observation and an audit event, and leaves the FEI **unverified**. This is a user-initiated observation, not a bulk DECRS substitute, a manufacturing licence, or a facility risk score. To enable the HTTP equivalent `POST /api/facilities/{id}/fei-lookup`, the private server must also set `FACILITY_RISK_ENABLE_WRITES=1` and authenticate the user. Review physical-site correspondence separately before accepting any crosswalk.
+
+
+### Facility assessment and on-demand research (v0.6 development)
+
+The **private** FastAPI instance (not GitHub Pages) supports source-grounded report generation and site-specific research planning. Do not publish the generated report if it contains analyst/client data.
+
+```powershell
+python -m facilityrisk plan-research --facility site-baxter-north-cove
+python -m facilityrisk research-status --facility site-baxter-north-cove
+python -m facilityrisk export-assessment --facility site-baxter-north-cove --output data/baxter-assessment.html
+python -m facilityrisk build-pilot --output data/pilot-research-candidates.csv
+```
+
+The site report includes reviewed identifiers, regulatory observations held for identity review, hazard checks, company disclosure references, confirmed retrospective cases, pending nearby-event candidates and per-domain missingness. It remains **unranked** and contains no actuarial loss probability, underwriting acceptance or premium calculation.
+
+The optional `run-research-source` command executes **one request now**, never a background or continuous monitor. Set `FACILITY_RISK_ENABLE_SOURCE_REQUESTS=1` only on a controlled environment after verifying the operator's approval and source terms; then explicitly request e.g. `run-research-source --facility ID --source fema_flood`. It blocks if site coordinates or jurisdiction are not eligible; ECHO also requires a verified EPA FRS identity. Private API endpoints: `GET/POST /api/facilities/{id}/research`, `POST /api/facilities/{id}/research/run-source`, `GET /api/facilities/{id}/assessment`, and `GET /api/facilities/{id}/assessment.html`. Browser POSTs also require `FACILITY_RISK_ENABLE_WRITES=1` and authentication.
+
+**Pilot caveat:** `build-pilot` creates three retrospective example rows and twenty-two independently sourced **unverified research candidates**, not a validated 25-plant cohort or no-loss controls. See [pilot protocol](docs/PILOT_PROTOCOL.md).
+
