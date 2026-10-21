@@ -225,6 +225,42 @@ def _safe_source_url(value, fallback):
     return url
 
 
+
+def _site_spatial_grid(sites):
+    """Index independently reviewed points into one-degree cells.
+
+    Grid cells are only a bounding prefilter: the final inclusion test is the
+    original exact Haversine distance. Wrap 180 degrees to -180 for consistency.
+    The grid has no risk semantics; it only avoids scanning every reviewed site
+    against every incident record in large, multi-country inventories.
+    """
+    grid={}
+    for site in sites:
+        lat=float(site['latitude'])
+        lon=(float(site['longitude'])+180.0)%360.0-180.0
+        grid.setdefault((math.floor(lat),math.floor(lon)),[]).append(site)
+    return grid
+
+
+def _nearby_grid_sites(grid, latitude, longitude, radius_km):
+    """Yield a conservative geographic bounding-window set of candidate sites."""
+    lat_delta=radius_km/110.0+0.02
+    upper_lat=min(89.99999,max(abs(latitude-lat_delta),abs(latitude+lat_delta)))
+    cos_lat=max(1e-6,math.cos(math.radians(upper_lat)))
+    lon_delta=min(180.0,radius_km/(111.0*cos_lat)+0.02)
+    if lon_delta>=180:
+        longitude_bins=range(-180,180)
+    else:
+        start=math.floor(longitude-lon_delta)
+        end=math.floor(longitude+lon_delta)
+        longitude_bins=sorted({((i+180)%360)-180 for i in range(start,end+1)})
+    lat_start=math.floor(max(-90.0,latitude-lat_delta))
+    lat_end=math.floor(min(90.0,latitude+lat_delta))
+    for lat_bin in range(lat_start,lat_end+1):
+        for lon_bin in longitude_bins:
+            yield from grid.get((lat_bin,lon_bin),())
+
+
 def import_geo_csv(conn, file_path, source_key, *,
                    id_column='id', latitude_column='latitude',
                    longitude_column='longitude', date_column='date_start',
@@ -254,6 +290,7 @@ def import_geo_csv(conn, file_path, source_key, *,
     """)]
     if not sites:
         raise ValueError('No independently reviewed site coordinates; no proximity matches allowed')
+    spatial_grid=_site_spatial_grid(sites)
     required = [id_column, latitude_column, longitude_column, date_column, title_column]
     required += [x for x in (url_column, precision_column) if x]
     if any(not x or not isinstance(x, str) for x in required):
@@ -261,6 +298,8 @@ def import_geo_csv(conn, file_path, source_key, *,
     sha = _file_hash(path)
     totals = dict(source=source_key, rows_seen=0, invalid_rows=0,
                   outside_radius=0, candidates_nearby=0, new_candidates=0,
+                  geographic_distance_checks=0,
+                  spatial_prefilter='one_degree_grid_then_haversine',
                   verified_sites_tested=len(sites), csv_sha256=sha)
     opener = gzip.open if path.name.lower().endswith('.gz') else open
     try:
@@ -288,7 +327,8 @@ def import_geo_csv(conn, file_path, source_key, *,
                 precision = str(row.get(precision_column) or '').strip()[:120] if precision_column else 'unverified source geocode'
                 url = _safe_source_url(row.get(url_column) if url_column else '', SOURCE_BY_KEY[source_key]['documentation'])
                 has_match = False
-                for site in sites:
+                for site in _nearby_grid_sites(spatial_grid,lat,lon,radius_km):
+                    totals['geographic_distance_checks']+=1
                     distance = haversine_km(site['latitude'], site['longitude'], lat, lon)
                     if distance > radius_km:
                         continue

@@ -96,3 +96,74 @@ def test_csv_rejects_unknown_schema_and_nonincident_sources(db,tmp_path):
                     'QA reviewer','Verified physical site point with source record')
     with pytest.raises(ValueError,match='missing required columns'):
         import_geo_csv(db,path,'nrc')
+
+
+def test_spatial_grid_handles_antimeridian_and_near_poles(db,tmp_path):
+    """Conservative prefilter cannot silently lose valid 25-50 km candidates."""
+    for fid,lat,lon in [('site-dateline',0.0,179.95),
+                        ('site-polar',89.9,20.0),
+                        ('site-remote',-49.0,65.0)]:
+        db.execute("""INSERT INTO facilities
+          (id,name,country,latitude,longitude,origin,last_imported)
+          VALUES (?,?,?,?,?,?,?)""",(fid,fid,'Global synthetic fixture',lat,lon,
+                                    'fixture','2026-10-21'))
+    db.commit()
+    for fid in ('site-dateline','site-polar','site-remote'):
+        review_location(db,fid,'site_verified','https://example.org/physical-site-point',
+                        'Point reviewer','Verified precise synthetic property point')
+    path=tmp_path/'cross_global_incidents.csv'
+    _csv(path,[
+      {'event_id':'E-DATELINE','latitude':0.0,'longitude':-179.95,
+       'date':'2024-01-01','summary':'Release across the international date line',
+       'url':'https://example.org/event-date-line','precision':'precise'},
+      {'event_id':'E-POLE','latitude':89.9,'longitude':-160.0,
+       'date':'2024-01-02','summary':'Near-polar high longitude separation',
+       'url':'https://example.org/event-pole','precision':'precise'},
+      {'event_id':'E-OUTSIDE','latitude':10,'longitude':10,
+       'date':'2024-01-03','summary':'Distant incident',
+       'url':'https://example.org/event-elsewhere','precision':'precise'}])
+    output=import_geo_csv(db,path,'phmsa',id_column='event_id',
+               date_column='date',title_column='summary',url_column='url',
+               precision_column='precision',radius_km=50)
+    assert output['new_candidates']==2
+    assert output['outside_radius']==1
+    assert output['geographic_distance_checks']<=3
+    assert output['spatial_prefilter']=='one_degree_grid_then_haversine'
+    rows=db.execute('SELECT facility_id,source_record_id,status FROM external_event_candidates').fetchall()
+    matched={(x['facility_id'],x['source_record_id']) for x in rows}
+    assert matched=={('site-dateline','E-DATELINE'),('site-polar','E-POLE')}
+    assert all(x['status']=='pending' for x in rows)
+    assert db.execute('SELECT COUNT(*) FROM evidence').fetchone()[0]==0
+
+
+def test_spatial_prefilter_avoids_all_sites_times_events_scan(db,tmp_path):
+    for i in range(240):
+        lat=-80.0+(i%160)
+        lon=-170.0+((i*17)%340)
+        db.execute("""INSERT INTO facilities
+          (id,name,country,latitude,longitude,origin,last_imported)
+          VALUES(?,?,?,?,?,?,?)""",(f'grid-{i}',f'Site {i}','Synthetic',lat,lon,
+                                   'fixture','2026-10-21'))
+    db.commit()
+    for i in range(240):
+        review_location(db,f'grid-{i}','site_verified',
+                        'https://example.org/site-geocodes','QA reviewer',
+                        'Independently checked synthetic site point')
+    db.execute("""INSERT INTO facilities
+      (id,name,country,latitude,longitude,origin,last_imported)
+      VALUES('grid-target','Target','Synthetic',40,-70,'fixture','2026-10-21')""")
+    db.commit()
+    review_location(db,'grid-target','site_verified','https://example.org/target-location',
+                    'QA reviewer','Verified exact target point')
+    file=tmp_path/'grid-sample.csv'
+    _csv(file,[{'event_id':'ONLY-NEARBY','latitude':40.01,'longitude':-70.01,
+        'date':'2025-06-01','summary':'Source report near target',
+        'url':'https://example.org/event','precision':'site'}])
+    result=import_geo_csv(db,file,'nrc',id_column='event_id',
+                          date_column='date',title_column='summary',url_column='url',
+                          radius_km=10)
+    assert result['verified_sites_tested']==241
+    assert result['candidates_nearby']>=1
+    assert result['geographic_distance_checks']<30
+    assert result['geographic_distance_checks']<result['verified_sites_tested']
+    assert db.execute('SELECT COUNT(*) FROM evidence').fetchone()[0]==0
