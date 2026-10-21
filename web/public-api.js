@@ -96,6 +96,7 @@
         candidates:[],location:{precision:(f.coordinate_precision||'').includes('City')?'city':'approximate'},hazard_checks:[],incidents:[],profile:null})),
       quality:{verified_frs_links:0,frs_candidates_pending:0,verified_site_locations:0,historical_incidents:0,hazard_screenings:0,profiles:0,live_source_checks:0},
       source_health:[],source_catalog:[]};
+    if (r==='source-extensions')return {items:[],caveat:'Extended source catalog is available on the local authenticated backend; public preview has no live source probes.'};
     if (r==='health')return {status:'static_preview',version:'0.3.0',facilities:d.facilities.length};
     if (r==='overview') {
       const fl=facilityList(d),siteRows=[...fl].sort((a,b)=>b.evidence_count-a.evidence_count);
