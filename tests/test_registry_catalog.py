@@ -94,3 +94,39 @@ def test_catalog_validator_rejects_duplicates():
     d=make_catalog([normalize_device(device('Test','3000000001'))],{})
     d['rows'].append(d['rows'][0])
     with pytest.raises(ValueError,match='duplicate'):validate_catalog(d)
+
+def test_realistic_decrs_windows1252_tsv_and_no_contacts(tmp_path):
+    """DECRS may use cp1252, prefixed headers, and an extra trailing tab."""
+    src=tmp_path/'drls_reg.zip'
+    content=(' Firm Name\\tFEI Number\\tDUNS Number\\tFirm Address\\tCountry\\tBusiness Operation\\tExpiration Date\\tAgent Email\\t\\n'
+             'PHARMACIE QUÉBEC\\t0000000360\\t001234567\\t1 RUE DU CANAL\\tCANADA\\tManufacture\\t2026-12-31\\tprivate@example.net\\t\\n')
+    with zipfile.ZipFile(src,'w') as z:
+        z.writestr('drls_reg.txt',content.encode('cp1252'))
+    got=list(parse_drug_zip(src))
+    assert len(got)==1
+    assert got[0]['fei']=='0000000360'
+    assert got[0]['name']=='PHARMACIE QUÉBEC'
+    assert got[0]['registration_number']=='001234567'
+    assert got[0]['country']=='CANADA'
+    assert got[0]['address']=='1 RUE DU CANAL'
+    assert 'private@example.net' not in json.dumps(got)
+    assert got[0]['expiry_year']=='2026-12-31'
+
+
+def test_import_keeps_last_successful_drug_snapshot_on_source_failure(tmp_path,monkeypatch):
+    from scripts.build_catalog import run
+    path=tmp_path/'catalog.json'
+    sample=normalize_device(device('Sample Medical','3000221001'))
+    drug=normalize_drug({'Firm Name':'Example Pharmaceuticals','FEI':'0011100001','Country':'US'})
+    # Build a synthetic previous publication of sufficient size for safety gate.
+    prior=make_catalog([sample]+[dict(drug,id='drug-'+str(i),fei=str(i)) for i in range(5001)],
+                       {'fda_drug':{'status':'imported'},'fda_device':{'status':'imported'}})
+    path.write_text(json.dumps(prior),encoding='utf-8')
+    device_zip=tmp_path/'device.zip'
+    with zipfile.ZipFile(device_zip,'w') as z:
+        z.writestr('device.json',json.dumps({'results':[device('Sample Medical','3000221001')]}))
+    monkeypatch.setattr('scripts.build_catalog.get_bytes',lambda url: (_ for _ in ()).throw(OSError('source unavailable')))
+    updated=run(path,device_archives=[device_zip])
+    assert updated['sources']['fda_drug']['status']=='stale_preserved'
+    assert updated['sources']['fda_drug']['preserved_site_records']==5001
+    assert updated['summary']['by_sector']['Pharmaceutical']==5001
