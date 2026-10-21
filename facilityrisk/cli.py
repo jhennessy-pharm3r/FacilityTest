@@ -10,6 +10,7 @@ from .connectors import fetch_usgs,fetch_aqueduct,fetch_echo,ingest_noaa_csv
 from .advanced_sources import discover_frs, fetch_verified_echo, fetch_fema, ingest_fda_inspections_csv, source_probe
 from .intelligence import decide_candidate,review_location,intelligence_quality,verify_fei
 from .case_studies import seed_cases
+from .source_extensions import probe_extensions, import_geo_csv
 from .security import validate_private_bind
 
 
@@ -39,6 +40,13 @@ def main(argv=None) -> int:
     ec=sub.add_parser('refresh-verified-echo');ec.add_argument('--facility',required=True)
     fda=sub.add_parser('ingest-fda-inspections-csv');fda.add_argument('csv_path')
     sub.add_parser('seed-cases');sub.add_parser('probe-sources')
+    sub.add_parser('probe-extended-sources')
+    geo=sub.add_parser('stage-incident-csv',help='Stage proximity-only records from a licensed official CSV; verified site points only')
+    geo.add_argument('csv_path');geo.add_argument('--source',required=True)
+    geo.add_argument('--id-column',default='id');geo.add_argument('--lat-column',default='latitude')
+    geo.add_argument('--lon-column',default='longitude');geo.add_argument('--date-column',default='date_start')
+    geo.add_argument('--title-column',default='description');geo.add_argument('--url-column',default='')
+    geo.add_argument('--precision-column',default='');geo.add_argument('--radius-km',type=float,default=25.0)
     args=p.parse_args(argv)
     if args.command=='serve':
         validate_private_bind(args.host)
@@ -68,6 +76,12 @@ def main(argv=None) -> int:
         elif args.command=='ingest-fda-inspections-csv':output=ingest_fda_inspections_csv(conn,args.csv_path)
         elif args.command=='seed-cases':output=seed_cases(conn)
         elif args.command=='probe-sources':output={'checks':source_probe(conn)}
+        elif args.command=='probe-extended-sources':output={'checks':probe_extensions(conn)}
+        elif args.command=='stage-incident-csv':output=import_geo_csv(conn,args.csv_path,args.source,
+            id_column=args.id_column, latitude_column=args.lat_column,
+            longitude_column=args.lon_column, date_column=args.date_column,
+            title_column=args.title_column, url_column=args.url_column,
+            precision_column=args.precision_column, radius_km=args.radius_km)
         else: p.error('unknown command')
         print(json.dumps(output,indent=2,ensure_ascii=False,default=str))
         return 0
