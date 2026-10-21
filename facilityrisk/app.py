@@ -14,6 +14,7 @@ from .advanced_sources import SOURCE_META
 from .registry_catalog import init_registry, registry_search
 from .source_extensions import catalog as extension_catalog, review_event_candidate
 from .fei_api import lookup_fei
+from .assessment import build_assessment, render_assessment_html
 from .site_workspace import (SOURCES as REGULATOR_SOURCES, intake_site, search_external_registry,
                              track_external_registry_site, stage_identity_candidate,
                              suggest_regulatory_matches)
@@ -226,6 +227,19 @@ def facility_detail(facility_id:str,c=Depends(conn_dependency)):
     return {'facility':site,'domains':domain,'sources':source_breakdown(c,facility_id),
             'sec_findings':sec,'latest_evidence':latest,
             'source_snapshots':items(c,'SELECT id,source,url,retrieved_at,notes FROM raw_snapshots WHERE facility_id=? ORDER BY retrieved_at DESC',(facility_id,))}
+
+
+@app.get('/api/facilities/{facility_id}/assessment')
+def facility_assessment(facility_id:str,c=Depends(conn_dependency)):
+    try:return build_assessment(c,facility_id)
+    except ValueError as e:raise HTTPException(404,str(e)) from e
+
+
+@app.get('/api/facilities/{facility_id}/assessment.html',include_in_schema=False)
+def facility_assessment_print(facility_id:str,c=Depends(conn_dependency)):
+    from fastapi.responses import HTMLResponse
+    try:return HTMLResponse(render_assessment_html(build_assessment(c,facility_id)))
+    except ValueError as e:raise HTTPException(404,str(e)) from e
 
 
 @app.get('/api/facilities/{facility_id}/evidence')
