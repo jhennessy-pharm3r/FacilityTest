@@ -4,6 +4,7 @@
  'use strict';
  const script=document.getElementById('registry-ui-script');
  const catalogURL=new URL('./registry/catalog.json',script?.src||document.baseURI);
+ const irelandURL=new URL('./registry/ireland-leap.json',script?.src||document.baseURI);
  const sourceSearch='https://www.accessdata.fda.gov/scripts/cdrh/cfdocs/cfRL/rl.cfm';
  const drugSearch='https://www.fda.gov/drugs/drug-approvals-and-databases/drug-establishments-current-registration-site-decrs';
  const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -15,22 +16,50 @@
  let debounce=null, searchGeneration=0;
  function normalize(v){return String(v||'').normalize('NFKD').toLowerCase();}
  function catalog(){
-   if(!catalogPromise){catalogPromise=fetch(catalogURL,{cache:'no-store'}).then(r=>{
-       if(!r.ok)throw Error('Catalog HTTP '+r.status);return r.json();
-     }).then(d=>{
-       if(d?.schema_version!=='1.0'||!Array.isArray(d.rows)||!Array.isArray(d.fields))throw Error('Unsupported catalog format');
+   if(!catalogPromise){
+     catalogPromise=(async()=>{
+       const response=await fetch(catalogURL,{cache:'no-store'});
+       if(!response.ok)throw Error('FDA catalog HTTP '+response.status);
+       const d=await response.json();
+       if(d?.schema_version!=='1.0'||!Array.isArray(d.rows)||!Array.isArray(d.fields))
+         throw Error('Unsupported FDA catalog format');
+       try{
+         const second=await fetch(irelandURL,{cache:'no-store'});
+         if(!second.ok)throw Error('Ireland EPA HTTP '+second.status);
+         const ie=await second.json();
+         if(ie?.schema_version!=='1.0'||!Array.isArray(ie.rows)||
+            JSON.stringify(ie.fields)!==JSON.stringify(d.fields))
+             throw Error('Ireland EPA catalog schema mismatch');
+         d.rows=d.rows.concat(ie.rows);
+         d.sources={...d.sources,...ie.sources};
+         const counts={...(d.summary?.country_counts||{})};
+         for(const [code,n] of Object.entries(ie.summary?.country_counts||{}))
+           counts[code]=(counts[code]||0)+Number(n||0);
+         d.summary={...d.summary,country_counts:counts,
+           countries:Object.keys(counts).length,distinct_source_entities:d.rows.length};
+         d.ireland_generated_at=ie.generated_at;
+       }catch(err){
+         d.sources={...d.sources,ireland_leap:{status:'unavailable',
+           reason:String(err.message||err),
+           url:'https://data.epa.ie/leap/api/v1/LicenceProfile/list'}};
+       }
        meta=d;return d;
-     }).catch(e=>{catalogPromise=null;throw e;});}
+     })().catch(err=>{catalogPromise=null;throw err;});
+   }
    return catalogPromise;
  }
- function createSite(row,fields){return Object.fromEntries(fields.map((key,i)=>[key,row[i]]));}
+  function createSite(row,fields){return Object.fromEntries(fields.map((key,i)=>[key,row[i]]));}
  function match(row,fields,words){
    const parts=['name','company','address','city','state','country','fei','registration_number'];
    const values=parts.map(k=>normalize(row[fields.indexOf(k)]));
    return words.every(w=>values.some(v=>v.includes(w)));
  }
- function sourceText(c){const v=c.sources||{};return Object.entries(v).map(([key,src])=>`${key==='fda_device'?'Medical device':'Pharmaceutical'}: ${src.status||'unknown'}${src.reason?' ('+src.reason+')':''}`).join(' · ');}
- function render(){
+ function sourceText(c){
+   const labels={fda_device:'Medical device',fda_drug:'Pharmaceutical',ireland_leap:'Ireland EPA licences'};
+   return Object.entries(c.sources||{}).map(([key,src])=>
+      `${labels[key]||key}: ${src.status||'unknown'}${src.reason?' ('+src.reason+')':''}`).join(' · ');
+ }
+  function render(){
    return `<div class="page-heading"><div><div class="eyebrow">GLOBAL ESTABLISHMENT DISCOVERY</div><h1>All registered facilities</h1><p class="subhead">Find pharmaceutical and medical-device sites beyond the original research sample. Search company, facility, FDA FEI, address or city.</p></div></div>
      <div class="registry-lead"><div><strong>Search the FDA establishment universe</strong><span>The United States market includes foreign sites. This is a registry search—not a list of facilities with completed risk assessments.</span></div><a href="${sourceSearch}" target="_blank" rel="noopener noreferrer">FDA device registry ↗</a></div>
      <section class="panel registry-panel">
