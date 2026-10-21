@@ -132,3 +132,25 @@ def test_import_keeps_last_successful_drug_snapshot_on_source_failure(tmp_path,m
     assert updated['sources']['fda_drug']['status']=='stale_preserved'
     assert updated['sources']['fda_drug']['preserved_site_records']==5001
     assert updated['summary']['by_sector']['Pharmaceutical']==5001
+
+
+def test_same_fda_fei_conflicting_reported_sites_remains_reviewable():
+    from facilityrisk.registry_catalog import normalize_device,make_catalog
+    original=device('Acme Manufacturing A','3000155555')
+    other=device('Acme Manufacturing B','3000155555')
+    other['registration']['address_line_1']='987 New Industrial Avenue'
+    other['registration']['city']='Different City'
+    first=normalize_device(original)
+    second=normalize_device(other)
+    assert first['id']==second['id']  # Source FEI appears on conflicting properties.
+    d=make_catalog([first,second],{'fda_device':{'status':'imported'}})
+    assert len(d['rows'])==1
+    assert d['summary']['identity_conflict_count']==1
+    collision=d['identity_conflicts'][0]
+    assert collision['id']==first['id']
+    assert collision['requires_site_review'] is True
+    assert len(collision['conflicting_fields']['address'])==2
+    assert 'name' in collision['conflicting_fields']
+    assert 'city' in collision['conflicting_fields']
+    assert d['summary']['source_rows']==2
+    validate_catalog(d)
