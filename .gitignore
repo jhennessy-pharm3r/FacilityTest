@@ -1,0 +1,15 @@
+# Never commit analyst research, imported data or private source responses.
+data/*.sqlite
+data/*.sqlite-*
+*.xlsx
+*.xls
+*.csv
+*.csv.gz
+.env
+__pycache__/
+.pytest_cache/
+.qa/
+*.pyc
+*.log
+*.zip
+.venv/
