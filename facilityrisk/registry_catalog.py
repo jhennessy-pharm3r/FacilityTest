@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from hashlib import sha256
 from pathlib import Path
 import csv
+import codecs
 import io
 import json
 import re
@@ -158,14 +159,24 @@ def parse_drug_zip(path:Path):
         for member in members:
             if member.file_size>max_member_size:
                 raise ValueError('DECRS member exceeds maximum uncompressed size')
-            with z.open(member) as file:
-                buffered=io.BufferedReader(file)
-                preview=buffered.peek(65536)[:65536]
+            # Real FDA drls_reg.txt begins with UTF-8-compatible ASCII but
+            # has Windows-1252 bytes in later records. A 64-KB preview can
+            # misclassify its encoding. Scan the *complete bounded member*
+            # using an incremental decoder, then stream the text once more.
+            encoding='utf-8-sig'
+            decoder=codecs.getincrementaldecoder('utf-8-sig')(errors='strict')
+            with z.open(member) as probe:
                 try:
-                    preview.decode('utf-8-sig')
-                    encoding='utf-8-sig'
+                    while True:
+                        block=probe.read(1024*1024)
+                        if not block:break
+                        decoder.decode(block,final=False)
+                    decoder.decode(b'',final=True)
                 except UnicodeDecodeError:
                     encoding='cp1252'
+            print('DECRS text member: '+member.filename+'; encoding='+encoding,flush=True)
+            with z.open(member) as file:
+                buffered=io.BufferedReader(file)
                 text=io.TextIOWrapper(buffered,encoding=encoding,errors='strict',newline='')
                 first_line=text.readline()
                 delimiter=max((',',first_line.count(',')),
