@@ -4,7 +4,7 @@ from scripts.build_ireland_leap import make_ireland_catalog
 from facilityrisk.registry_catalog import FIELDS
 
 def row(profile='P0500',name='Example Medical Device Facility - P0500',licence='Industrial Emissions Licence'):
-    return {'licenceprofileid':'b9014b7f-a1f2-4000-9121-009933220011',
+    return {'licenceprofileid':'fixture-guid-'+profile,
             'name':name,'profilenumber':profile,
             'activelicencetype':licence,'activelicenceregno':profile+'-01',
             'county':'Galway','town':'Galway','organisationname':'Example Health Company',
@@ -24,8 +24,21 @@ def test_leap_profile_is_licensed_record_not_verified_site():
 
 def test_leap_source_rejects_partial_and_ambiguous_exports():
     with pytest.raises(ValueError,match='count'):make_ireland_catalog({'count':5,'list':[row()]})
-    with pytest.raises(ValueError,match='Repeated'):
-        make_ireland_catalog({'count':2,'list':[row(),row()]})
+    dedup=make_ireland_catalog({'count':2,'list':[row(),row()]})
+    assert len(dedup['rows'])==1
+    assert dedup['summary']['source_rows']==2
+    assert dedup['summary']['repeated_guid_rows']==1
+    duplicate_profile=make_ireland_catalog({'count':2,'list':[
+        row('S0020','Sea Permit One - S0020'),
+        dict(row('S0020','Sea Permit Two - S0020'),licenceprofileid='another-official-guid')
+    ]})
+    assert len(duplicate_profile['rows'])==2
+    assert duplicate_profile['rows'][0][0]!=duplicate_profile['rows'][1][0]
+    assert duplicate_profile['summary']['repeated_profile_numbers']==1
+    with pytest.raises(ValueError,match='Conflicting LEAP'):
+        make_ireland_catalog({'count':2,'list':[
+            row(),dict(row(),name='Another establishment with same GUID')
+        ]})
     with pytest.raises(ValueError,match='source URL'):
         make_ireland_catalog({'count':1,'list':[dict(row(),url='https://bad.example/profile')]})
     with pytest.raises(ValueError,match='expected'):
