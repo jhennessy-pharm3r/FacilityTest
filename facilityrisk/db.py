@@ -81,7 +81,7 @@ def get_db_path() -> Path:
 def connect(path: str | Path | None = None) -> sqlite3.Connection:
     target = Path(path) if path else get_db_path()
     target.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(target), timeout=15)
+    conn = sqlite3.connect(str(target), timeout=15, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute('PRAGMA foreign_keys=ON')
     conn.execute('PRAGMA journal_mode=WAL')
