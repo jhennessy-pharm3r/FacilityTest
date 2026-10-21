@@ -186,7 +186,7 @@ def test_moved_site_blocks_all_geographic_connectors(database,tmp_path):
         with pytest.raises(ValueError,match='reviewed current'):
             fetch_aqueduct(c,'site-one',session=FakeSession({'features':[]}))
         p=tmp_path/'empty-noaa.csv'
-        p.write_text('EVENT_ID,EVENT_TYPE,BEGIN_LAT,BEGIN_LON\\n1,Wind,41,-75\\n')
+        p.write_text('EVENT_ID,EVENT_TYPE,BEGIN_LAT,BEGIN_LON\n1,Wind,41,-75\n')
         # The other, independently reviewed Arctic site is still eligible.
         out=ingest_noaa_csv(c,p)
         assert out['records_near_site']==0
