@@ -289,14 +289,22 @@ def make_underwriting_profile(conn,facility_id,sections,actor='analyst',source_s
 
 
 def get_intelligence(conn,facility_id):
-    if not conn.execute('SELECT id FROM facilities WHERE id=?',(facility_id,)).fetchone():return None
+    facility=conn.execute('SELECT latitude,longitude FROM facilities WHERE id=?',(facility_id,)).fetchone()
+    if facility is None:return None
     from .db import items,one
     events=items(conn,'SELECT * FROM historical_events WHERE facility_id=? ORDER BY incident_date',(facility_id,))
     for ev in events:
         ev['milestones']=items(conn,'SELECT * FROM event_milestones WHERE event_id=? ORDER BY event_date,publication_date',(ev['id'],))
+    loc=one(conn,'SELECT * FROM location_reviews WHERE facility_id=?',(facility_id,))
+    if loc:
+        valid=is_reviewed_site_coordinate(facility,loc)
+        loc['review_valid_for_current_coordinates']=valid
+        if loc['precision'] in ('site_verified','property_polygon') and not valid:
+            loc['original_review_precision']=loc['precision']
+            loc['precision']='review_stale'
     return dict(facility_id=facility_id,identifiers=items(conn,'SELECT * FROM identity_links WHERE facility_id=? ORDER BY namespace,status',(facility_id,)),
         candidates=items(conn,'SELECT * FROM match_candidates WHERE facility_id=? ORDER BY decision,name_similarity DESC',(facility_id,)),
-        location=one(conn,'SELECT * FROM location_reviews WHERE facility_id=?',(facility_id,)),
+        location=loc,
         hazard_checks=items(conn,'SELECT * FROM hazard_assessments WHERE facility_id=? ORDER BY peril',(facility_id,)),
         incidents=events,profile=one(conn,'SELECT * FROM exposure_profiles WHERE facility_id=?',(facility_id,)))
 
@@ -305,7 +313,13 @@ def intelligence_quality(conn):
     return {
       'verified_frs_links':conn.execute("SELECT COUNT(*) FROM identity_links WHERE namespace='EPA_FRS' AND status='verified'").fetchone()[0],
       'frs_candidates_pending':conn.execute("SELECT COUNT(*) FROM match_candidates WHERE decision='pending'").fetchone()[0],
-      'verified_site_locations':conn.execute("SELECT COUNT(*) FROM location_reviews WHERE precision IN ('site_verified','property_polygon')").fetchone()[0],
+      'verified_site_locations':conn.execute("""SELECT COUNT(*) FROM location_reviews l
+        JOIN facilities f ON f.id=l.facility_id
+        WHERE l.precision IN ('site_verified','property_polygon')
+          AND l.reviewed_latitude=f.latitude
+          AND l.reviewed_longitude=f.longitude
+          AND f.latitude BETWEEN -90 AND 90
+          AND f.longitude BETWEEN -180 AND 180""").fetchone()[0],
       'historical_incidents':conn.execute('SELECT COUNT(*) FROM historical_events').fetchone()[0],
       'hazard_screenings':conn.execute('SELECT COUNT(*) FROM hazard_assessments').fetchone()[0],
       'profiles':conn.execute('SELECT COUNT(*) FROM exposure_profiles').fetchone()[0],
