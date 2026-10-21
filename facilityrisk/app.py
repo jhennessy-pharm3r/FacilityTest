@@ -14,7 +14,8 @@ from .advanced_sources import SOURCE_META
 from .registry_catalog import init_registry, registry_search
 from .source_extensions import catalog as extension_catalog, review_event_candidate
 from .site_workspace import (SOURCES as REGULATOR_SOURCES, intake_site, search_external_registry,
-                             track_external_registry_site, stage_identity_candidate)
+                             track_external_registry_site, stage_identity_candidate,
+                             suggest_regulatory_matches)
 
 ROOT=Path(__file__).resolve().parent.parent
 WEB=ROOT/'web'
@@ -90,6 +91,16 @@ def external_registry_track(external_id:str,request:Request,c=Depends(conn_depen
         raise HTTPException(403,'Research workspace writes are disabled')
     try:return track_external_registry_site(c,external_id,request.state.actor)
     except ValueError as e:raise HTTPException(404,str(e)) from e
+
+
+@app.get('/api/facilities/{facility_id}/source-suggestions')
+def source_suggestions(facility_id:str,source_key:str='',
+                       limit:int=Query(20,ge=1,le=50),c=Depends(conn_dependency)):
+    try:
+        return suggest_regulatory_matches(c,facility_id,source_key=source_key,limit=limit)
+    except ValueError as e:
+        if str(e)=='Unknown facility':raise HTTPException(404,str(e)) from e
+        raise HTTPException(422,str(e)) from e
 
 
 @app.post('/api/facilities/{facility_id}/identity-candidates')
