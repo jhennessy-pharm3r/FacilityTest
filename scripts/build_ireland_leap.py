@@ -28,7 +28,7 @@ USER_AGENT='Pharm3r-FacilityRisk-Catalog/0.6 (+github.com/jhennessy-pharm3r/Faci
 
 def clean(v,limit=250):
     if isinstance(v,(str,int,float)):
-        return re.sub(r'\\s+',' ',str(v)).strip()[:limit]
+        return re.sub(r'\s+',' ',str(v)).strip()[:limit]
     return ''
 
 
