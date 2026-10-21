@@ -44,3 +44,13 @@ Status: source adapters tested with offline fixtures; **no live external API que
 ## FDA pharmaceutical/source identity blocker, verified October 21, 2026
 
 The FDA DECRS home page advertises an annual-registration ZIP, but the published `https://www.accessdata.fda.gov/cder/drls_reg.zip` returned **HTTP 404** during multiple GitHub-hosted refreshes. The catalog correctly marks `fda_drug: unavailable`, does not mislabel FDA NDC labelers as manufacturing sites, and preserves a prior good drug snapshot if one becomes available. The `--drug-zip` offline import is supported if an official ZIP can be lawfully downloaded manually. FDA OII's separate FEI API requires issued credentials and supports **per-FEI** firm verification, not global facility enumeration; the new opt-in connector archives observations as unverified. Obtaining a current permitted DECRS download or another official complete register remains a hard dependency to complete the pharmaceutical universe.
+
+
+## v0.6 evidence-first delivery underway
+
+- **Done in PR #14:** quarantine NOAA proximity as contextual candidates; enforce current location review before USGS/WRI screening; hold inspections with unverified FEI identity separately from accepted evidence.
+- **Implemented in development:** explicit private research plans and opt-in single-source checks; source-linked unranked assessment JSON and printable HTML; deterministic 25-row pilot *candidate* generator with no invented no-event controls. See [pilot protocol](PILOT_PROTOCOL.md).
+- **Still blocked:** obtain current FDA DECRS bulk dataset through a permitted access path; confirm publication and actual parser schema. The authenticated per-FEI FDA OII API does not replace DECRS enumeration.
+- **Still requiring substantial external research:** review 25 physical locations and dated evidence, establish legitimate comparator controls, validate business interruption/loss outcomes and insurer exposure denominator, audit old pre-hardening data, and implement production insurer SSO and two-person authorization.
+
+The public GitHub Pages build cannot perform private source queries or create persistent site reviews. The public registry is a discovery layer, not the completed underwriting analysis.
