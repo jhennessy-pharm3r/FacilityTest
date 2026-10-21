@@ -95,10 +95,16 @@ def ingest_earthquakes_payload(conn,site:dict,url:str,payload:dict,radius_km:flo
     return count
 
 
+def _require_current_site_point(conn, site, purpose):
+    from .intelligence import is_reviewed_site_coordinate
+    review=conn.execute('SELECT * FROM location_reviews WHERE facility_id=?',(site['id'],)).fetchone()
+    if not is_reviewed_site_coordinate(site,review):
+        raise ValueError(purpose+' requires independently reviewed current site coordinates')
+    return site
+
+
 def fetch_usgs(conn,facility_id:str,start:str,end:str,radius_km:float=150,min_magnitude:float=4,session=None)->dict:
-    site=facility(conn,facility_id)
-    if site['latitude'] is None or site['longitude'] is None:
-        raise ValueError('This facility has no verified point; do not use guessed coordinates.')
+    site=_require_current_site_point(conn,facility(conn,facility_id),'USGS geographic screening')
     if not(1<=radius_km<=300):raise ValueError('Radius must be 1 to 300 kilometers')
     if not(0<=min_magnitude<=9.9): raise ValueError('Magnitude out of range')
     params=dict(format='geojson',starttime=start,endtime=end,latitude=site['latitude'],
@@ -143,9 +149,7 @@ def ingest_aqueduct_payload(conn,site:dict,url:str,payload:dict)->int:
 
 
 def fetch_aqueduct(conn,facility_id:str,session=None)->dict:
-    site=facility(conn,facility_id)
-    if site['latitude'] is None or site['longitude'] is None:
-        raise ValueError('Missing verified coordinates')
+    site=_require_current_site_point(conn,facility(conn,facility_id),'WRI Aqueduct basin screening')
     params=dict(f='json',geometry=f"{site['longitude']},{site['latitude']}",
                 geometryType='esriGeometryPoint',inSR=4326,
                 spatialRel='esriSpatialRelIntersects',outFields='bws_raw,bws_score,bws_cat,aqid,pfaf_id',
@@ -175,60 +179,71 @@ def fetch_echo(conn,facility_id:str,frs_registry_id:str,session=None)->dict:
 
 
 def ingest_noaa_csv(conn,path:str|Path,radius_km:float=40)->dict:
-    """Streaming NOAA Storm Events Details CSV ingestion, point proximity only.
+    """Quarantine NOAA proximity reports instead of attaching them as site evidence.
 
-    Details rows have approximate begin/end coordinates; skip rows without them.
-    For same county/zone without point, do not assert facility proximity.
+    Only independently reviewed current physical points participate. Source
+    file checksum, NOAA event ID and measured proximity remain available in
+    the review queue; this never asserts loss at an insured property.
     """
-    if not(1<=radius_km<=150):raise ValueError('NOAA match radius must be 1-150 km')
     import gzip
-    sites=[dict(r) for r in conn.execute('SELECT * FROM facilities WHERE latitude IS NOT NULL AND longitude IS NOT NULL')]
+    from .source_extensions import _file_hash,_site_spatial_grid,_nearby_grid_sites
+    if not (1 <= radius_km <= 100):raise ValueError('Radius must be 1-100 km')
     path=Path(path)
-    source_sha=hashlib.sha256(path.read_bytes()).hexdigest()
-    totals=dict(rows_seen=0,rows_without_coordinates=0,records_near_site=0,facilities_with_points=len(sites))
-    opener=gzip.open if path.suffix.lower()=='.gz' else open
-    with opener(path,'rt',encoding='utf-8-sig',errors='replace',newline='') as stream:
-        reader=csv.DictReader(stream)
-        required={'EVENT_ID','EVENT_TYPE','BEGIN_LAT','BEGIN_LON'}
-        if not required.issubset(set(reader.fieldnames or [])):
-            raise ValueError('NOAA CSV lacks required Storm Events Details columns')
-        for row in reader:
-            totals['rows_seen']+=1
-            try: lat=float(row.get('BEGIN_LAT') or 'nan');lon=float(row.get('BEGIN_LON') or 'nan')
-            except ValueError:
-                totals['rows_without_coordinates']+=1
-                continue
-            if not(-90<=lat<=90 and -180<=lon<=180):
-                totals['rows_without_coordinates']+=1
-                continue
-            event=row.get('EVENT_ID') or ''
-            date=row.get('BEGIN_DATE_TIME') or ''
-            typ=row.get('EVENT_TYPE') or 'Weather event'
-            for site in sites:
-                lat_buffer=radius_km/110
-                lon_buffer=radius_km/max(3,110*abs(math.cos(math.radians(site['latitude']))))
-                if abs(site['latitude']-lat)>lat_buffer or abs(site['longitude']-lon)>lon_buffer:
+    if not path.is_file():raise ValueError('NOAA source file not found')
+    sites=[dict(row) for row in conn.execute("""
+      SELECT f.id,f.latitude,f.longitude FROM facilities f
+      JOIN location_reviews l ON l.facility_id=f.id
+      WHERE l.precision IN ('site_verified','property_polygon')
+        AND l.reviewed_latitude=f.latitude AND l.reviewed_longitude=f.longitude
+        AND f.latitude BETWEEN -90 AND 90 AND f.longitude BETWEEN -180 AND 180
+    """)]
+    if not sites:raise ValueError('No independently reviewed site coordinates; NOAA matches blocked')
+    grid=_site_spatial_grid(sites)
+    sha=_file_hash(path)
+    totals=dict(rows_seen=0,rows_without_coordinates=0,records_near_site=0,
+                new_candidates=0,facilities_with_points=len(sites),source_sha256=sha,
+                disposition='pending_review_not_evidence')
+    opener=gzip.open if str(path).lower().endswith('.gz') else open
+    try:
+        with opener(path,'rt',encoding='utf-8-sig',errors='replace',newline='') as handle:
+            reader=csv.DictReader(handle)
+            needed={'EVENT_ID','EVENT_TYPE','BEGIN_LAT','BEGIN_LON'}
+            if not needed.issubset(set(reader.fieldnames or [])):
+                raise ValueError('NOAA CSV lacks Storm Events Details required columns')
+            for event in reader:
+                totals['rows_seen']+=1
+                eid=str(event.get('EVENT_ID') or '').strip()
+                if not eid:continue
+                try:
+                    lat=float(event.get('BEGIN_LAT') or 'nan')
+                    lon=float(event.get('BEGIN_LON') or 'nan')
+                except (TypeError,ValueError):
+                    totals['rows_without_coordinates']+=1
                     continue
-                distance=haversine_km(site['latitude'],site['longitude'],lat,lon)
-                if distance>radius_km:continue
-                eid=stable_id('noaa_details',site['id'],event)
-                narrative=(row.get('EVENT_NARRATIVE') or '').strip()[:1400]
-                conn.execute('''INSERT INTO evidence
-                    (id,facility_id,source,program,date_raw,record_type,finding,value_text,
-                     record_ref,evidence_scope,match_quality,source_url,limitations,
-                     risk_domain,origin,availability_date,spatial_distance_km,retrieval_at,last_imported)
-                     VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                     ON CONFLICT(id) DO UPDATE SET finding=excluded.finding,
-                     spatial_distance_km=excluded.spatial_distance_km,last_imported=excluded.last_imported''',
-                    (eid,site['id'],'NOAA (CSV)','Storm Events Database Details',date,
-                     'Regional weather event (approximate location)',typ,
-                     narrative or 'Storm event recorded in NOAA dataset',event,
-                     'Nearby storm event; no insured-site impact established',
-                     'Approximate begin point; check original event narratives',
-                     'https://www.ncei.noaa.gov/stormevents/',
-                     f'NOAA coordinates can be approximate; nearest point {distance:.1f} km. Damage figures, if present, are event-level, not property loss.',
-                     'Natural hazards','NOAA NCEI official CSV supplied to ingest command',None,distance,utcnow(),utcnow()))
-                totals['records_near_site']+=1
-    conn.commit()
-    totals['source_sha256']=source_sha
+                if not (math.isfinite(lat) and math.isfinite(lon) and
+                        -90<=lat<=90 and -180<=lon<=180):
+                    totals['rows_without_coordinates']+=1
+                    continue
+                for site in _nearby_grid_sites(grid,lat,lon,radius_km):
+                    distance=haversine_km(site['latitude'],site['longitude'],lat,lon)
+                    if distance>radius_km:continue
+                    totals['records_near_site']+=1
+                    url=('https://www.ncei.noaa.gov/stormevents/eventdetails.jsp?id='+eid
+                         if eid.isdigit() else 'https://www.ncei.noaa.gov/stormevents/')
+                    candidate_id=stable_id('noaa_candidate',site['id'],eid)
+                    result=conn.execute("""INSERT OR IGNORE INTO external_event_candidates
+                      (id,facility_id,source_key,source_record_id,event_date,title,source_url,
+                       latitude,longitude,distance_km,geo_precision,provenance_sha256,imported_at)
+                      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                      (candidate_id,site['id'],'noaa',eid,
+                       str(event.get('BEGIN_DATE_TIME') or '')[:60],
+                       str(event.get('EVENT_TYPE') or 'Weather event')[:1200],
+                       url,lat,lon,distance,
+                       'NOAA approximate begin coordinate; no site impact asserted',
+                       sha,utcnow()))
+                    totals['new_candidates']+=max(0,result.rowcount)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     return totals
