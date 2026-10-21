@@ -98,8 +98,8 @@ def test_catalog_validator_rejects_duplicates():
 def test_realistic_decrs_windows1252_tsv_and_no_contacts(tmp_path):
     """DECRS may use cp1252, prefixed headers, and an extra trailing tab."""
     src=tmp_path/'drls_reg.zip'
-    content=(' Firm Name\\tFEI Number\\tDUNS Number\\tFirm Address\\tCountry\\tBusiness Operation\\tExpiration Date\\tAgent Email\\t\\n'
-             'PHARMACIE QUÉBEC\\t0000000360\\t001234567\\t1 RUE DU CANAL\\tCANADA\\tManufacture\\t2026-12-31\\tprivate@example.net\\t\\n')
+    content=(' Firm Name\tFEI Number\tDUNS Number\tFirm Address\tCountry\tBusiness Operation\tExpiration Date\tAgent Email\t\n'
+             'PHARMACIE QUÉBEC\t0000000360\t001234567\t1 RUE DU CANAL\tCANADA\tManufacture\t2026-12-31\tprivate@example.net\t\n')
     with zipfile.ZipFile(src,'w') as z:
         z.writestr('drls_reg.txt',content.encode('cp1252'))
     got=list(parse_drug_zip(src))
