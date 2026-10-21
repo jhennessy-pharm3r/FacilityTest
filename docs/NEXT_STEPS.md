@@ -39,3 +39,8 @@ Status: source adapters tested with offline fixtures; **no live external API que
 - Added incident timelines and five evidence-based exposure sections. The three cases are retrospective; do not use them as pre-event predictive validation.
 - Container/Compose and CI are reproducible prototypes, not a deployed production backend; enterprise RBAC/SSO and encryption/backup governance remain prerequisites.
 - Scheduled public-source connectivity checks do not transmit client facility information or ingest the private database. Actual live ingest must run on a restricted environment and follow source/schema checks.
+
+
+## FDA pharmaceutical/source identity blocker, verified October 21, 2026
+
+The FDA DECRS home page advertises an annual-registration ZIP, but the published `https://www.accessdata.fda.gov/cder/drls_reg.zip` returned **HTTP 404** during multiple GitHub-hosted refreshes. The catalog correctly marks `fda_drug: unavailable`, does not mislabel FDA NDC labelers as manufacturing sites, and preserves a prior good drug snapshot if one becomes available. The `--drug-zip` offline import is supported if an official ZIP can be lawfully downloaded manually. FDA OII's separate FEI API requires issued credentials and supports **per-FEI** firm verification, not global facility enumeration; the new opt-in connector archives observations as unverified. Obtaining a current permitted DECRS download or another official complete register remains a hard dependency to complete the pharmaceutical universe.
