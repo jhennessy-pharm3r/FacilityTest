@@ -92,6 +92,8 @@ def initialize(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
     from .intelligence import initialize_intelligence
     initialize_intelligence(conn)
+    from .source_extensions import initialize_extensions
+    initialize_extensions(conn)
     conn.commit()
 
 
