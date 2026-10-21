@@ -159,7 +159,7 @@ def parse_drug_zip(path:Path):
                 text=io.TextIOWrapper(buffered,encoding=encoding,errors='strict',newline='')
                 first_line=text.readline()
                 delimiter=max((',',first_line.count(',')),
-                              ('\\t',first_line.count('\\t')),
+                              ('\t',first_line.count('\t')),
                               ('|',first_line.count('|')),key=lambda x:x[1])
                 if delimiter[1]==0:continue
                 reader=csv.DictReader(__import__('itertools').chain([first_line],text),
