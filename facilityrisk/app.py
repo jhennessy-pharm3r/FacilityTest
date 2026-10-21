@@ -12,6 +12,7 @@ from .intelligence import get_intelligence, intelligence_quality, decide_candida
 from .security import add_security
 from .advanced_sources import SOURCE_META
 from .registry_catalog import init_registry, registry_search
+from .source_extensions import catalog as extension_catalog
 
 ROOT=Path(__file__).resolve().parent.parent
 WEB=ROOT/'web'
@@ -189,6 +190,11 @@ def sources(c=Depends(conn_dependency)):
         s['covered_evidence_count']=coverage.get(s['name'],{}).get('records',0)
     return {'items':data,'total':len(data),'observed_source_labels':source_breakdown(c),
             'caveat':'Data-source summaries are analyst documentation; adapter connectivity is a separate state.'}
+
+
+@app.get('/api/source-extensions')
+def source_extensions(c=Depends(conn_dependency)):
+    return {'items':extension_catalog(c), 'caveat':'Source status is a documentation or endpoint check only. No incident becomes verified site evidence without review.'}
 
 
 @app.get('/api/quality')
