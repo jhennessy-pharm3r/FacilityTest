@@ -38,7 +38,7 @@ def make_ireland_catalog(payload,generated_at=None,min_rows=1):
     raw=payload['list']
     if not isinstance(payload.get('count'),int) or payload['count']!=len(raw):
         raise ValueError('LEAP reported count does not match received profile list')
-    rows=[];seen=set()
+    rows=[];seen_guids={};profile_counts=Counter();repeated_guid_rows=0
     for item in raw:
         if not isinstance(item,dict):raise ValueError('Invalid LEAP profile element')
         profile=clean(item.get('profilenumber'),60).upper()
@@ -52,10 +52,23 @@ def make_ireland_catalog(payload,generated_at=None,min_rows=1):
             raise ValueError('Invalid official LEAP licence-profile identifier')
         if url and url!='https://leap.epa.ie/licence-profile/'+profile:
             raise ValueError('LEAP record source URL did not match its official profile')
-        if profile in seen:raise ValueError('Repeated LEAP profile number: '+profile)
-        seen.add(profile)
+
+        # A licence PROFILE NUMBER is not a unique API entity ID: the live
+        # publisher contains duplicate profile numbers (e.g. S0020).
+        # Use the publisher's stable licenceprofileid GUID to distinguish
+        # separate source records; never collapse plants by a shared label.
+        observation=(profile,name,operator,
+                     clean(item.get('activelicencetype'),180),
+                     clean(item.get('county'),120),clean(item.get('town'),120))
+        if guid in seen_guids:
+            if seen_guids[guid]!=observation:
+                raise ValueError('Conflicting LEAP records for the same official profile GUID')
+            repeated_guid_rows+=1
+            continue
+        seen_guids[guid]=observation
+        profile_counts[profile]+=1
         row={
-          'id':'ie-leap-'+sha256(profile.encode('utf-8')).hexdigest()[:20],
+          'id':'ie-leap-'+sha256(guid.encode('utf-8')).hexdigest()[:20],
           'name':name,'company':operator,'city':clean(item.get('town'),120),
           'state':clean(item.get('county'),120),'country':'IE','fei':'',
           'registration_number':profile,
@@ -73,16 +86,19 @@ def make_ireland_catalog(payload,generated_at=None,min_rows=1):
        'fields':list(FIELDS),
        'rows':rows,
        'summary':{'distinct_source_entities':len(rows),
-                  'source_rows':len(rows),'countries':1,
+                  'source_rows':payload['count'],'countries':1,
                   'by_sector':{'Environmental licence':len(rows)},
                   'country_counts':{'IE':len(rows)},
-                  'by_licence_type':dict(sorted(by_type.items()))},
+                  'by_licence_type':dict(sorted(by_type.items())),
+                  'repeated_profile_numbers':sum(v-1 for v in profile_counts.values() if v>1),
+                  'repeated_guid_rows':repeated_guid_rows,
+                  'profile_number_collisions':dict(sorted((k,v) for k,v in profile_counts.items() if v>1))},
        'sources':{'ireland_leap':{
            'status':'imported',
            'source':'Ireland EPA LEAP licence profile API',
            'url':API,'reported_profiles':payload['count'],
            'coverage':'All published licence profiles in the API response, not only life-sciences plants'}},
-       'coverage_note':'Official Irish EPA regulatory licence profiles, not property coordinates, '
+       'coverage_note':'Official Irish EPA regulatory licence profiles keyed to profile GUID, not property coordinates, '
                        'manufacturing verification, compliance infractions, or insured losses.'})
 
 
