@@ -89,9 +89,10 @@ def fetch_fema(conn,facility_id,session=None):
     Zone X is also not proof of zero residual flood risk.
     """
     site=facility(conn,facility_id)
-    loc=conn.execute('SELECT precision,verified_at FROM location_reviews WHERE facility_id=?',(facility_id,)).fetchone()
-    if not loc or loc['precision'] not in ('site_verified','property_polygon'):
-        raise ValueError('FEMA screening blocked: site coordinates have not been manually verified')
+    from .intelligence import is_reviewed_site_coordinate
+    loc=conn.execute('SELECT * FROM location_reviews WHERE facility_id=?',(facility_id,)).fetchone()
+    if not is_reviewed_site_coordinate(site,loc):
+        raise ValueError('FEMA screening blocked: site coordinates have not been manually verified for the current point')
     lat,lon=site['latitude'],site['longitude']
     if lat is None or lon is None:raise ValueError('Missing property coordinates')
     # FEMA NFHL only for US sites and territories; international sites not eligible.
