@@ -119,3 +119,15 @@ Offline tests use synthetic fixtures for the public-source adapters. If the orig
 - **No unwarranted conclusions:** Nearby weather/earthquakes, environmental compliance, and regulatory citations are not proof of insured loss, negligence or a site shutdown.
 
 See [next development steps](docs/NEXT_STEPS.md) and [data model](docs/DATA_MODEL.md).
+
+### Optional FDA FEI verification reference (private only)
+
+The FDA OII FEI API requires an FDA-issued **Authorization-User** and **Authorization-Key**. Apply through [FDA FEI API Usage Documentation](https://www.accessdata.fda.gov/scripts/feiportal/apidocs/) (contact listed there). Do not commit these secrets or expose them in the browser. Configure them only in a secured backend environment:
+
+```powershell
+$env:FACILITY_RISK_FEI_AUTH_USER = '<FDA-issued username>'
+$env:FACILITY_RISK_FEI_AUTH_KEY = '<FDA-issued secret>'
+python -m facilityrisk lookup-fda-fei --facility site-baxter-north-cove
+```
+
+The lookup submits **only the facility's observed FEI** to the official authenticated FDA endpoint, archives a minimal firm-name/physical-address observation and an audit event, and leaves the FEI **unverified**. This is a user-initiated observation, not a bulk DECRS substitute, a manufacturing licence, or a facility risk score. To enable the HTTP equivalent `POST /api/facilities/{id}/fei-lookup`, the private server must also set `FACILITY_RISK_ENABLE_WRITES=1` and authenticate the user. Review physical-site correspondence separately before accepting any crosswalk.
