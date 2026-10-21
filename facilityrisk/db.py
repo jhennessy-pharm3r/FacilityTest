@@ -105,6 +105,8 @@ def initialize(conn: sqlite3.Connection) -> None:
     initialize_extensions(conn)
     from .site_workspace import initialize_workspace
     initialize_workspace(conn)
+    from .research import initialize_research
+    initialize_research(conn)
     conn.commit()
 
 
