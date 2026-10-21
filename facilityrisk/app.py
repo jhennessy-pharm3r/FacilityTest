@@ -143,8 +143,8 @@ def registry_status(c=Depends(conn_dependency)):
 @app.get('/api/registry')
 def registry(q:str='',country:str='',sector:str='',limit:int=Query(50,ge=1,le=100),
              offset:int=Query(0,ge=0),c=Depends(conn_dependency)):
-    if not q.strip():
-        return {'items':[],'total':0,'limit':limit,'offset':offset,'message':'Enter company, FEI, city, or location to search'}
+    # Blank query intentionally browses the complete official source identity
+    # catalog, never only the original researched case-study facilities.
     return registry_search(c,q=q[:120],country=country[:8],sector=sector[:50],limit=limit,offset=offset)
 
 
