@@ -160,3 +160,59 @@ def test_external_event_api_stays_in_review_queue(db,tmp_path,monkeypatch):
         assert good.status_code==200,good.text
         assert client.get('/api/facilities/'+manual+'/event-candidates?status=rejected').json()['total']==1
     assert db.execute('SELECT COUNT(*) FROM evidence').fetchone()[0]==0
+
+
+def test_cross_agency_suggestions_never_assert_automatic_site_identity(db,tmp_path):
+    from facilityrisk.site_workspace import suggest_regulatory_matches
+    data=_registry_file(tmp_path,[
+        {'NPRI ID':'CA-100','Site':'Harbour Medical Manufacturing',
+         'Operator':'Harbour Medical Manufacturing Inc','Street':'20 Research Avenue',
+         'City':'Halifax','Province':'NS','Country':'Canada'},
+        {'NPRI ID':'CA-101','Site':'Harbour Medical Manufacturing',
+         'Operator':'Harbour Medical Manufacturing Inc','Street':'39 Trade Drive',
+         'City':'Montreal','Province':'QC','Country':'Canada'}])
+    import_official_registry_csv(db,data,'CA_NPRI','https://open.canada.ca/',
+        id_column='NPRI ID',name_column='Site',company_column='Operator',
+        address_column='Street',city_column='City',state_column='Province',
+        country_column='Country')
+    research=intake_site(db,{'name':'Harbour Medical Manufacturing','country':'Canada',
+               'company':'Harbour Medical Manufacturing Inc',
+               'address':'20 Research Avenue','city':'Halifax','state':'NS'},'analyst')
+    fid=research['facility_id']
+    out=suggest_regulatory_matches(db,fid)
+    assert out['country']=='CA'
+    assert out['status']=='review_required' and out['auto_matched']==0
+    assert out['total_candidates']==1
+    item=out['items'][0]
+    assert item['reported_city']=='Halifax'
+    assert item['verification']=='pending_manual_review'
+    assert 'reported city appears in site address' in item['screening_signals']
+    assert item['source_url'].startswith('https://')
+    assert db.execute("SELECT COUNT(*) FROM match_candidates").fetchone()[0]==0
+    assert db.execute("SELECT COUNT(*) FROM identity_links WHERE facility_id=?",(fid,)).fetchone()[0]==0
+    assert db.execute("SELECT COUNT(*) FROM evidence WHERE facility_id=?",(fid,)).fetchone()[0]==0
+
+    staged=stage_identity_candidate(db,fid,item['external_id'],'Reviewer')
+    assert staged['candidate_id']
+    assert db.execute("SELECT status FROM identity_links WHERE facility_id=?",(fid,)).fetchone() is None
+    # A named reviewer and corroborating URL are still required to verify.
+    with pytest.raises(ValueError,match='Reviewer'):
+        decide_candidate(db,staged['candidate_id'],'accepted','',
+                         'https://open.canada.ca','Confirmed exact plant address')
+    assert db.execute("SELECT COUNT(*) FROM identity_links WHERE facility_id=?",(fid,)).fetchone()[0]==0
+
+
+def test_country_scoped_source_suggestions_api_and_insufficient_site(db,tmp_path,monkeypatch):
+    from facilityrisk.site_workspace import suggest_regulatory_matches
+    row=intake_site(db,{'name':'Example Galway Manufacturer','country':'Ireland',
+                        'address':'5 Galway Road, Galway'},'analyst')
+    missing=intake_site(db,{'name':'Another Site Without Country'},'analyst')
+    x=suggest_regulatory_matches(db,missing['facility_id'])
+    assert x['status']=='insufficient_location' and not x['items']
+    with pytest.raises(ValueError,match='Unknown regulatory source'):
+        suggest_regulatory_matches(db,row['facility_id'],source_key='FAKE')
+    with TestClient(app) as client:
+        assert client.get('/api/facilities/'+missing['facility_id']+'/source-suggestions').json()['status']=='insufficient_location'
+        assert client.get('/api/facilities/'+row['facility_id']+'/source-suggestions').status_code==200
+        assert client.get('/api/facilities/not-present/source-suggestions').status_code==404
+        assert client.get('/api/facilities/'+row['facility_id']+'/source-suggestions?source_key=FAKE').status_code==422
