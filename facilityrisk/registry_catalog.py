@@ -121,6 +121,16 @@ def merge(target, record):
         target[key]=record.copy();return
     old=target[key]
     old['source_records']+=1
+    # FEI/registration may appear across multiple address or operator variants.
+    # Keep conflicting reported values explicitly; never hide possible relocation,
+    # different buildings or stale registration behind the surviving first row.
+    for field in ('name','company','address','city','state','country'):
+        observed=old.get(field) or ''
+        incoming=record.get(field) or ''
+        if observed and incoming and normal_key(observed)!=normal_key(incoming):
+            variants=old.setdefault('_source_conflicts',{}).setdefault(field,[observed])
+            if all(normal_key(v)!=normal_key(incoming) for v in variants):
+                variants.append(incoming)
     # Preserve alternate operation roles, but never assert physical identity across FDA sectors.
     roles=list(dict.fromkeys(filter(None,old['activities'].split('; ')+record['activities'].split('; '))))
     old['activities']='; '.join(roles)[:300]
@@ -182,10 +192,16 @@ def make_catalog(records,source_status,*,generated_at=None):
     data=sorted(distinct.values(),key=lambda x:(x.get('name','').casefold(),x['id']))
     country_counts=Counter(x['country'] for x in data if x['country'])
     sector_counts=Counter(x['sector'] for x in data)
+    conflicts=[{'id':r['id'],'source':r['source'],'fei':r.get('fei',''),
+                'requires_site_review':True,'conflicting_fields':r['_source_conflicts']}
+               for r in data if r.get('_source_conflicts')]
     return {'schema_version':'1.0','generated_at':generated_at or datetime.now(timezone.utc).isoformat(timespec='seconds'),
         'fields':list(FIELDS),'rows':[[rec.get(k,'') for k in FIELDS] for rec in data],
         'summary':{'distinct_source_entities':len(data),'source_rows':sum(int(x['source_records']) for x in data),
-                   'countries':len(country_counts),'by_sector':dict(sector_counts),'country_counts':dict(country_counts.most_common(300))},
+                   'countries':len(country_counts),'by_sector':dict(sector_counts),
+                    'identity_conflict_count':len(conflicts),
+                    'country_counts':dict(country_counts.most_common(300))},
+        'identity_conflicts':conflicts,
         'sources':source_status,
         'coverage_note':'FDA registrations linked to the US market, including foreign establishments. Not a worldwide census, a verified site map, or an insurance-risk rating. Historical device listings may be present. Device and drug records are kept separate until independently matched.'}
 
