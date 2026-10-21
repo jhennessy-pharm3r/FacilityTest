@@ -145,7 +145,15 @@ def quality_report(conn: sqlite3.Connection) -> dict:
     duplicates = items(conn, 'SELECT fei,COUNT(*) AS n FROM facilities WHERE fei IS NOT NULL GROUP BY fei HAVING n>1')
     for r in duplicates:
         failures.append(f"Duplicated FEI: {r['fei']}")
-    return dict(facilities=facilities, evidence=evidences, sec_findings=findings,
+    import_sources = items(conn,'''SELECT source_key,valid_rows,imported_at
+             FROM external_registry_imports ORDER BY source_key''')
+    tracked_without_evidence=scalar(conn,'''SELECT COUNT(*) FROM facilities f
+             WHERE NOT EXISTS (SELECT 1 FROM evidence e WHERE e.facility_id=f.id)''')
+    external_entries=scalar(conn,'SELECT COUNT(*) FROM external_registry_entities')
+    return dict(external_registry_entities=external_entries,
+                external_source_imports=import_sources,
+                research_sites_without_evidence=tracked_without_evidence,
+                facilities=facilities, evidence=evidences, sec_findings=findings,
                 public_references=public, geo_matched=with_coordinates, with_fei=with_fei,
                 evidence_with_url=with_url, unmatched_sec_findings=unmatched_sec,
                 evidence_with_verified_publication_date=dated_publication,
