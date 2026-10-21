@@ -31,7 +31,7 @@ def test_npri_arcgis_incomplete_or_duplicate_source_rejected():
     f=feature()
     with pytest.raises(ValueError,match='Incomplete'):
         make_canada_catalog([f],[5,6])
-    with pytest.raises(ValueError,match='Repeated'):
+    with pytest.raises(ValueError,match='repeated'):
         make_canada_catalog([f,f],[5])
     with pytest.raises(ValueError,match='Duplicate requested'):
         make_canada_catalog([f],[5,5])
