@@ -126,6 +126,7 @@ def test_import_keeps_last_successful_drug_snapshot_on_source_failure(tmp_path,m
     with zipfile.ZipFile(device_zip,'w') as z:
         z.writestr('device.json',json.dumps({'results':[device('Sample Medical','3000221001')]}))
     monkeypatch.setattr('scripts.build_catalog.get_bytes',lambda url: (_ for _ in ()).throw(OSError('source unavailable')))
+    monkeypatch.setattr('scripts.build_catalog.download_zip',lambda url: (_ for _ in ()).throw(OSError('source unavailable')))
     updated=run(path,device_archives=[device_zip])
     assert updated['sources']['fda_drug']['status']=='stale_preserved'
     assert updated['sources']['fda_drug']['preserved_site_records']==5001
