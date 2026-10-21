@@ -74,3 +74,46 @@ def test_npri_arcgis_pagination_and_disallow_partial_response(monkeypatch):
     monkeypatch.setattr('scripts.build_canada_npri.get_json',incomplete)
     with pytest.raises(ValueError,match='incomplete'):
         refresh(min_rows=1)
+
+
+def test_npri_private_review_import_keeps_identifiers_unverified(tmp_path):
+    import json
+    from facilityrisk.db import connect,initialize
+    from facilityrisk.site_workspace import (import_canada_npri_catalog,
+                                               search_external_registry,
+                                               track_external_registry_site)
+    source=make_canada_catalog([feature(5,1234),feature(6,1234)],[5,6])
+    filepath=tmp_path/'canada-npri.json'
+    filepath.write_text(json.dumps(source),encoding='utf-8')
+    with connect(tmp_path/'risk.sqlite') as conn:
+        initialize(conn)
+        stats=import_canada_npri_catalog(conn,filepath)
+        assert stats['imported_source_identities']==2
+        matches=search_external_registry(conn,query='Acme',source_key='CA_NPRI')
+        assert matches['total']==2
+        assert len({item['source_identifier'] for item in matches['items']})==2
+        tracked=track_external_registry_site(conn,matches['items'][0]['id'],'researcher')
+        site=conn.execute('SELECT latitude,longitude,fei FROM facilities WHERE id=?',
+                          (tracked['facility_id'],)).fetchone()
+        assert site['latitude'] is None and site['longitude'] is None and site['fei'] is None
+        identity=conn.execute('SELECT status,namespace FROM identity_links WHERE facility_id=?',
+                              (tracked['facility_id'],)).fetchone()
+        assert identity['status']=='observed' and identity['namespace']=='CA_NPRI'
+        assert conn.execute('SELECT COUNT(*) FROM evidence').fetchone()[0]==0
+        assert conn.execute('SELECT COUNT(*) FROM historical_events').fetchone()[0]==0
+        assert import_canada_npri_catalog(conn,filepath)['imported_source_identities']==2
+        assert conn.execute('SELECT COUNT(*) FROM external_registry_entities').fetchone()[0]==2
+
+def test_npri_invalid_source_does_not_write(tmp_path):
+    import json
+    from facilityrisk.db import connect,initialize
+    from facilityrisk.site_workspace import import_canada_npri_catalog
+    cat=make_canada_catalog([feature(5,1234)],[5])
+    cat['rows'][0][FIELDS.index('fei')]='unverified-looking-id'
+    output=tmp_path/'modified.json'
+    output.write_text(json.dumps(cat),encoding='utf-8')
+    with connect(tmp_path/'risk.sqlite') as conn:
+        initialize(conn)
+        with pytest.raises(ValueError,match='Invalid NPRI'):
+            import_canada_npri_catalog(conn,output)
+        assert conn.execute('SELECT COUNT(*) FROM external_registry_entities').fetchone()[0]==0
