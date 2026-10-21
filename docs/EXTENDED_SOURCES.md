@@ -33,3 +33,8 @@ This is a **source-evaluation and controlled-ingestion extension**, not a comple
 3. Confirm site coordinates and identifiers with physical-site evidence before any link.
 4. Stage proximity records; manually review occurrence, source geocoding precision and operator/site match with corroboration.
 5. Assemble event-time and publication-time snapshots and a denominator of non-event sites; only then evaluate predictive lift against insurance-relevant outcomes.
+
+
+## Incident staging scale and geography (October 2026)
+
+The CSV staging adapter now uses a global one-degree spatial grid to prefilter candidate reviewed sites before calculating exact haversine distance. Unlike naive `events × all verified sites` scanning, the number of distance calculations is bounded by regional proximity; the output reports `geographic_distance_checks` and `verified_sites_tested`. Longitude wraps across the ±180-degree date line and near-polar neighborhoods expand the conservative window. The bounding grid does **not** perform attribution: all candidate records remain `pending` until an analyst documents operator/site identity, positional precision and independent event corroboration. Only a site coordinate explicitly approved for its **current latitude/longitude** participates; editing a site's coordinate invalidates a prior site-level review and blocks FEMA or incident screening until another reviewed record is saved.
