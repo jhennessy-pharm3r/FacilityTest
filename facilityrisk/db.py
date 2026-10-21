@@ -90,6 +90,8 @@ def connect(path: str | Path | None = None) -> sqlite3.Connection:
 
 def initialize(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
+    from .intelligence import initialize_intelligence
+    initialize_intelligence(conn)
     conn.commit()
 
 

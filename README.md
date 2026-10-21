@@ -1,4 +1,4 @@
-# Pharm3r Facility Risk Intelligence — Build 1
+# Pharm3r Facility Risk Intelligence — Build 2 / v0.4
 
 An evidence-first facility risk research app for insurance underwriting. The app deliberately **does not calculate a facility risk score**: the current inputs are public-source research, not a calibrated sample of insured losses.
 
@@ -21,7 +21,7 @@ See [hosting and security notes](docs/GITHUB_PAGES.md).
 
 ## What's included
 
-- Facility explorer with verified identifiers, site coordinates, research summaries and matching cautions.
+- Facility explorer with analyst-recorded identifiers, site coordinates, research summaries and verification flags.
 - Source-linked cross-facility evidence search, with facility/source/domain filters.
 - SEC manufacturing impact and recovery findings, with unlinked cases kept unassigned.
 - Data-source inventory and raw field catalog.
@@ -29,6 +29,23 @@ See [hosting and security notes](docs/GITHUB_PAGES.md).
 - Data-quality dashboard (missing FEI/coordinates, unmatched SEC, availability dates, date semantics, re-import history).
 - Local SQLite, read-only FastAPI endpoints and offline tests.
 - Opt-in source adapters: USGS ComCat (regional earthquakes), WRI Aqueduct 4.0 (modeled baseline water stress), EPA ECHO DFR (raw response only) and NOAA Storm Events Details CSV (point-proximity, not property impact).
+
+### Build 2: underwriting and verified-evidence workflow
+
+- **Five new browser sections:** Incident timelines (12 dated milestones across Baxter North Cove, Pfizer Rocky Mount and Amgen Juncos); interactive geographic map with OpenStreetMap and explicit point precision; identity-crosswalk review status; five-category underwriting exposure profiles; source connectivity and provenance status.
+- **Verified identity gates:** EPA FRS records become *candidates*, never accepted automatically; accept/reject demands corroborating HTTPS evidence, reviewer and rationale. FEIs imported from the workbook are marked observed, not independently validated.
+- **Flood gate:** FEMA NFHL zone query is allowed only after manual site-coordinate review. No returned NFHL geometry means *unmapped*, not low risk; historic storm loss is separate from current flood zone.
+- **Real-source adapters:** USGS earthquakes, NOAA storm CSV, WRI Aqueduct, EPA ECHO raw responses, FEMA zone, EPA FRS candidates and FDA inspections CSV. Parsers are fixture tested; the service reports connectivity without inventing ingested records.
+- **Private-case data:** 3 public primary-source incidents and 12 milestones are also seeded in the private database, alongside the original 990 evidence rows.
+- **Private hosting blueprint:** Container/Compose local-only listener, fail-closed single-tenant bearer/basic token guard, optional controlled writes, and CI plus weekly public endpoint connectivity checks. **Not production insurer SSO/RBAC.** See [secure deployment](docs/SECURE_DEPLOYMENT.md).
+
+```powershell
+python -m facilityrisk seed-cases
+python -m facilityrisk qa
+python -m facilityrisk probe-sources
+python -m facilityrisk discover-frs --facility site-baxter-north-cove --name "Baxter Healthcare" --state NC
+# Review each candidate before acceptance; the app will not automatically assert a link.
+```
 
 ### Quick start — Windows PowerShell
 
@@ -51,11 +68,11 @@ Inspect the site's coordinates and verify physical-site identity before ingestio
 ```powershell
 python -m facilityrisk refresh-usgs --facility site-baxter-north-cove --start 2023-01-01 --end 2024-12-31 --radius-km 150 --min-magnitude 4
 python -m facilityrisk refresh-aqueduct --facility site-baxter-north-cove
-python -m facilityrisk refresh-echo --facility site-baxter-north-cove --registry-id VERIFIED_EPA_FRS_REGISTRY_ID
+python -m facilityrisk refresh-verified-echo --facility site-baxter-north-cove
 python -m facilityrisk ingest-noaa-csv "C:\path\StormEvents_details_2024.csv.gz" --radius-km 40
 ```
 
-**EPA registry ID shown above is an illustrative placeholder, not a verified match.** Obtain the correct EPA FRS `REGISTRY_ID` from facility/address research. Do not substitute an FDA FEI. ECHO responses are archived raw without compliance normalization until their live schema has been validated.
+**EPA FRS matches must be reviewed and accepted before ECHO refresh.** The original FEI is not an EPA FRS `REGISTRY_ID`; do not substitute it. ECHO responses are archived raw without compliance normalization until their live schema has been validated.
 
 USGS detects earthquakes with epicenters inside the chosen radius; it does not estimate shaking intensity, insured damage or business interruption. Aqueduct is modeled basin-level exposure. NOAA storm points are approximate and do not imply a specific facility was affected.
 

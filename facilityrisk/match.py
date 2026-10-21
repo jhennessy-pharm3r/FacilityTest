@@ -1,4 +1,4 @@
-"""Facility matching support. Non-FEI matches are always review candidates."""
+"""Facility matching support. Even exact FEIs require independently reviewed identity."""
 from __future__ import annotations
 import math
 import re
@@ -31,9 +31,10 @@ def preview_match(rows: list[dict], name: str = '', address: str = '', fei: str 
         reasons=[]
         score=0.0
         exact_fei = bool(fei and facility.get('fei') and fei.strip()==str(facility['fei']).strip())
+        verified_fei=bool(exact_fei and facility.get('fei_verified'))
         if exact_fei:
             score=1.0
-            reasons.append('Exact FDA FEI match')
+            reasons.append('Exact FDA FEI match' if verified_fei else 'Exact analyst-recorded FEI; independent validation pending')
         else:
             if input_name:
                 similarity=SequenceMatcher(None,input_name,norm(facility['name'],True)).ratio()
@@ -48,6 +49,6 @@ def preview_match(rows: list[dict], name: str = '', address: str = '', fei: str 
         if score>0.25:
             results.append({'id':facility['id'],'name':facility['name'],'fei':facility.get('fei'),
                             'score':round(score,3),'reasons':reasons,
-                            'status':'verified_identifier' if exact_fei else 'candidate_review',
-                            'auto_link_allowed':exact_fei})
+                            'status':'verified_identifier' if verified_fei else 'candidate_review',
+                            'auto_link_allowed':verified_fei})
     return sorted(results,key=lambda x:x['score'],reverse=True)[:10]

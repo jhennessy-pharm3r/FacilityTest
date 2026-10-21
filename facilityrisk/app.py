@@ -1,19 +1,23 @@
-"""Local underwriting evidence explorer. No login: bind to localhost only."""
+"""Facility evidence explorer. External access requires authentication and TLS proxy."""
 from __future__ import annotations
 from collections import Counter
 from pathlib import Path
-from fastapi import FastAPI, Depends, HTTPException, Query
+from fastapi import FastAPI, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .db import connect, initialize, one, items, quality_report, source_breakdown
 from .match import preview_match
+from .intelligence import get_intelligence, intelligence_quality, decide_candidate, review_location, make_underwriting_profile, verify_fei
+from .security import add_security
+from .advanced_sources import SOURCE_META
 
 ROOT=Path(__file__).resolve().parent.parent
 WEB=ROOT/'web'
-app=FastAPI(title='Pharm3r Facility Risk Intelligence',version='0.2.0',
+app=FastAPI(title='Pharm3r Facility Risk Intelligence',version='0.4.0',
             description='Evidence research prototype; not an actuarially calibrated risk score.')
 app.mount('/assets',StaticFiles(directory=WEB),name='assets')
+add_security(app)
 
 
 def conn_dependency():
@@ -30,7 +34,7 @@ def index():
 
 @app.get('/api/health')
 def health(c=Depends(conn_dependency)):
-    return {'status':'ok','version':'0.2.0','facilities':c.execute('SELECT COUNT(*) FROM facilities').fetchone()[0]}
+    return {'status':'ok','version':'0.4.0'}
 
 
 @app.get('/api/overview')
@@ -151,7 +155,10 @@ def quality(c=Depends(conn_dependency)):
 @app.get('/api/match-preview')
 def match_preview(name:str='',address:str='',fei:str='',c=Depends(conn_dependency)):
     if not(name or address or fei): return {'matches':[],'caveat':'Provide at least one identifying field'}
-    matches=preview_match(items(c,'SELECT id,name,company,address,fei FROM facilities'),name,address,fei)
+    matches=preview_match(items(c,"""SELECT f.id,f.name,f.company,f.address,f.fei,
+        EXISTS(SELECT 1 FROM identity_links l WHERE l.facility_id=f.id
+        AND l.namespace='FDA_FEI' AND l.identifier=f.fei AND l.status='verified') AS fei_verified
+        FROM facilities f"""),name,address,fei)
     return {'matches':matches,'caveat':'Only exact confirmed FEI permits auto-linking; candidates require physical site review.'}
 
 
@@ -182,3 +189,61 @@ def source_fields(source:str='',c=Depends(conn_dependency)):
         data=items(c,'SELECT * FROM field_catalog ORDER BY source,dataset,table_name')
     return {'items':data,'total':len(data),
             'caveat':'Analyst-compiled schema; must validate against source export versions before production.'}
+
+
+@app.get('/api/intelligence')
+def intelligence(c=Depends(conn_dependency)):
+    sites=items(c,"SELECT id,name,country,latitude,longitude,fei FROM facilities ORDER BY name")
+    for f in sites:
+        f.update(get_intelligence(c,f['id']))
+    return {'sites':sites,'quality':intelligence_quality(c),
+            'source_health':items(c,'SELECT * FROM source_health ORDER BY source'),
+            'source_catalog':[{'source':s,'documentation':meta[0],'test_url':meta[1]} for s,meta in SOURCE_META.items()],
+            'caveats':['Analyst FEIs are observed, not independently validated',
+               'Site coordinates must be reviewed before flood-zone tests',
+               'Historical case studies document outcomes, not prospective loss predictions']}
+
+
+@app.get('/api/facilities/{facility_id}/intelligence')
+def intelligence_site(facility_id:str,c=Depends(conn_dependency)):
+    result=get_intelligence(c,facility_id)
+    if result is None:raise HTTPException(404,'Unknown facility')
+    return result
+
+
+@app.post('/api/intelligence/candidates/{candidate_id}/review')
+async def review_frs_match(candidate_id:str,request:Request,c=Depends(conn_dependency)):
+    if __import__('os').environ.get('FACILITY_RISK_ENABLE_WRITES')!='1':
+        raise HTTPException(403,'Analyst review writes are disabled')
+    p=await request.json()
+    try:return decide_candidate(c,candidate_id,p.get('decision',''),request.state.actor,p.get('evidence_url',''),p.get('note',''))
+    except ValueError as e:raise HTTPException(422,str(e)) from e
+
+
+@app.post('/api/facilities/{facility_id}/fei-review')
+async def facility_fei_review(facility_id:str,request:Request,c=Depends(conn_dependency)):
+    if __import__('os').environ.get('FACILITY_RISK_ENABLE_WRITES')!='1':
+        raise HTTPException(403,'Analyst review writes are disabled')
+    p=await request.json()
+    try:return verify_fei(c,facility_id,request.state.actor,p.get('evidence_url',''),p.get('note',''))
+    except ValueError as e:raise HTTPException(422,str(e)) from e
+
+
+@app.post('/api/facilities/{facility_id}/location-review')
+async def facility_location_review(facility_id:str,request:Request,c=Depends(conn_dependency)):
+    if __import__('os').environ.get('FACILITY_RISK_ENABLE_WRITES')!='1':
+        raise HTTPException(403,'Location review writes are disabled')
+    p=await request.json()
+    try:return review_location(c,facility_id,p.get('precision',''),p.get('evidence_url',''),request.state.actor,p.get('note',''))
+    except ValueError as e:raise HTTPException(422,str(e)) from e
+
+
+@app.post('/api/facilities/{facility_id}/profile')
+async def set_facility_profile(facility_id:str,request:Request,c=Depends(conn_dependency)):
+    if __import__('os').environ.get('FACILITY_RISK_ENABLE_WRITES')!='1':
+        raise HTTPException(403,'Underwriting profile writes are disabled')
+    p=await request.json()
+    if not one(c,'SELECT id FROM facilities WHERE id=?',(facility_id,)):raise HTTPException(404,'Unknown facility')
+    try:make_underwriting_profile(c,facility_id,p.get('sections',{}),actor=request.state.actor,source_scope=p.get('scope','Analyst assessment'),source_url=p.get('source_url',''))
+    except ValueError as e:raise HTTPException(422,str(e)) from e
+    return {'status':'updated','facility_id':facility_id}

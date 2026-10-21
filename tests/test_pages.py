@@ -27,6 +27,9 @@ def test_public_entry_uses_relative_urls_and_banner():
     assert 'href="./web/styles.css"' in html
     assert 'src="./web/public-api.js"' in html
     assert 'src="./web/app.js"' in html
+    assert 'src="./web/intelligence-ui.js"' in html
+    assert 'src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"' in html
+    assert html.index('src="./web/intelligence-ui.js"') < html.index('src="./web/app.js"')
     assert 'PUBLIC RESEARCH PREVIEW' in html
     assert 'public-data-file' in html
     assert '/assets/' not in html
@@ -47,3 +50,26 @@ def test_browser_export_does_not_require_network(tmp_path):
     assert d['facilities'][0]['id']=='site-1'
     assert d['evidence'][0]['facility_id']=='site-1'
     assert 'private' in ' '.join(d['important_caveats']).lower()
+
+
+def test_case_timelines_are_primary_sourced_and_no_false_forecasting():
+    source=json.loads((ROOT/'web'/'case-studies.json').read_text())
+    assert len(source['cases'])==3
+    assert sum(len(c['milestones']) for c in source['cases'])==12
+    assert all(c['pre_event_evidence_status'] for c in source['cases'])
+    assert all(m['timing']!='pre_event' for c in source['cases'] for m in c['milestones'])
+    assert all(m['source_url'].startswith('https://') for c in source['cases'] for m in c['milestones'])
+    assert 'src="/assets/intelligence-ui.js"' in (ROOT/'web'/'index.html').read_text()
+    app=(ROOT/'web'/'app.js').read_text()
+    assert 'window.IntelligenceUI.mount' in app
+    assert "if(state.tab==='risk')" in app
+
+
+def test_public_website_never_includes_private_workbook():
+    # Track only allowlisted public JSON on GitHub Pages.
+    for target in (ROOT/'web'/'public-demo.json',ROOT/'web'/'case-studies.json'):
+        text=target.read_text()
+        assert 'FACILITY_RISK_AUTH_TOKEN' not in text
+        assert 'private_local_browser_import' not in text
+    assert (ROOT/'.github/workflows/ci.yml').exists()
+    assert (ROOT/'.github/workflows/source-probe.yml').exists()

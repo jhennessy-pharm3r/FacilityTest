@@ -2,13 +2,13 @@
 
 **Gate 1 (done): local evidence prototype.** Ingest analyst workbook; preserve URLs and caveats; create searchable facility profile, source inventory, SEC page, data quality; run offline adapter and API tests.
 
-**Gate 2: verified identity crosswalk.** Add audited FEI ↔ EPA FRS ↔ RCRA / NPDES / TRI / OSHA IDs and source-specific address normalization. Keep candidates and rejected matches, reviewers and original matching evidence. Add campus/building distinction and geocoding source/precision. Do not equate company ownership with a physical site.
+**Gate 2 (implementation built; verification pending): verified identity crosswalk.** Add audited FEI ↔ EPA FRS ↔ RCRA / NPDES / TRI / OSHA IDs and source-specific address normalization. Keep candidates and rejected matches, reviewers and original matching evidence. Add campus/building distinction and geocoding source/precision. Do not equate company ownership with a physical site.
 
-**Gate 3: operational ingestion.** Test official EPA ECHO DFR responses for selected, *verified* FRS registry IDs; normalize inspection, enforcement, compliance and permit history only when API field meanings are confirmed. Schedule update/version capture and source-license review. Add tested NOAA, USGS, WRI, FEMA and industrial-hazard ingestion by geography with hazard-specific units.
+**Gate 3 (connectors built; live matching pending): operational ingestion.** Test official EPA ECHO DFR responses for selected, *verified* FRS registry IDs; normalize inspection, enforcement, compliance and permit history only when API field meanings are confirmed. Schedule update/version capture and source-license review. Add tested NOAA, USGS, WRI, FEMA and industrial-hazard ingestion by geography with hazard-specific units.
 
-**Gate 4: temporal validation.** For at least 25 facilities, capture evidence publication dates, confirmed event dates, claims / BI outcomes, public recovery milestones and no-event controls. Prevent future information leakage. Record sampling bias and the absence of insurance losses in public filings.
+**Gate 4 (3 public case studies seeded; cohort pending): temporal validation.** For at least 25 facilities, capture evidence publication dates, confirmed event dates, claims / BI outcomes, public recovery milestones and no-event controls. Prevent future information leakage. Record sampling bias and the absence of insurance losses in public filings.
 
-**Gate 5: real underwriting data.** Add construction, protection, replacement values, business-interruption values, property engineering, process hazards, backup power/water and supplier redundancy. Keep per-coverage loss pathways separate (property, BI, environmental, product and political risk).
+**Gate 5 (evidence categories built; insured values pending): real underwriting data.** Add construction, protection, replacement values, business-interruption values, property engineering, process hazards, backup power/water and supplier redundancy. Keep per-coverage loss pathways separate (property, BI, environmental, product and political risk).
 
 **Gate 6: evidence-based screening, then calibrated risk.** Test indicators against a validated cohort and exposure denominator before any weighted risk score or loss propensity model. Track model version, exceptions and human approval. Score insufficient evidence as unranked, not low risk.
 
@@ -31,3 +31,11 @@
 7. FEMA flood risk, historical NOAA storm footprint, USFS wildfire, WRI flood and water stress — quantitative *hazard exposure*, not site loss.
 
 Status: source adapters tested with offline fixtures; **no live external API queries were completed within the development sandbox** due restricted outbound DNS/network.
+
+## Build 2 completion and remaining operational blockers
+
+- Built an interactive actual tile-based map, but none of the imported analyst coordinates is yet independently reviewed as an exact physical property point. No valid parcel-scale flood screen may be asserted.
+- Built auditable FRS match review and secure-gated FEMA and ECHO source adapters. No live source registry matches have been independently corroborated.
+- Added incident timelines and five evidence-based exposure sections. The three cases are retrospective; do not use them as pre-event predictive validation.
+- Container/Compose and CI are reproducible prototypes, not a deployed production backend; enterprise RBAC/SSO and encryption/backup governance remain prerequisites.
+- Scheduled public-source connectivity checks do not transmit client facility information or ingest the private database. Actual live ingest must run on a restricted environment and follow source/schema checks.

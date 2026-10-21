@@ -7,6 +7,8 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 from .db import items
+from .intelligence import get_intelligence,intelligence_quality
+from .advanced_sources import SOURCE_META
 
 
 def export_browser_snapshot(conn, output_path: str | Path) -> dict:
@@ -32,6 +34,7 @@ def export_browser_snapshot(conn, output_path: str | Path) -> dict:
         'sec_findings': sec_rows,
         'sources': sources,
         'ingestions': runs,
+        'intelligence': {'sites':[dict(id=x['id'],name=x['name'],**get_intelligence(conn,x['id'])) for x in facility_rows], 'quality':intelligence_quality(conn), 'source_health':items(conn,'SELECT * FROM source_health ORDER BY source'), 'source_catalog':[{'source':key,'documentation':v[0]} for key,v in SOURCE_META.items()]},
         'important_caveats': [
             'Private local research snapshot; this file contains analyst-curated data and must not be committed to a public repository.',
             'Import occurs in browser memory only. Do not forward screenshots or exports without appropriate authorization.',

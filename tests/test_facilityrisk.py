@@ -46,7 +46,7 @@ def test_api_routes_and_pagination(database):
         assert client.get('/').status_code == 200
         assert client.get('/assets/app.js').status_code == 200
         h=client.get('/api/health').json()
-        assert h['status']=='ok' and h['facilities']==2
+        assert h['status']=='ok' and h['version']=='0.4.0'
         summary=client.get('/api/overview').json()
         assert summary['stats']['facilities']==2
         assert summary['stats']['evidence']==1
@@ -64,13 +64,15 @@ def test_api_routes_and_pagination(database):
         assert client.get('/api/source-fields').json()['total']==0
         assert client.get('/api/sources').json()['total']==1
         assert client.get('/api/quality').json()['integrity_failures']==[]
-        assert client.get('/api/match-preview?fei=123456789').json()['matches'][0]['auto_link_allowed']
+        assert not client.get('/api/match-preview?fei=123456789').json()['matches'][0]['auto_link_allowed']
 
 
 def test_match_requires_verified_identifier():
     sites=[dict(id='a',name='Example Site',address='10 Test Road',fei='111111')]
     a=preview_match(sites,fei='111111')
-    assert a[0]['auto_link_allowed'] and a[0]['score']==1.0
+    assert not a[0]['auto_link_allowed'] and a[0]['score']==1.0
+    sites[0]['fei_verified']=True
+    assert preview_match(sites,fei='111111')[0]['auto_link_allowed']
     b=preview_match(sites,name='Example Site',address='10 Test Road',fei='222222')
     assert b and b[0]['status']=='candidate_review' and not b[0]['auto_link_allowed']
     assert abs(haversine_km(40,-75,40,-75))<0.01

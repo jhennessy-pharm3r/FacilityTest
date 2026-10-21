@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#163d40" />
   <title>Facility Risk Intelligence — Public Preview | Pharm3r</title>
   <link rel="stylesheet" href="./web/styles.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 </head>
 <body>
 <div class="shell">
@@ -22,6 +23,11 @@
       <button class="nav-item" data-page="evidence"><span class="nav-symbol">&#9637;</span> Evidence search</button>
       <button class="nav-item" data-page="disclosures"><span class="nav-symbol">&#9776;</span> SEC disclosures</button>
       <button class="nav-item" data-page="sources"><span class="nav-symbol">&#9783;</span> Data sources</button>
+      <button class="nav-item" data-page="cases"><span class="nav-symbol">▦</span> Incident timelines</button>
+      <button class="nav-item" data-page="map"><span class="nav-symbol">◎</span> Geographic hazards</button>
+      <button class="nav-item" data-page="underwriting"><span class="nav-symbol">▣</span> Exposure profiles</button>
+      <button class="nav-item" data-page="identity"><span class="nav-symbol">◇</span> Identity review</button>
+      <button class="nav-item" data-page="feeds"><span class="nav-symbol">↻</span> Source health</button>
       <button class="nav-item" data-page="quality"><span class="nav-symbol">&#10003;</span> Data quality</button>
     </nav>
     <div class="side-label side-label-spaced">REFERENCE</div>
@@ -39,6 +45,8 @@
 <aside class="detail-drawer" id="detail-drawer" aria-label="Facility details" aria-hidden="true"><div id="drawer-content"></div></aside>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 <script defer id="public-api-script" src="./web/public-api.js"></script>
+<script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script defer src="./web/intelligence-ui.js"></script>
 <script defer src="./web/app.js"></script>
 </body>
 </html>

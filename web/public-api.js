@@ -91,6 +91,11 @@
   }
   async function query(path) {
     const d=await getData();const u=new URL('https://local.test/api/'+path.replace(/^\//,''));const p=u.searchParams;const r=u.pathname.slice('/api/'.length),parts=r.split('/');
+    if (r==='intelligence')return d.intelligence || {
+      sites:d.facilities.map(f=>({...f,identifiers:f.fei?[{namespace:'FDA_FEI',identifier:f.fei,status:'observed',provenance_note:'Research identifier not independently verified'}]:[],
+        candidates:[],location:{precision:(f.coordinate_precision||'').includes('City')?'city':'approximate'},hazard_checks:[],incidents:[],profile:null})),
+      quality:{verified_frs_links:0,frs_candidates_pending:0,verified_site_locations:0,historical_incidents:0,hazard_screenings:0,profiles:0,live_source_checks:0},
+      source_health:[],source_catalog:[]};
     if (r==='health')return {status:'static_preview',version:'0.3.0',facilities:d.facilities.length};
     if (r==='overview') {
       const fl=facilityList(d),siteRows=[...fl].sort((a,b)=>b.evidence_count-a.evidence_count);
@@ -106,6 +111,11 @@
     }
     if(parts[0]==='facilities'&&parts.length>=2){const id=decodeURIComponent(parts[1]);const site=d.facilities.find(x=>x.id===id);if(!site)throw new Error('Facility not found');
       const siteRows=d.evidence.filter(e=>e.facility_id===id);
+      if(parts[2]==='intelligence'){
+        const stored=d.intelligence?.sites?.find(x=>x.id===id);
+        return stored||{facility_id:id,identifiers:site.fei?[{namespace:'FDA_FEI',identifier:site.fei,status:'observed',provenance_note:'Analyst-reported FEI; not independently verified'}]:[],
+          candidates:[],location:{precision:'city',note:'Public reference coordinate only'},hazard_checks:[],incidents:[],profile:null};
+      }
       if(parts[2]==='evidence')return evidenceList(d,p,id);
       return {facility:site,domains:domains(siteRows),sources:breakdown(siteRows),sec_findings:d.sec_findings.filter(x=>x.facility_id===id),
         latest_evidence:evidenceList(d,new URLSearchParams({limit:'8'}),id).items,source_snapshots:[]};

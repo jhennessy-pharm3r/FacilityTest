@@ -1,0 +1,23 @@
+services:
+  facility-risk:
+    build: .
+    image: pharm3r/facility-risk:local
+    environment:
+      FACILITY_RISK_DB: /app/data/facility_risk.sqlite
+      FACILITY_RISK_REQUIRE_AUTH: "1"
+      FACILITY_RISK_AUTH_TOKEN: ${FACILITY_RISK_AUTH_TOKEN:?Set an unpredictable 32-plus-character token in your untracked .env}
+      FACILITY_RISK_BASIC_USER: ${FACILITY_RISK_BASIC_USER:-analyst}
+      FACILITY_RISK_ENABLE_WRITES: "0"
+    ports:
+      # Do not bind to 0.0.0.0; use a TLS + OIDC reverse proxy for remote access.
+      - "127.0.0.1:8765:8765"
+    volumes:
+      - ./data:/app/data
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    restart: unless-stopped

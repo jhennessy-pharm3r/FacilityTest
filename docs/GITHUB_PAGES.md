@@ -6,6 +6,8 @@
 - `web/app.js` is the same UI shared with the local FastAPI app.
 - `web/public-api.js` is a browser-only read adapter that implements API-like filtering and pagination.
 - `web/public-demo.json` holds a **separately researched, public, three-facility set** linked to primary issuer and SEC documents.
+- `web/case-studies.json` adds 3 retrospective incidents with 12 dated milestones; `web/intelligence-ui.js` adds historical timelines, interactive map, crosswalk review, underwriting summaries and source health views.
+- Map tiles and Leaflet load from public third-party networks; only use the public preview or appropriately anonymized coordinates for this feature.
 - The original `web/index.html` + `/api/` endpoints continue to run locally using the SQLite database.
 
 The hosted preview **is not a live government data feed**. It cannot run SQLite, server-side Python ingestion, monitoring jobs, or private authentication on GitHub Pages.
@@ -35,6 +37,10 @@ If the current Pages source is not `main /(root)`, select it under repository Se
 - Private JSON importer validates schema 1.0, duplicate facility IDs, orphan evidence and size limits (20 MB).
 - Public-demo city-level markers are **not** site geocodes and must not be used in property hazard overlays.
 - Imported data is kept in memory, not localStorage, cookies, URL query strings, or network requests.
+
+## Private hosting
+
+See [Secure deployment blueprint](SECURE_DEPLOYMENT.md) for a locally bound, token-gated server and the safeguards still required before handling insurer client data. Github Actions runs Python tests and a weekly public endpoint health check, **not** private facility ingestion.
 
 ## Next gate
 

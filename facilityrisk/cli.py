@@ -7,6 +7,10 @@ from .db import connect,initialize,quality_report
 from .ingest import ingest_workbook
 from .browser_export import export_browser_snapshot
 from .connectors import fetch_usgs,fetch_aqueduct,fetch_echo,ingest_noaa_csv
+from .advanced_sources import discover_frs, fetch_verified_echo, fetch_fema, ingest_fda_inspections_csv, source_probe
+from .intelligence import decide_candidate,review_location,intelligence_quality,verify_fei
+from .case_studies import seed_cases
+from .security import validate_private_bind
 
 
 def main(argv=None) -> int:
@@ -27,21 +31,43 @@ def main(argv=None) -> int:
     echo.add_argument('--registry-id',required=True,help='Operator-verified EPA FRS ID (not FDA FEI)')
     noaa=sub.add_parser('ingest-noaa-csv');noaa.add_argument('csv_gz')
     noaa.add_argument('--radius-km',type=float,default=40)
+    frs=sub.add_parser('discover-frs');frs.add_argument('--facility',required=True);frs.add_argument('--name',required=True);frs.add_argument('--state',required=True)
+    rv=sub.add_parser('review-frs');rv.add_argument('--candidate',required=True);rv.add_argument('--decision',choices=['accepted','rejected'],required=True);rv.add_argument('--reviewer',required=True);rv.add_argument('--source',required=True);rv.add_argument('--note',required=True)
+    vf=sub.add_parser('review-fei');vf.add_argument('--facility',required=True);vf.add_argument('--reviewer',required=True);vf.add_argument('--source',required=True);vf.add_argument('--note',required=True)
+    loc=sub.add_parser('review-location');loc.add_argument('--facility',required=True);loc.add_argument('--precision',required=True,choices=['city','approximate','site_verified','property_polygon']);loc.add_argument('--reviewer',required=True);loc.add_argument('--source',required=True);loc.add_argument('--note',default='')
+    fema=sub.add_parser('refresh-fema');fema.add_argument('--facility',required=True)
+    ec=sub.add_parser('refresh-verified-echo');ec.add_argument('--facility',required=True)
+    fda=sub.add_parser('ingest-fda-inspections-csv');fda.add_argument('csv_path')
+    sub.add_parser('seed-cases');sub.add_parser('probe-sources')
     args=p.parse_args(argv)
     if args.command=='serve':
+        validate_private_bind(args.host)
         import uvicorn
         uvicorn.run('facilityrisk.app:app',host=args.host,port=args.port,reload=False)
         return 0
     with connect() as conn:
         initialize(conn)
         if args.command=='init-db': output={'status':'initialized'}
-        elif args.command=='qa':output=quality_report(conn)
+        elif args.command=='qa':output={**quality_report(conn),'intelligence':intelligence_quality(conn)}
         elif args.command=='ingest-workbook':output=ingest_workbook(conn,args.xlsx)
         elif args.command=='export-browser':output=export_browser_snapshot(conn,args.output_json)
         elif args.command=='refresh-usgs':output=fetch_usgs(conn,args.facility,args.start,args.end,args.radius_km,args.min_magnitude)
         elif args.command=='refresh-aqueduct':output=fetch_aqueduct(conn,args.facility)
-        elif args.command=='refresh-echo':output=fetch_echo(conn,args.facility,args.registry_id)
+        elif args.command=='refresh-echo':
+            verified=conn.execute("SELECT identifier FROM identity_links WHERE facility_id=? AND namespace='EPA_FRS' AND status='verified'",(args.facility,)).fetchone()
+            if not verified or verified['identifier'] != args.registry_id:
+                raise ValueError('ECHO refresh requires an accepted and audited EPA FRS identity match; use discover-frs and review-frs first')
+            output=fetch_verified_echo(conn,args.facility)
         elif args.command=='ingest-noaa-csv':output=ingest_noaa_csv(conn,args.csv_gz,args.radius_km)
+        elif args.command=='discover-frs':output=discover_frs(conn,args.facility,args.name,args.state)
+        elif args.command=='review-frs':output=decide_candidate(conn,args.candidate,args.decision,args.reviewer,args.source,args.note)
+        elif args.command=='review-fei':output=verify_fei(conn,args.facility,args.reviewer,args.source,args.note)
+        elif args.command=='review-location':output=review_location(conn,args.facility,args.precision,args.source,args.reviewer,args.note)
+        elif args.command=='refresh-fema':output=fetch_fema(conn,args.facility)
+        elif args.command=='refresh-verified-echo':output=fetch_verified_echo(conn,args.facility)
+        elif args.command=='ingest-fda-inspections-csv':output=ingest_fda_inspections_csv(conn,args.csv_path)
+        elif args.command=='seed-cases':output=seed_cases(conn)
+        elif args.command=='probe-sources':output={'checks':source_probe(conn)}
         else: p.error('unknown command')
         print(json.dumps(output,indent=2,ensure_ascii=False,default=str))
         return 0

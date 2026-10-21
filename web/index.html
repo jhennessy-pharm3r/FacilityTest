@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#163d40" />
   <title>Facility Risk Intelligence | Pharm3r</title>
   <link rel="stylesheet" href="/assets/styles.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 </head>
 <body>
 <div class="shell">
@@ -22,11 +23,16 @@
       <button class="nav-item" data-page="evidence"><span class="nav-symbol">&#9637;</span> Evidence search</button>
       <button class="nav-item" data-page="disclosures"><span class="nav-symbol">&#9776;</span> SEC disclosures</button>
       <button class="nav-item" data-page="sources"><span class="nav-symbol">&#9783;</span> Data sources</button>
+      <button class="nav-item" data-page="cases"><span class="nav-symbol">▦</span> Incident timelines</button>
+      <button class="nav-item" data-page="map"><span class="nav-symbol">◎</span> Geographic hazards</button>
+      <button class="nav-item" data-page="underwriting"><span class="nav-symbol">▣</span> Exposure profiles</button>
+      <button class="nav-item" data-page="identity"><span class="nav-symbol">◇</span> Identity review</button>
+      <button class="nav-item" data-page="feeds"><span class="nav-symbol">↻</span> Source health</button>
       <button class="nav-item" data-page="quality"><span class="nav-symbol">&#10003;</span> Data quality</button>
     </nav>
     <div class="side-label side-label-spaced">REFERENCE</div>
     <nav><button class="nav-item" data-page="methodology"><span class="nav-symbol">&#9432;</span> Methodology</button></nav>
-    <div class="sidebar-bottom"><div class="side-status-dot"></div><div><strong>Research environment</strong><span>Prototype v0.2 &middot; Local database</span></div></div>
+    <div class="sidebar-bottom"><div class="side-status-dot"></div><div><strong>Research environment</strong><span>Prototype v0.4 &middot; Private database</span></div></div>
   </aside>
   <div class="main-area">
     <header class="topbar"><div class="breadcrumbs">PANDORA <span>/</span> FACILITY RISK <span>/</span> <strong id="breadcrumb-page">OVERVIEW</strong></div><div class="topbar-actions"><span class="top-indicator"><span></span> ANALYST RESEARCH</span><span class="top-divider"></span><div class="top-avatar">P3</div></div></header>
@@ -37,6 +43,8 @@
 <div class="drawer-backdrop" id="drawer-backdrop" hidden></div>
 <aside class="detail-drawer" id="detail-drawer" aria-label="Facility details" aria-hidden="true"><div id="drawer-content"></div></aside>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
+<script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script defer src="/assets/intelligence-ui.js"></script>
 <script defer src="/assets/app.js"></script>
 </body>
 </html>
