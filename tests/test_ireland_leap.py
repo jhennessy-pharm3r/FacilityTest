@@ -30,3 +30,27 @@ def test_leap_source_rejects_partial_and_ambiguous_exports():
         make_ireland_catalog({'count':1,'list':[dict(row(),url='https://bad.example/profile')]})
     with pytest.raises(ValueError,match='expected'):
         make_ireland_catalog({'count':1,'list':[row()]},min_rows=2)
+
+
+def test_private_import_of_leap_catalog_does_not_verify_manufacturer(tmp_path):
+    import json
+    from facilityrisk.db import connect,initialize
+    from facilityrisk.site_workspace import import_ireland_leap_catalog,search_external_registry,track_external_registry_site
+    snapshot=make_ireland_catalog({'count':1,'list':[row()]},min_rows=1)
+    path=tmp_path/'ireland.json'
+    path.write_text(json.dumps(snapshot),encoding='utf-8')
+    with connect(tmp_path/'facilities.sqlite') as con:
+        initialize(con)
+        report=import_ireland_leap_catalog(con,path)
+        assert report['imported_source_identities']==1
+        found=search_external_registry(con,query='Example Medical',source_key='IE_LEAP')
+        assert found['total']==1
+        tracked=track_external_registry_site(con,found['items'][0]['id'],'reviewer')
+        facility=con.execute('SELECT latitude,fei FROM facilities WHERE id=?',
+                             (tracked['facility_id'],)).fetchone()
+        assert facility['latitude'] is None and facility['fei'] is None
+        observed=con.execute('SELECT status FROM identity_links WHERE facility_id=?',
+                             (tracked['facility_id'],)).fetchone()
+        assert observed['status']=='observed'
+        assert con.execute('SELECT COUNT(*) FROM evidence').fetchone()[0]==0
+        assert con.execute('SELECT COUNT(*) FROM historical_events').fetchone()[0]==0
