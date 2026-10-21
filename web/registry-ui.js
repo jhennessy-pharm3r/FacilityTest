@@ -12,7 +12,7 @@
  let liveOnly=false,manualVisible=false,sourceMessage='';
  const perPage=35;
  const cache=new Map();
- let debounce=null;
+ let debounce=null, searchGeneration=0;
  function normalize(v){return String(v||'').normalize('NFKD').toLowerCase();}
  function catalog(){
    if(!catalogPromise){catalogPromise=fetch(catalogURL,{cache:'no-store'}).then(r=>{
@@ -41,7 +41,7 @@
          <button class="btn primary" id="registry-search-button">Search</button>
        </div>
        <div class="registry-status" id="registry-status">Opening full facility catalog…</div>
-       <div id="registry-results"><div class="empty">Enter a company, location or identifier to search the registry.</div></div>
+       <div id="registry-results"><div class="empty">Loading the available FDA facility catalog…</div></div>
      </section>
      <section class="panel registry-manual-panel">
        <div class="panel-header"><div><h2>Facility not in the registry?</h2><span class="overline">You can start an investigation for any named facility. Its identity and hazard records remain unverified.</span></div><button class="btn tiny" id="registry-manual-toggle">${manualVisible?'Hide':'Create research entry'}</button></div>
@@ -70,16 +70,17 @@
    </button>`;}
  function resultsHTML(){
    if(error)return `<div class="empty">${esc(error)}</div>`;
-   if(!query.trim())return `<div class="empty">Enter at least two characters or a registered identifier to search the full source catalog.</div>`;
-   if(!result.length)return `<div class="empty">No records match in the loaded catalog. Absence is not evidence the facility does not exist. Try a different name or create a research entry.</div>`;
+   if(!result.length)return `<div class="empty">${meta?.rows?.length?'No matching registrations in the available FDA catalog.':'The downloadable registry has not been populated.'} Absence is not evidence the facility does not exist. Try another name, official lookup, or create a research entry.</div>`;
    return `<div class="registry-count">${fmt(result.length)} matched source identities · showing ${fmt(page*perPage+1)}–${fmt(Math.min(result.length,(page+1)*perPage))}</div><div class="registry-list">${result.slice(page*perPage,(page+1)*perPage).map(rowCard).join('')}</div><div class="registry-pagination"><button class="btn tiny" id="registry-prev" ${page===0?'disabled':''}>← Previous</button><span>Page ${page+1} of ${Math.ceil(result.length/perPage)}</span><button class="btn tiny" id="registry-next" ${(page+1)*perPage>=result.length?'disabled':''}>Next →</button></div>`;
  }
  async function search(){
    const root=document.getElementById('registry-results');if(!root)return;
-   if(query.trim().length<2){result=[];page=0;root.innerHTML=resultsHTML();return;}
-   error='';root.innerHTML='<div class="empty">Searching FDA establishment records…</div>';
+   const generation=++searchGeneration;
+   if(query.trim().length===1){result=[];page=0;root.innerHTML='<div class="empty">Use at least two characters to search, or clear the field to browse every entry.</div>';return;}
+   error='';root.innerHTML='<div class="empty">Opening FDA establishment records…</div>';
    try {
      const d=await catalog();
+     if(generation!==searchGeneration)return;
      const words=normalize(query).split(/\s+/).filter(Boolean),ids=[],rows=d.rows,fields=d.fields;
      for(let i=0;i<rows.length;i++){
        const x=rows[i];if(sector&&x[fields.indexOf('sector')]!==sector)continue;
@@ -91,7 +92,7 @@
        const q=normalize(query);const rank=x=>normalize(x.fei)===q?0:normalize(x.name).startsWith(q)?1:normalize(x.company).startsWith(q)?2:3;
        return rank(a)-rank(b)||a.name.localeCompare(b.name);
      });page=0;root.innerHTML=resultsHTML();updateStatus();
-     if(!rows.length)await liveFallback();
+     if(!rows.length&&query.trim().length>=2)await liveFallback();
    }catch(e){error='Catalog not yet available: '+e.message+'. Official live lookup is being attempted.';updateStatus();await liveFallback();}
  }
  async function liveFallback(){
@@ -161,7 +162,7 @@
    root.addEventListener('input',e=>{if(e.target.id!=='registry-query')return;
      clearTimeout(debounce);debounce=setTimeout(()=>{if(root.isConnected)root.querySelector('#registry-search-button')?.click();},600);
    });
-   try{await catalog();updateStatus();if(query){await search();}}
+   try{await catalog();updateStatus();await search();}
    catch(e){error='Full FDA catalog download has not completed: '+e.message;updateStatus();}
  }
  const pages={registry:true};

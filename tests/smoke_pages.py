@@ -32,6 +32,8 @@ with sync_playwright() as pw:
     page.goto(BASE,wait_until='domcontentloaded',timeout=45000)
     page.locator('[data-page="registry"]').first.click()
     expect(page.locator('#view-root h1')).to_contain_text('All registered facilities',timeout=15000)
+    expect(page.locator('#registry-results')).to_contain_text('Acme Devices Galway',timeout=15000)
+    expect(page.locator('#registry-results')).to_contain_text('Acme Devices Boston',timeout=15000)
     page.locator('#registry-query').fill('Galway')
     page.locator('#registry-search-button').click()
     expect(page.locator('#registry-results')).to_contain_text('Acme Devices Galway',timeout=15000)
@@ -59,6 +61,19 @@ with sync_playwright() as pw:
     expect(page.locator('.drawer-body')).to_contain_text('Site and identity checks',timeout=15000)
     page.locator('#drawer-close').click()
     page.locator('[data-page="overview"]').first.click()
+    # Test the real committed public catalog in addition to the synthetic fixture.
+    public_catalog=json.loads((Path(__file__).resolve().parents[1]/'web/registry/catalog.json').read_text(encoding='utf-8'))
+    if len(public_catalog.get('rows',[]))>1000:
+        page.unroute('**/registry/catalog.json')
+        page.goto(BASE,wait_until='domcontentloaded',timeout=45000)
+        expected_count=public_catalog['summary']['distinct_source_entities']
+        expect(page.locator('#registry-status')).to_contain_text(f'{expected_count:,}',timeout=35000)
+        assert page.locator('[data-reg-id]').count()==35, 'Expected paginated all-facilities browsing'
+        example=next(dict(zip(public_catalog['fields'],r)) for r in public_catalog['rows'] if r[6] and len(r[6])>=7)
+        page.locator('#registry-query').fill(example['fei'])
+        page.locator('#registry-search-button').click()
+        expect(page.locator('#registry-results')).to_contain_text(example['name'],timeout=35000)
+        print('Real FDA catalog tested:',expected_count,'source identities')
     page.screenshot(path='/tmp/facility-public-browser-smoke.png',full_page=True)
     assert not errors, 'JavaScript runtime exceptions: '+'; '.join(errors)
     print('Public preview browser routes and facility underwriting drawer passed.')
