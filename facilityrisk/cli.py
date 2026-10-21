@@ -5,6 +5,7 @@ import json
 import sys
 from .db import connect,initialize,quality_report
 from .ingest import ingest_workbook
+from .browser_export import export_browser_snapshot
 from .connectors import fetch_usgs,fetch_aqueduct,fetch_echo,ingest_noaa_csv
 
 
@@ -14,6 +15,8 @@ def main(argv=None) -> int:
     sub.add_parser('init-db')
     ing=sub.add_parser('ingest-workbook');ing.add_argument('xlsx')
     sub.add_parser('qa')
+    exp=sub.add_parser('export-browser',help='Create PRIVATE JSON snapshot to load in GitHub Pages; never commit the JSON')
+    exp.add_argument('output_json')
     srv=sub.add_parser('serve');srv.add_argument('--port',type=int,default=8765);srv.add_argument('--host',default='127.0.0.1')
     usgs=sub.add_parser('refresh-usgs');usgs.add_argument('--facility',required=True)
     usgs.add_argument('--start',required=True);usgs.add_argument('--end',required=True)
@@ -34,6 +37,7 @@ def main(argv=None) -> int:
         if args.command=='init-db': output={'status':'initialized'}
         elif args.command=='qa':output=quality_report(conn)
         elif args.command=='ingest-workbook':output=ingest_workbook(conn,args.xlsx)
+        elif args.command=='export-browser':output=export_browser_snapshot(conn,args.output_json)
         elif args.command=='refresh-usgs':output=fetch_usgs(conn,args.facility,args.start,args.end,args.radius_km,args.min_magnitude)
         elif args.command=='refresh-aqueduct':output=fetch_aqueduct(conn,args.facility)
         elif args.command=='refresh-echo':output=fetch_echo(conn,args.facility,args.registry_id)

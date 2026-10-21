@@ -2,6 +2,23 @@
 
 An evidence-first facility risk research app for insurance underwriting. The app deliberately **does not calculate a facility risk score**: the current inputs are public-source research, not a calibrated sample of insured losses.
 
+## GitHub Pages public preview
+
+The repository root `index.html` hosts a **read-only public preview** at
+`https://jhennessy-pharm3r.github.io/FacilityTest/`. Pages cannot execute the Python/FastAPI/SQLite service or connectors.
+The preview shows a separate, small, attributed public case-study dataset. It does **not** publish the private analyst workbook or 990-row evidence database. Site markers in the public preview are **city-level reference points only**.
+
+To explore the full local research within the hosted UI without uploading data to GitHub:
+
+```powershell
+python -m facilityrisk export-browser data\my-private-facility-snapshot.json
+```
+
+Open the Pages site, select **Load private snapshot**, and choose the local JSON file.
+The snapshot is read into browser memory only; there is no upload endpoint, storage persistence, or sharing link. The file itself contains the complete research corpus and must remain private. It is excluded by `.gitignore` under `data/`.
+
+See [hosting and security notes](docs/GITHUB_PAGES.md).
+
 ## What's included
 
 - Facility explorer with verified identifiers, site coordinates, research summaries and matching cautions.

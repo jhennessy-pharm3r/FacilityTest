@@ -29,3 +29,13 @@
 .loading-card h2{margin-bottom:10px}
 .map-grid g[data-site]:hover circle:last-of-type{fill:#844c37;r:7}
 @media(prefers-reduced-motion:reduce){.detail-drawer,.toast,.facility-card{transition:none}}
+
+/* Public GitHub Pages preview banner */
+.public-preview-banner{margin:17px 35px 0;background:#eaf3ef;border:1px solid #c7e0d7;border-radius:12px;padding:14px 17px;display:flex;justify-content:space-between;align-items:center;gap:22px}
+.public-preview-banner strong{font-size:10px;letter-spacing:1px;color:#2c695d;display:block}
+.public-preview-banner span{font-size:11px;color:#4d786f;line-height:1.6;display:block;margin-top:4px}
+.public-preview-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.public-preview-banner button{font-size:10px}
+@media(max-width:1000px){.public-preview-banner{margin:14px 24px 0;flex-direction:column;align-items:flex-start}}
+@media(max-width:750px){.public-preview-banner{margin:12px 16px 0}}
+[hidden]{display:none!important}

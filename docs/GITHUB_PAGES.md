@@ -1,0 +1,41 @@
+# GitHub Pages — public research preview
+
+## Architecture
+
+- `index.html` at repository root is a static Pages entry point.
+- `web/app.js` is the same UI shared with the local FastAPI app.
+- `web/public-api.js` is a browser-only read adapter that implements API-like filtering and pagination.
+- `web/public-demo.json` holds a **separately researched, public, three-facility set** linked to primary issuer and SEC documents.
+- The original `web/index.html` + `/api/` endpoints continue to run locally using the SQLite database.
+
+The hosted preview **is not a live government data feed**. It cannot run SQLite, server-side Python ingestion, monitoring jobs, or private authentication on GitHub Pages.
+
+## Load private analyst data without publishing it
+
+1. In the project root after ingesting the workbook, run
+   `python -m facilityrisk export-browser data/my-private-facility-snapshot.json`.
+2. Visit the static GitHub Pages URL, and click **Load private snapshot**.
+3. Choose the JSON file. The browser reads it using the File API, keeps it in memory, and rerenders the explorer. It does **not** send data to GitHub Pages or any remote API.
+4. Click **Reset** to return to the public example set. Refreshing the page also discards the private data.
+
+**Important:** The generated file includes complete facility research, source URLs, disclosure notes, and unvalidated metadata. It must not be committed into the public repository, shared with unauthorized users, or used for an insurance rating. A browser extension may have access to page content; private work should use a managed environment for sensitive data.
+
+## Deployment
+
+GitHub Pages can publish from `main` root (Settings → Pages → Build and deployment → Deploy from a branch → main → /(root)). The root `index.html` and `.nojekyll` are included for this mode. The static site uses relative paths (`./web/...`) compatible with the `/FacilityTest/` project path.
+
+There is no requirement to deploy Python, SQLite, `.env`, `data/`, or test artifacts.
+
+If the current Pages source is not `main /(root)`, select it under repository Settings → Pages. Check Actions → Pages build and deployment for errors. The site is public even if the workbook is local.
+
+## Checks
+
+- Public browser mode loads all seven navigation tabs without `/api/` calls.
+- Source linked evidence and SEC reference URLs lead to the original publisher.
+- Private JSON importer validates schema 1.0, duplicate facility IDs, orphan evidence and size limits (20 MB).
+- Public-demo city-level markers are **not** site geocodes and must not be used in property hazard overlays.
+- Imported data is kept in memory, not localStorage, cookies, URL query strings, or network requests.
+
+## Next gate
+
+Deploy an authenticated backend in a separate environment with server-side ingestion, audited facility identifiers, and insurer-level access control. Configure Pages as a frontend only if CORS, authentication and client data governance are properly addressed.

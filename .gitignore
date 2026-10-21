@@ -1,5 +1,6 @@
 # Never commit analyst research, imported data or private source responses.
 data/*.sqlite
+data/*.json
 data/*.sqlite-*
 *.xlsx
 *.xls

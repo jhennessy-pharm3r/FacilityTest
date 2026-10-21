@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#163d40" />
+  <title>Facility Risk Intelligence — Public Preview | Pharm3r</title>
+  <link rel="stylesheet" href="./web/styles.css" />
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-symbol"><span></span><span></span><span></span><span></span></div>
+      <div class="brand-type"><strong>PHARM<span>3</span>R</strong><small>INTELLIGENCE PLATFORM</small></div>
+    </div>
+    <div class="workspace"><div class="workspace-mark">FR</div><div class="workspace-text"><strong>Facility Risk</strong><small>Public research preview <span class="down-caret">&#8964;</span></small></div></div>
+    <div class="side-label">WORKSPACE</div>
+    <nav id="side-nav" aria-label="Primary">
+      <button class="nav-item active" data-page="overview"><span class="nav-symbol">&#9638;</span> Overview</button>
+      <button class="nav-item" data-page="facilities"><span class="nav-symbol">&#9635;</span> Facilities <span id="side-facility-count" class="nav-count"></span></button>
+      <button class="nav-item" data-page="evidence"><span class="nav-symbol">&#9637;</span> Evidence search</button>
+      <button class="nav-item" data-page="disclosures"><span class="nav-symbol">&#9776;</span> SEC disclosures</button>
+      <button class="nav-item" data-page="sources"><span class="nav-symbol">&#9783;</span> Data sources</button>
+      <button class="nav-item" data-page="quality"><span class="nav-symbol">&#10003;</span> Data quality</button>
+    </nav>
+    <div class="side-label side-label-spaced">REFERENCE</div>
+    <nav><button class="nav-item" data-page="methodology"><span class="nav-symbol">&#9432;</span> Methodology</button></nav>
+    <div class="sidebar-bottom"><div class="side-status-dot"></div><div><strong>Research environment</strong><span>Public preview &middot; Browser-only</span></div></div>
+  </aside>
+  <div class="main-area">
+    <header class="topbar"><div class="breadcrumbs">PANDORA <span>/</span> FACILITY RISK <span>/</span> <strong id="breadcrumb-page">OVERVIEW</strong></div><div class="topbar-actions"><span class="top-indicator"><span></span> PUBLIC PREVIEW</span><span class="top-divider"></span><div class="top-avatar">P3</div></div></header>
+    <div class="public-preview-banner" role="note"><div><strong>PUBLIC RESEARCH PREVIEW</strong><span><span id="public-data-label">Public examples</span> · No live government-feed connections. Load a private JSON snapshot locally in your browser; it is not uploaded to GitHub.</span></div><div class="public-preview-actions"><button id="public-data-import" class="btn primary">Load private snapshot</button><button id="public-data-reset" class="btn" hidden>Reset</button><input id="public-data-file" hidden type="file" accept=".json,application/json" aria-label="Select private research JSON"/></div></div>
+    <main id="view-root" aria-live="polite"><div class="loading-card">Loading facility research...</div></main>
+    <footer class="app-footer"><span>PHARM3R &middot; FACILITY RISK INTELLIGENCE</span><span>Exploratory evidence only. Not an insurance rating or loss prediction.</span></footer>
+  </div>
+</div>
+<div class="drawer-backdrop" id="drawer-backdrop" hidden></div>
+<aside class="detail-drawer" id="detail-drawer" aria-label="Facility details" aria-hidden="true"><div id="drawer-content"></div></aside>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<script defer id="public-api-script" src="./web/public-api.js"></script>
+<script defer src="./web/app.js"></script>
+</body>
+</html>

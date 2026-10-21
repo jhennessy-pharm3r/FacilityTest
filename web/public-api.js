@@ -1,0 +1,143 @@
+/* Browser-only read-only data adapter for GitHub Pages.
+   Research snapshots are loaded into memory: never uploaded, persisted, or sent to a service. */
+(() => {
+  'use strict';
+  const script = document.getElementById('public-api-script');
+  const seedUrl = new URL('./public-demo.json', script?.src || document.baseURI);
+  const MAX_FILE_BYTES = 20 * 1024 * 1024;
+  let dataPromise = null;
+  let datasetLabel = 'Public examples';
+
+  function assertDataset(obj) {
+    if (!obj || typeof obj !== 'object' || obj.schema_version !== '1.0') throw new Error('Unsupported snapshot schema (expected 1.0).');
+    for (const k of ['facilities','evidence','sec_findings','sources']) {
+      if (!Array.isArray(obj[k])) throw new Error('Missing required array: ' + k);
+    }
+    if (obj.facilities.length > 15000 || obj.evidence.length > 100000 || obj.sec_findings.length > 50000 || obj.sources.length > 2000) {
+      throw new Error('Snapshot too large for this browser preview.');
+    }
+    const ids = new Set();
+    for (const f of obj.facilities) {
+      if (!f || typeof f.id !== 'string' || !f.id.trim() || ids.has(f.id)) throw new Error('Duplicate or missing facility identifier.');
+      ids.add(f.id);
+    }
+    for (const e of obj.evidence) {
+      if (!e || typeof e.facility_id !== 'string' || !ids.has(e.facility_id)) throw new Error('Orphan evidence record in snapshot.');
+    }
+    return obj;
+  }
+  function getData() {
+    if (!dataPromise) {
+      dataPromise = fetch(seedUrl, {cache:'no-store'}).then(r => {
+        if (!r.ok) throw new Error('Public demonstration data could not be loaded (HTTP ' + r.status + ').');
+        return r.json();
+      }).then(assertDataset);
+    }
+    return dataPromise;
+  }
+  const values = (o,k) => String(o?.[k] ?? '').toLowerCase();
+  function breakdown(rows) {
+    const map = new Map();
+    for (const e of rows) {
+      const k=e.source||'Unclassified';
+      if(!map.has(k)) map.set(k,{source:k,records:0,programs:0,linked:0,_programs:new Set()});
+      const x=map.get(k); x.records++; if(/^https?:\/\//i.test(e.source_url||'')) x.linked++; x._programs.add(e.program||'');
+    }
+    return [...map.values()].map(x=>({source:x.source,records:x.records,programs:x._programs.size,linked:x.linked})).sort((a,b)=>b.records-a.records);
+  }
+  function domains(rows) {
+    const map=new Map();
+    for(const e of rows){const k=e.risk_domain||'Unclassified';if(!map.has(k))map.set(k,{name:k,records:0,_sites:new Set(),_sources:new Set()});const x=map.get(k);x.records++;x._sites.add(e.facility_id);x._sources.add(e.source);}
+    return [...map.values()].map(x=>({name:x.name,records:x.records,facilities:x._sites.size,sources:x._sources.size})).sort((a,b)=>b.records-a.records);
+  }
+  function counts(d) {
+    const facilities=d.facilities.length, ev=d.evidence.length, sec=d.sec_findings.length;
+    const withFei=d.facilities.filter(x=>x.fei).length;
+    const geo=d.facilities.filter(x=>x.latitude!=null&&x.longitude!=null).length;
+    const urls=d.evidence.filter(x=>/^https?:\/\//i.test(x.source_url||'')).length;
+    const dates=d.evidence.filter(x=>x.availability_date).length;
+    const future=d.evidence.filter(x=>/^\d{4}-\d\d-\d\d$/.test(x.date_raw||'') && x.date_raw>new Date().toISOString().slice(0,10));
+    const ids=new Set(), feis=new Set(), integrity=[];
+    for(const f of d.facilities){if(ids.has(f.id))integrity.push('Duplicate ID '+f.id);ids.add(f.id);if(f.fei){if(feis.has(f.fei))integrity.push('Duplicate FEI '+f.fei);feis.add(f.fei);}if((f.latitude==null)!=(f.longitude==null))integrity.push('Partial coordinate '+f.id);if(f.latitude!=null&&(!(-90<=f.latitude&&f.latitude<=90)||!(-180<=f.longitude&&f.longitude<=180)))integrity.push('Invalid coordinates '+f.id);}
+    for(const e of d.evidence){if(!ids.has(e.facility_id)) integrity.push('Orphan '+e.id);}
+    return {facilities,evidence:ev,sec_findings:sec,public_references:0,geo_matched:geo,with_fei:withFei,evidence_with_url:urls,
+      unmatched_sec_findings:d.sec_findings.filter(x=>!x.facility_id).length,evidence_with_verified_publication_date:dates,
+      future_dated_evidence:future.length,sources:d.sources.length,snapshots:0,integrity_failures:integrity,
+      missing_fei_facilities:d.facilities.filter(x=>!x.fei).map(x=>({id:x.id,name:x.name})),
+      missing_coordinates_facilities:d.facilities.filter(x=>x.latitude==null||x.longitude==null).map(x=>({id:x.id,name:x.name})),
+      unmatched_sec:d.sec_findings.filter(x=>!x.facility_id).map(x=>({id:x.id,facility_label:x.facility_label,country:x.country,attribution:x.attribution})),
+      future_dated_samples:future.slice(0,20).map(x=>({id:x.id,facility_id:x.facility_id,source:x.source,record_type:x.record_type,date_raw:x.date_raw})),
+      match_quality:[...new Map(d.evidence.map(e=>[e.match_quality||'Unknown',0])).keys()].map(label=>({label,records:d.evidence.filter(x=>(x.match_quality||'Unknown')===label).length})),
+      runs:d.ingestions||[],source_counts:breakdown(d.evidence),snapshots:[],
+      important_caveats:d.important_caveats||['Research data is not an insurance rating, claim register or predictive score.']
+    };
+  }
+  function facilityList(d) {
+    return d.facilities.map(f=>{
+      const rows=d.evidence.filter(e=>e.facility_id===f.id);
+      return {...f,evidence_count:rows.length,source_count:new Set(rows.map(x=>x.source)).size,covered_sources:[...new Set(rows.map(x=>x.source))]};
+    });
+  }
+  function evidenceList(d,params,siteId) {
+    let rows=d.evidence.filter(e=>!siteId||e.facility_id===siteId);
+    const s=(params.get('search')||'').toLowerCase(),source=params.get('source')||'',domain=params.get('domain')||'';
+    if(source)rows=rows.filter(e=>e.source===source);
+    if(domain)rows=rows.filter(e=>e.risk_domain===domain);
+    if(s)rows=rows.filter(e=>[e.finding,e.record_type,e.record_ref,e.program,e.facility_id].some(x=>String(x||'').toLowerCase().includes(s)));
+    rows=rows.map(e=>({...e,facility_name:d.facilities.find(f=>f.id===e.facility_id)?.name||'Unidentified'}));
+    rows.sort((a,b)=>String(b.date_raw||'').localeCompare(String(a.date_raw||''))||String(a.source).localeCompare(String(b.source)));
+    const limit=Math.min(250,Math.max(1,Number(params.get('limit'))||50)); const offset=Math.max(0,Number(params.get('offset'))||0);
+    return {items:rows.slice(offset,offset+limit),total:rows.length,limit,offset};
+  }
+  async function query(path) {
+    const d=await getData();const u=new URL('https://local.test/api/'+path.replace(/^\//,''));const p=u.searchParams;const r=u.pathname.slice('/api/'.length),parts=r.split('/');
+    if (r==='health')return {status:'static_preview',version:'0.3.0',facilities:d.facilities.length};
+    if (r==='overview') {
+      const fl=facilityList(d),siteRows=[...fl].sort((a,b)=>b.evidence_count-a.evidence_count);
+      return {stats:counts(d),facilities:siteRows.map(f=>({id:f.id,name:f.name,country:f.country,latitude:f.latitude,longitude:f.longitude,fei:f.fei,site_case:f.site_case,evidence_count:f.evidence_count,source_count:f.source_count})),
+        domains:domains(d.evidence),sources:breakdown(d.evidence),latest:[...d.evidence].slice(0,8),recent_ingestions:d.ingestions||[],model_status:'Public preview; no calibrated loss prediction'};
+    }
+    if (r==='facilities') {
+      let rows=facilityList(d);const s=(p.get('search')||'').toLowerCase(),country=p.get('country')||'',source=p.get('source')||'';
+      if(s)rows=rows.filter(f=>[f.name,f.company,f.address,f.fei].some(v=>String(v||'').toLowerCase().includes(s)));
+      if(country)rows=rows.filter(f=>f.country.includes(country));if(source)rows=rows.filter(f=>f.covered_sources.includes(source));
+      rows.sort((a,b)=>a.name.localeCompare(b.name));const limit=Math.min(500,Math.max(1,Number(p.get('limit'))||100)),offset=Math.max(0,Number(p.get('offset'))||0);
+      return {items:rows.slice(offset,offset+limit),total:rows.length,limit,offset};
+    }
+    if(parts[0]==='facilities'&&parts.length>=2){const id=decodeURIComponent(parts[1]);const site=d.facilities.find(x=>x.id===id);if(!site)throw new Error('Facility not found');
+      const siteRows=d.evidence.filter(e=>e.facility_id===id);
+      if(parts[2]==='evidence')return evidenceList(d,p,id);
+      return {facility:site,domains:domains(siteRows),sources:breakdown(siteRows),sec_findings:d.sec_findings.filter(x=>x.facility_id===id),
+        latest_evidence:evidenceList(d,new URLSearchParams({limit:'8'}),id).items,source_snapshots:[]};
+    }
+    if(r==='evidence')return evidenceList(d,p);
+    if(r==='financial')return {items:d.sec_findings,total:d.sec_findings.length,caveat:'Do not add disclosed financial figures across reporting periods.'};
+    if(r==='sources'){const cov=new Map(breakdown(d.evidence).map(s=>[s.source,s.records]));return {items:d.sources.map(s=>({...s,covered_evidence_count:cov.get(s.name)||0})),total:d.sources.length,observed_source_labels:breakdown(d.evidence),caveat:'Listed public sources are not live synced on GitHub Pages.'};}
+    if(r==='quality')return counts(d);
+    if(r==='public-evidence')return {items:[],total:0,caveat:'Not included in static preview'};
+    if(r==='source-fields')return {items:[],total:0};
+    throw new Error('Unknown public preview route: '+r);
+  }
+  function refreshMetadata() {
+    const label=document.getElementById('public-data-label');if(label)label.textContent=datasetLabel;
+    const reset=document.getElementById('public-data-reset');if(reset)reset.hidden=datasetLabel==='Public examples';
+  }
+  async function importFile(file){
+    if(!file) return;
+    if(file.size>MAX_FILE_BYTES)throw new Error('Snapshot exceeds the 20 MB browser import limit.');
+    const parsed=assertDataset(JSON.parse(await file.text()));
+    dataPromise=Promise.resolve(parsed); datasetLabel='Local browser snapshot: '+(parsed.dataset_label||file.name);
+    refreshMetadata();window.dispatchEvent(new Event('facilityrisk:dataset-changed'));
+  }
+  function reset(){dataPromise=null;datasetLabel='Public examples';refreshMetadata();window.dispatchEvent(new Event('facilityrisk:dataset-changed'));}
+  function initControls(){
+    const chooser=document.getElementById('public-data-file');
+    const trigger=document.getElementById('public-data-import');
+    const resetBtn=document.getElementById('public-data-reset');
+    if(trigger&&chooser){trigger.addEventListener('click',()=>chooser.click());chooser.addEventListener('change',async()=>{try{await importFile(chooser.files?.[0]);}catch(err){alert('Snapshot import failed: '+err.message);}finally{chooser.value='';}});}
+    if(resetBtn)resetBtn.addEventListener('click',reset);
+    refreshMetadata();
+  }
+  window.PublicRiskAPI={query,importFile,reset,getData,assertDataset};
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',initControls);else initControls();
+})();
