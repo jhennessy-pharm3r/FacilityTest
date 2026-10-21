@@ -12,7 +12,9 @@ from .intelligence import get_intelligence, intelligence_quality, decide_candida
 from .security import add_security
 from .advanced_sources import SOURCE_META
 from .registry_catalog import init_registry, registry_search
-from .source_extensions import catalog as extension_catalog
+from .source_extensions import catalog as extension_catalog, review_event_candidate
+from .site_workspace import (SOURCES as REGULATOR_SOURCES, intake_site, search_external_registry,
+                             track_external_registry_site, stage_identity_candidate)
 
 ROOT=Path(__file__).resolve().parent.parent
 WEB=ROOT/'web'
@@ -56,6 +58,76 @@ def overview(c=Depends(conn_dependency)):
                ORDER BY e.last_imported DESC, e.date_raw DESC LIMIT 8''')
     return {'stats':q,'facilities':sites,'domains':domains,'sources':sources,
             'latest':latest,'recent_ingestions':runs,'model_status':'evidence review; no loss prediction score'}
+
+
+@app.post('/api/facilities/intake')
+async def facility_intake(request:Request,c=Depends(conn_dependency)):
+    if __import__('os').environ.get('FACILITY_RISK_ENABLE_WRITES')!='1':
+        raise HTTPException(403,'Manual intake writes are disabled')
+    p=await request.json()
+    try:return intake_site(c,p,request.state.actor)
+    except ValueError as e:raise HTTPException(422,str(e)) from e
+
+
+@app.get('/api/external-registry/sources')
+def regulator_source_catalog(c=Depends(conn_dependency)):
+    rows=items(c,'SELECT * FROM external_registry_imports ORDER BY source_key')
+    return {'sources':[{'key':key,'name':meta[0],'documentation':meta[1]}
+                       for key,meta in REGULATOR_SOURCES.items()],
+            'imports':rows,'caveat':'Only locally imported and explicitly sourced datasets are searchable.'}
+
+
+@app.get('/api/external-registry')
+def external_registry(q:str='',country:str='',source_key:str='',
+                     limit:int=Query(50,ge=1,le=100),offset:int=Query(0,ge=0),
+                     c=Depends(conn_dependency)):
+    return search_external_registry(c,query=q,country=country,source_key=source_key,limit=limit,offset=offset)
+
+
+@app.post('/api/external-registry/{external_id}/track')
+def external_registry_track(external_id:str,request:Request,c=Depends(conn_dependency)):
+    if __import__('os').environ.get('FACILITY_RISK_ENABLE_WRITES')!='1':
+        raise HTTPException(403,'Research workspace writes are disabled')
+    try:return track_external_registry_site(c,external_id,request.state.actor)
+    except ValueError as e:raise HTTPException(404,str(e)) from e
+
+
+@app.post('/api/facilities/{facility_id}/identity-candidates')
+async def stage_regulatory_identity(facility_id:str,request:Request,c=Depends(conn_dependency)):
+    if __import__('os').environ.get('FACILITY_RISK_ENABLE_WRITES')!='1':
+        raise HTTPException(403,'Identity candidate writes are disabled')
+    p=await request.json()
+    if not isinstance(p,dict):raise HTTPException(422,'Expected identity candidate JSON object')
+    try:return stage_identity_candidate(c,facility_id,p.get('external_id',''),request.state.actor)
+    except ValueError as e:raise HTTPException(422,str(e)) from e
+
+
+@app.get('/api/facilities/{facility_id}/event-candidates')
+def facility_external_events(facility_id:str,status:str='',limit:int=Query(100,ge=1,le=250),
+                             offset:int=Query(0,ge=0),c=Depends(conn_dependency)):
+    if not one(c,'SELECT id FROM facilities WHERE id=?',(facility_id,)):
+        raise HTTPException(404,'Unknown site')
+    where='facility_id=?';args=[facility_id]
+    if status:
+        if status not in ('pending','reviewed_relevant','rejected'):raise HTTPException(422,'Invalid event review status')
+        where+=' AND status=?';args.append(status)
+    total=one(c,'SELECT COUNT(*) AS n FROM external_event_candidates WHERE '+where,tuple(args))['n']
+    records=items(c,'SELECT * FROM external_event_candidates WHERE '+where+
+                  ' ORDER BY imported_at DESC,id LIMIT ? OFFSET ?',tuple(args+[limit,offset]))
+    return {'total':total,'items':records,'limit':limit,'offset':offset,
+            'caveat':'Nearby records are context candidates, not verified site incidents or insured losses'}
+
+
+@app.post('/api/external-events/{candidate_id}/review')
+async def review_external_event(candidate_id:str,request:Request,c=Depends(conn_dependency)):
+    if __import__('os').environ.get('FACILITY_RISK_ENABLE_WRITES')!='1':
+        raise HTTPException(403,'Event review writes are disabled')
+    p=await request.json()
+    if not isinstance(p,dict):raise HTTPException(422,'Expected review JSON object')
+    try:return review_event_candidate(c,candidate_id,p.get('decision',''),
+                                      request.state.actor,p.get('evidence_url',''),
+                                      p.get('reason',''))
+    except ValueError as e:raise HTTPException(422,str(e)) from e
 
 
 @app.get('/api/registry/status')

@@ -118,7 +118,7 @@
  function detailHTML(r){return `<section class="panel registry-detail"><div class="panel-header"><div><h2>${esc(r.name)}</h2><span class="overline">${esc(r.sector)} · FDA source identity (not independently matched)</span></div><button class="btn tiny" id="registry-close-detail">Close</button></div>
    <div class="registry-detail-body"><div class="registry-detail-grid">${[
      ['Reported operator',r.company],['Registered address',[r.address,r.city,r.state,r.country].filter(Boolean).join(', ')],
-     ['Observed FDA FEI',r.fei],['Registration number',r.registration_number],['Recorded operations',r.activities],
+     ['Observed FDA FEI',r.fei],[r.sector==='Pharmaceutical'?'Other source ID / DUNS':'Registration number',r.registration_number],['Recorded operations',r.activities],
      ['Expiry / validity field',r.expiry_year],['Source listing records',r.source_records],['Environmental and physical hazard score','Not assessed']
    ].map(([k,v])=>`<div><small>${esc(k)}</small><b>${esc(v||'Not recorded')}</b></div>`).join('')}</div>
      <div class="registry-risk-warning">FDA registration does not verify the physical property boundary, active manufacturing status, environmental compliance, hazard exposure, or insurance loss likelihood. These require independent source matching and location review.</div>
@@ -133,7 +133,15 @@
      alert('Added as an unverified research entry to this browser session. No automatic risk rating or site match was created.');
      return id;
    }
-   if(data.id?.startsWith('manual-')){alert('Manual research tracking is available in the private browser preview. Connect an authenticated backend for persistent entries.');return;}
+   if(data.id?.startsWith('manual-')){
+     const r=await fetch('/api/facilities/intake',{method:'POST',
+       headers:{'Content-Type':'application/json'},
+       body:JSON.stringify({name:data.name,company:data.company,country:data.country,
+         city:data.city,address:data.address,sector:data.sector})});
+     if(!r.ok)throw Error('Manual intake unavailable: '+(await r.text()).slice(0,180));
+     alert('Unverified site saved to the private research workspace. No risk score was assigned.');
+     return (await r.json()).facility_id;
+   }
    const r=await fetch('/api/registry/'+encodeURIComponent(data.id)+'/track',{method:'POST'});
    if(!r.ok){let msg=await r.text();throw Error('Tracking not enabled on the private server: '+msg.slice(0,150));}
    alert('Created an unverified research workspace entry.');
