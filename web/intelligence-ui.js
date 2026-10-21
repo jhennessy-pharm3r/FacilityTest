@@ -85,14 +85,16 @@
     }).join('');
     return `${info('These are evidence-based exposure summaries, not underwriting acceptance recommendations. Missing engineering reports, asset values, policy terms or loss runs remain explicitly unknown.')}<div class="intel-case-grid">${rows}</div>`;
   }
-  function feedsPage(src,checks){
+  function feedsPage(src,checks,extended=[]){
     const q=Array.isArray(checks)?checks:[];
     const rows=(src.length?src:[{source:'EPA FRS'},{source:'EPA ECHO'},{source:'FEMA NFHL'},{source:'USGS'},{source:'NOAA Storm Events'},{source:'FDA inspections'},{source:'WRI Aqueduct'}]).map(s=>{
       const v=q.find(x=>x.source===s.source);const status=v?.state||'not_tested';
       return `<tr><td><strong>${esc(s.source)}</strong></td><td><span class="pill ${status==='reachable'?'':'orange'}">${esc(status.replaceAll('_',' '))}</span></td><td>${esc(v?.checked_at||'No recorded check')}</td><td>${esc(v?.details||'Connection status not verified in this browser preview')}</td><td>${safeLink(s.documentation,'Docs')}</td></tr>`;
     }).join('');
+    const extraRows=extended.map(s=>`<tr><td><strong>${esc(s.name)}</strong><small>${esc(s.category)} · ${esc(s.priority)}</small></td><td><span class="pill ${s.probe_state==='schema_reachable'?'':'orange'}">${esc((s.probe_state||'not_tested').replaceAll('_',' '))}</span></td><td>${esc(s.checked_at||'Not run')}</td><td>${esc(s.probe_details||s.test)}<br><small>${esc(s.access)} · ${esc(s.limitation)}</small></td><td>${safeLink(s.documentation,'Official source')}</td></tr>`).join('');
     return `${info('GitHub Pages cannot ingest data or schedule a Python/SQLite refresh. Server-side probes and ingestion must run in a separate controlled environment. A successful HTTP probe is not proof of matching or complete source coverage.')}
       ${card(`${title('Source health and ingestion readiness','Source connection is separate from data validation')}<div class="table-wrap"><table><thead><tr><th>Source</th><th>State</th><th>Last checked</th><th>Notes</th><th>Reference</th></tr></thead><tbody>${rows}</tbody></table></div>`)}
+      ${card(`${title('Additional dataset evaluations','Access checks do not establish facility linkage')}<div class="table-wrap"><table><thead><tr><th>Source</th><th>Probe state</th><th>Checked</th><th>Testing and limitations</th><th>Reference</th></tr></thead><tbody>${extraRows||'<tr><td colspan="5">No extended sources loaded</td></tr>'}</tbody></table></div>`)}
       ${card(`${title('Ingestion gates','All required before use in an underwriting decision')}<div class="intel-card-body"><div class="intel-gate-list">${['Endpoint or official export is accessible','Original response archived with retrieval time','Source schema validated and normalized','Correct facility identified and independently reviewed','Event/validity/publication dates separated','Hazard proximity distinguished from confirmed loss','Quality checks and refresh status pass'].map((x,i)=>`<div><span class="intel-step">${String(i+1).padStart(2,'0')}</span>${esc(x)}</div>`).join('')}</div></div>`)}`;
   }
   const pages={
@@ -120,7 +122,11 @@
       const sites=state.facilities.map(f=>({...f,...(status.get(f.id)||{}),name:f.name,country:f.country,fei:f.fei}));
       if(page==='identity')root.innerHTML=identityPage(sites,intel.quality);
       if(page==='underwriting')root.innerHTML=underwritingPage(sites,await cases());
-      if(page==='feeds')root.innerHTML=feedsPage(intel.source_catalog||[],intel.source_health||[]);
+      if(page==='feeds'){
+        let extra=[];
+        try{const res=await api('source-extensions');extra=res.items||[];}catch(e){/* Older snapshots may omit this optional catalog. */}
+        root.innerHTML=feedsPage(intel.source_catalog||[],intel.source_health||[],extra);
+      }
     }catch(e){if(root.isConnected)root.innerHTML=`<div class="loading-card">Unable to load research panel: ${esc(e.message)}</div>`;}
   }
   window.addEventListener('facilityrisk:dataset-changed',()=>{window.__facilityRiskMapOptIn=false;});
