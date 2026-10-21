@@ -48,3 +48,12 @@ inferred. The official-source publisher URL is supplied for each profile.
 To build: `python scripts/build_ireland_leap.py --output web/registry/ireland-leap.json`.
 The scheduled workflow refuses unexpectedly small source results and retains
 the last published file on retrieval failure.
+
+
+## Independent Canadian environmental reporting coverage (2026-10)
+
+A separate public catalogue uses the official [Canadian National Pollutant Release Inventory (NPRI)](https://maps-cartes.ec.gc.ca/arcgis/rest/services/STB_DGST/NPRI/MapServer/0) 2024 facility-reporting feature layer. Its dataset explicitly represents **2024 reporters**, not all Canadian industrial sites and not every manufacturer. The public export includes each source record's NPRI ID, 2024 reporting period, reported operator/facility, address and province, and NAICS/sector descriptor when published; it excludes full source geometry, personal contacts and reporting quantities. The presence of a reporter is not proof of a violation, emission severity, insured property damage or current operation in 2026.
+
+Build with `python scripts/build_canada_npri.py --output web/registry/canada-npri.json`. The dedicated weekly GitHub Actions workflow checks the complete official ArcGIS ObjectID cohort, enforces the 2024 reporting vintage and publishes the compact public source catalog. The source's reported location is **not** an independently reviewed parcel centroid or production-building coordinate. No NPRI source record is automatically merged with an FDA FEI, Canadian device/drug site, Ireland EPA licence, or a proprietary insured facility.
+
+The full browse list therefore combines distinct *regulatory source identities*, not a physically deduplicated plant count. An empty query lists all available source records; exact physical-site verification remains an investigation task.
