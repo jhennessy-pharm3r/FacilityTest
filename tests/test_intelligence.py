@@ -337,3 +337,23 @@ def test_legacy_hazard_screenings_migrate_without_fake_coordinate_review(db):
     assert hazard['original_status']=='mapped_sfha'
     assert intelligence_quality(db)['hazard_screenings']==1
     assert intelligence_quality(db)['current_hazard_screenings']==0
+
+
+def test_revised_property_during_inflight_hazard_fetch_cannot_attach_old_result(db):
+    from facilityrisk.intelligence import store_hazard
+    fid='site-pfizer-rocky-mount'
+    review_location(db,fid,'site_verified','https://example.org/site-one',
+                    'Reviewer','Original property coordinates examined')
+    loc=db.execute('SELECT * FROM location_reviews WHERE facility_id=?',(fid,)).fetchone()
+    point=db.execute('SELECT * FROM facilities WHERE id=?',(fid,)).fetchone()
+    db.execute('UPDATE facilities SET latitude=37.0 WHERE id=?',(fid,))
+    db.commit()
+    review_location(db,fid,'site_verified','https://example.org/site-two',
+                    'Reviewer','New position has been independently corroborated')
+    with pytest.raises(ValueError,match='changed during hazard source request'):
+        store_hazard(db,fid,'Flood zone','mapped_sfha','FEMA NFHL',
+                     'Old request location, no current relevance',
+                     'https://www.fema.gov/',expected_latitude=point['latitude'],
+                     expected_longitude=point['longitude'],
+                     expected_reviewed_at=loc['verified_at'])
+    assert db.execute('SELECT COUNT(*) FROM hazard_assessments').fetchone()[0]==0
