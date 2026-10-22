@@ -19,7 +19,9 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install official Overture Maps client
-        run: python -m pip install 'overturemaps>=1.0,<2'
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install 'overturemaps>=1.0,<2'
       - name: Fetch representative international place source observations
         run: |
           mkdir -p data
