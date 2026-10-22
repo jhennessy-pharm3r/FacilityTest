@@ -2,7 +2,7 @@
 (()=>{
 'use strict';
 const esc = v=>String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let q='',page=0,selected=null;
+let q='',page=0,selected=null,wired=false;
 function render(){
 return '<div class="page-heading"><div><div class="eyebrow">ALL INDUSTRIES / ALL FACILITIES</div><h1>Universal facility discovery</h1><p class="subhead">Independent official and place source identities, not verified insured properties.</p></div></div>'+
 (window.PublicRiskAPI
@@ -31,16 +31,19 @@ const r=await fetch('/api/universal-facilities/'+encodeURIComponent(id));if(!r.o
 const d=await r.json();selected=d;
 el.innerHTML='<section class="panel"><div class="panel-body"><h2>'+esc(d.site.name)+'</h2><p>Property verification: '+esc(d.site.coordinate_quality)+' · Insurance coverage: Unknown</p>'+
  d.source_identities.map(x=>'<p>'+esc(x.source_key)+' / '+esc(x.source_identifier)+' · <a href="'+esc(x.source_url)+'" rel="noopener noreferrer" target="_blank">Publisher</a></p>').join('')+
- '<button class="btn primary" id="uf-track">Add to private research workspace</button></div></section>';
+ '<div class="registry-actions"><button class="btn" id="uf-assess">Assess insurance exposure</button><button class="btn primary" id="uf-track">Add to private research workspace</button></div></div></section>';
 }catch(e){el.textContent=e.message;}
 }
 function mount(){
 const root=document.getElementById('view-root');if(window.PublicRiskAPI||!root)return;
-root.addEventListener('click',async e=>{
+if(!wired){wired=true;root.addEventListener('click',async e=>{
 if(e.target.id==='uf-search'){q=document.getElementById('uf-q').value.trim();page=0;await load();}
 if(e.target.id==='uf-prev'){page=Math.max(0,page-1);await load();}
 if(e.target.id==='uf-next'){page+=1;await load();}
 if(e.target.dataset.ufId)await inspect(e.target.dataset.ufId);
+if(e.target.id==='uf-assess'&&selected){
+  window.dispatchEvent(new CustomEvent('facilityrisk:assess-site',{detail:{...selected.site,source_identities:selected.source_identities}}));return;
+}
 if(e.target.id==='uf-track'&&selected){
 try {
 const r=await fetch('/api/universal-facilities/'+encodeURIComponent(selected.site.id)+'/track',{method:'POST'});
@@ -48,7 +51,7 @@ if(!r.ok)throw Error('Authenticated research writes required');
 e.target.textContent='Research entry created';
 }catch(ex){alert(ex.message);}
 }
-});
+});}
 load();
 }
 window.UniversalUI={render,mount};
