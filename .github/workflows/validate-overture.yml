@@ -45,9 +45,14 @@ jobs:
           c=connect(); x=statistics(c)
           assert x['source_identities']>=1000, 'Too few source identities - verify Overture access and bbox'
           assert x['site_candidates']==x['source_identities'], 'Unexpected implicit source identity merge'
+          classified=c.execute("SELECT COUNT(*) FROM universal_sites WHERE industry <> 'Unclassified place'").fetchone()[0]
+          diverse=c.execute('SELECT COUNT(DISTINCT industry) FROM universal_sites').fetchone()[0]
+          assert classified >= 10000 and diverse >= 20, 'Overture category schema not mapped; all-industry classification failed'
           country_counts=dict(c.execute('SELECT country,COUNT(*) FROM universal_sites GROUP BY country').fetchall())
           industry_counts=dict(c.execute('SELECT industry,COUNT(*) FROM universal_sites GROUP BY industry ORDER BY COUNT(*) DESC LIMIT 20').fetchall())
           qa={'observed_source_identities':x['source_identities'],
+              'classified_source_identities':classified,
+              'distinct_categories':diverse,
               'countries':country_counts,
               'leading_source_categories':industry_counts,
               'verified_property_count':0,
