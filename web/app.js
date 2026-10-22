@@ -206,7 +206,12 @@ async function exportEvidence(){if(!state.facility)return;try{const all=[];let o
   }catch(e){showToast('Export failed: '+e.message);}}
 function updateFacilityList(){const items=filteredFacilities();$('#facility-result-count').textContent=`${items.length} sites`;$('#facility-cards').innerHTML=items.length?items.map(cardSite).join(''):'<div class="panel empty">No matching facilities.</div>';}
 function updateDisclosureList(){renderPage();const el=$('#disclosure-search');if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length);}}
-function setupEvents(){document.addEventListener('click',async e=>{
+function setupEvents(){window.addEventListener('facilityrisk:assess-site',e=>{
+  if(!e.detail||!window.WorkbenchUI)return;
+  window.WorkbenchUI.beginFromSource(e.detail);
+  state.page='workbench';closeDrawer();renderPage();window.scrollTo(0,0);
+});
+document.addEventListener('click',async e=>{
   if(e.target.closest('[data-site]')){openSite(e.target.closest('[data-site]').dataset.site);return;}
   if(e.target.closest('[data-page]')){state.page=e.target.closest('[data-page]').dataset.page;closeDrawer();renderPage();window.scrollTo(0,0);return;}
   if(e.target.closest('[data-tab]')){siteTab(e.target.closest('[data-tab]').dataset.tab);return;}
