@@ -1,0 +1,56 @@
+name: EPA FRS national source staging
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/build_epa_frs.py'
+      - 'tests/test_epa_frs_staging.py'
+      - '.github/workflows/build-epa-frs.yml'
+permissions:
+  contents: read
+concurrency:
+  group: epa-frs-national-ingest
+  cancel-in-progress: false
+jobs:
+  stage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Retrieve and normalize complete official EPA FRS national source
+        run: |
+          python scripts/build_epa_frs.py \
+            --output data/epa-frs-national.csv.gz \
+            --manifest data/epa-frs-national-manifest.json \
+            --min-rows 100000
+      - name: Verify complete cohort and usable records
+        run: |
+          python - <<'PY'
+          import csv,gzip,json
+          m=json.load(open('data/epa-frs-national-manifest.json'))
+          assert m['complete_source'], 'Sample export must not be published as complete'
+          assert m['valid_records'] >= 100000, 'Unexpectedly small official FRS cohort'
+          assert m['valid_records'] + m['rejected_rows'] == m['read_rows']
+          assert len(m['sha256'])==64 and len(m['output_sha256'])==64
+          with gzip.open('data/epa-frs-national.csv.gz','rt',encoding='utf-8') as f:
+              r=csv.DictReader(f)
+              assert {'source_identifier','name','state','country','latitude','longitude'} <= set(r.fieldnames)
+              sample=next(r)
+              assert sample['source_identifier'] and sample['name']
+          print('Staged official EPA FRS identities:',m['valid_records'])
+          print('Rejected source records:',m['rejected_rows'])
+          print('Official raw ZIP SHA256:',m['sha256'])
+          PY
+      - name: Publish source-only private workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: epa-frs-national-source-import
+          path: |
+            data/epa-frs-national.csv.gz
+            data/epa-frs-national-manifest.json
+          if-no-files-found: error
+          retention-days: 14
