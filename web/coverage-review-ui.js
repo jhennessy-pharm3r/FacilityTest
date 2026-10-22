@@ -51,7 +51,7 @@ function coverageSelect(){
 function detailHTML(){
  if(!data)return '';
  let p='<section class="panel"><div class="panel-header"><h2>'+E(data.facility_id)+'</h2></div>'+
- '<div class="panel-body"><p><strong>'+data.verified_current_coverage_count+
+ '<div class="panel-body"><p><strong>'+data.document_reviewed_current_terms_count+
  '</strong> current policy terms independently reviewed. This count is not proof of payout or insurability.</p></div></section>';
  p+=policyForm();
  p+='<section class="panel"><div class="panel-header"><h2>Recorded policies and coverage terms</h2></div><div class="panel-body">';
