@@ -87,3 +87,27 @@ def test_api_facilities_are_unassessed(tmp_path,monkeypatch):
     assert detail_response.json()['risk_status']=='unassessed'
     assert detail_response.json()['insured_coverage_status']=='unknown'
     assert client.post('/api/universal-facilities/'+row['id']+'/track').status_code in (401,403)
+
+
+def test_indexed_prefix_source_lookup_and_safe_queries():
+    conn=db()
+    records=[
+      {'id':'FEI30000001','name':'North Shore Manufacturing','country':'US','industry':'Factory'},
+      {'id':'FEI30000002','name':'Regional Clinic','country':'CA','industry':'Healthcare'},
+      {'id':'OTHER001','name':'Redwood Warehouse','country':'US','industry':'Transport'}
+    ]
+    import_records(conn,'TEST',records,'https://example.com/registry')
+    # Source identifiers are located by case-insensitive prefix without
+    # requiring the number/identifier in the visible facility name.
+    assert search(conn,q='FEI30000001')['total']==1
+    assert search(conn,q='fei300')['total']==2
+    assert search(conn,q='OTHER')['total']==1
+    assert search(conn,q='manufact')['total']==1
+    assert search(conn,q='Regional Clinic')['total']==1
+    assert search(conn,country='US')['total']==2
+    plans=[r[3] for r in conn.execute(
+        'EXPLAIN QUERY PLAN SELECT site_id FROM universal_source_records WHERE source_identifier LIKE ?',
+        ('FEI300%',)).fetchall()]
+    assert any('idx_universal_source_identifier_lookup' in text for text in plans),plans
+    assert search(conn,q='FEI%')['total']==0,'User wildcard must not enumerate other IDs'
+    conn.close()
