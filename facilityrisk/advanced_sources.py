@@ -11,7 +11,7 @@ import re
 from pathlib import Path
 from .connectors import json_get, archive_raw, facility, SourceAccessError
 from .ingest import stable_id,utcnow
-from .intelligence import register_frs_candidates,assess_fema_payload,store_hazard
+from .intelligence import register_frs_candidates,assess_fema_payload,store_hazard,is_current_verified_identity
 
 FRS_URL='https://ofmpub.epa.gov/frs_public2/frs_rest_services.get_facilities'
 FEMA_URL='https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/28/query'
@@ -76,8 +76,10 @@ def discover_frs(conn,facility_id,name,state,session=None):
 
 
 def fetch_verified_echo(conn,facility_id,session=None):
-    row=conn.execute("SELECT identifier FROM identity_links WHERE facility_id=? AND namespace='EPA_FRS' AND status='verified'",(facility_id,)).fetchone()
-    if not row:raise ValueError('Cannot fetch ECHO without verified FRS match')
+    row=conn.execute("SELECT * FROM identity_links WHERE facility_id=? AND namespace='EPA_FRS' AND status='verified'",(facility_id,)).fetchone()
+    site=conn.execute('SELECT * FROM facilities WHERE id=?',(facility_id,)).fetchone()
+    if not is_current_verified_identity(site,row):
+        raise ValueError('Cannot fetch ECHO without currently verified FRS match')
     from .connectors import fetch_echo
     return fetch_echo(conn,facility_id,row['identifier'],session=session)
 
@@ -141,12 +143,14 @@ def ingest_fda_inspections_csv(conn,path):
         date_col=col('Inspection End Date','End Date','Inspection Date','Inspection EndDate')
         cls_col=col('Classification','Final Classification','Inspection Classification')
         firm_col=names.get('firmname') or names.get('companyname')
+        all_sites={row['id']:row for row in conn.execute('SELECT * FROM facilities')}
         sites={}
-        for site in conn.execute("SELECT id,fei FROM facilities WHERE fei IS NOT NULL"):
-            sites.setdefault(str(site['fei']),[]).append(site['id'])
+        for site in all_sites.values():
+            if site['fei'] is not None:
+                sites.setdefault(str(site['fei']),[]).append(site['id'])
         verified={(row['facility_id'],row['identifier']) for row in conn.execute("""
-            SELECT facility_id,identifier FROM identity_links
-            WHERE namespace='FDA_FEI' AND status='verified'""")}
+            SELECT * FROM identity_links WHERE namespace='FDA_FEI' AND status='verified'""")
+            if is_current_verified_identity(all_sites.get(row['facility_id']),row)}
         linked=0;pending=0;skipped=0
         for record in reader:
             fei=str(record.get(fei_col) or '').strip()
