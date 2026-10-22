@@ -1,0 +1,66 @@
+name: Validate Overture international facility discovery
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/validate-overture.yml'
+permissions:
+  contents: read
+jobs:
+  international:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      FACILITY_RISK_DB: data/overture-international.sqlite
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install official Overture Maps client
+        run: python -m pip install 'overturemaps>=1.0,<2'
+      - name: Fetch representative international place source observations
+        run: |
+          mkdir -p data
+          overturemaps download --bbox=-63.70,44.58,-63.50,44.75 --type=place -f geojsonseq -o data/halifax-places.geojsonseq
+          overturemaps download --bbox=-81.75,41.44,-81.65,41.54 --type=place -f geojsonseq -o data/cleveland-places.geojsonseq
+          overturemaps download --bbox=-6.30,53.31,-6.20,53.39 --type=place -f geojsonseq -o data/dublin-places.geojsonseq
+          overturemaps download --bbox=103.80,1.28,103.88,1.35 --type=place -f geojsonseq -o data/singapore-places.geojsonseq
+      - name: Import Overture observations into all-industry registry
+        run: |
+          python scripts/import_universal.py data/halifax-places.geojsonseq --format geojsonseq --source OVERTURE --source-url https://docs.overturemaps.org/ --vintage current-stac-release
+          python scripts/import_universal.py data/cleveland-places.geojsonseq --format geojsonseq --source OVERTURE --source-url https://docs.overturemaps.org/ --vintage current-stac-release
+          python scripts/import_universal.py data/dublin-places.geojsonseq --format geojsonseq --source OVERTURE --source-url https://docs.overturemaps.org/ --vintage current-stac-release
+          python scripts/import_universal.py data/singapore-places.geojsonseq --format geojsonseq --source OVERTURE --source-url https://docs.overturemaps.org/ --vintage current-stac-release
+      - name: Validate cross-industry coverage and identity rules
+        run: |
+          python - <<'PY'
+          import json,sqlite3
+          from facilityrisk.db import connect
+          from facilityrisk.universal_registry import statistics,search
+          c=connect(); x=statistics(c)
+          assert x['source_identities']>=1000, 'Too few source identities - verify Overture access and bbox'
+          assert x['site_candidates']==x['source_identities'], 'Unexpected implicit source identity merge'
+          country_counts=dict(c.execute('SELECT country,COUNT(*) FROM universal_sites GROUP BY country').fetchall())
+          industry_counts=dict(c.execute('SELECT industry,COUNT(*) FROM universal_sites GROUP BY industry ORDER BY COUNT(*) DESC LIMIT 20').fetchall())
+          qa={'observed_source_identities':x['source_identities'],
+              'countries':country_counts,
+              'leading_source_categories':industry_counts,
+              'verified_property_count':0,
+              'verified_insurance_coverage_count':0,
+              'interpretation':'Cross-region source search smoke only - not global census or insured risk'}
+          json.dump(qa,open('data/overture-international-qa.json','w'),indent=2)
+          print(json.dumps(qa,indent=2))
+          assert c.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+          c.close()
+          PY
+      - name: Upload public source-only sample and QA
+        uses: actions/upload-artifact@v4
+        with:
+          name: overture-international-facility-evaluation
+          path: |
+            data/overture-international-qa.json
+            data/overture-international.sqlite
+          if-no-files-found: error
+          retention-days: 7
