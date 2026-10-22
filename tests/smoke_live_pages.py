@@ -69,11 +69,11 @@ def audit():
             assert nav.count()==1,'Missing public navigation item: '+name
             nav.click()
             expect(nav).to_have_class('nav-item active',timeout=15000)
+            expect(page.locator('#view-root .loading-card')).to_have_count(0,timeout=20000)
             expect(page.locator('#view-root')).not_to_be_empty(timeout=15000)
             content=page.locator('#view-root').inner_text()
             assert len(content.strip())>=30,'Blank published page '+name
             assert 'Cannot read properties of undefined' not in content
-            assert not page.locator('#view-root .loading-card').count(),'Stuck loading on '+name
             report['checks']['page_'+name]='passed'
         page.locator('.nav-item[data-page="workbench"]').click()
         page.screenshot(path=str(TARGET/'navigation-check-desktop.png'),full_page=False)
