@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS hazard_assessments (
  source TEXT NOT NULL, source_url TEXT,
  hazard_zone TEXT, description TEXT, precision TEXT, effective_date TEXT,
  retrieved_at TEXT NOT NULL, limitations TEXT,
+ reviewed_latitude REAL, reviewed_longitude REAL, location_reviewed_at TEXT,
  UNIQUE(facility_id,peril,source)
 );
 CREATE TABLE IF NOT EXISTS exposure_profiles (
@@ -88,6 +89,13 @@ def initialize_intelligence(conn):
     for column in ('reviewed_latitude','reviewed_longitude'):
         if column not in columns:
             conn.execute('ALTER TABLE location_reviews ADD COLUMN '+column+' REAL')
+    # Historical hazard rows lack proof of the approved location at screening.
+    # Do not fabricate reviewed coordinates during an existing DB migration.
+    known={r['name'] for r in conn.execute('PRAGMA table_info(hazard_assessments)')}
+    for field,kind in (('reviewed_latitude','REAL'),('reviewed_longitude','REAL'),
+                       ('location_reviewed_at','TEXT')):
+        if field not in known:
+            conn.execute('ALTER TABLE hazard_assessments ADD COLUMN '+field+' '+kind)
     # Analyst-provided FEI is "observed", not independently verified.
     for r in conn.execute("SELECT id,fei FROM facilities WHERE fei IS NOT NULL AND trim(fei)<>''"):
         conn.execute('''INSERT OR IGNORE INTO identity_links(id,facility_id,namespace,identifier,status,provenance_note,created_at)
@@ -240,17 +248,37 @@ def decide_candidate(conn,candidate_id,decision,reviewer,evidence_url,note=''):
 
 
 def store_hazard(conn,facility_id,peril,status,source,description,source_url='',zone='',precision='',effective_date='',limitations=''):
-    row=conn.execute('SELECT id FROM facilities WHERE id=?',(facility_id,)).fetchone()
-    if not row:raise ValueError('Unknown facility')
+    """Pin a hazard screening to a reviewed physical point and review revision.
+
+    This is modeled exposure, never an insured property loss. A move or later
+    coordinate re-review requires a fresh source screening.
+    """
+    site=conn.execute('SELECT id,latitude,longitude FROM facilities WHERE id=?',(facility_id,)).fetchone()
+    if not site:raise ValueError('Unknown facility')
+    review=conn.execute('SELECT * FROM location_reviews WHERE facility_id=?',(facility_id,)).fetchone()
+    if not is_reviewed_site_coordinate(site,review):
+        raise ValueError('Hazard screening requires reviewed coordinates for the current site')
     hid=stable_id('hazard',facility_id,peril,source)
-    conn.execute('''INSERT INTO hazard_assessments VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
-    ON CONFLICT(facility_id,peril,source) DO UPDATE SET status=excluded.status,
-    source_url=excluded.source_url,hazard_zone=excluded.hazard_zone,description=excluded.description,
-    precision=excluded.precision,effective_date=excluded.effective_date,
-    retrieved_at=excluded.retrieved_at,limitations=excluded.limitations''',
-    (hid,facility_id,peril,status,source,source_url,zone,description,precision,effective_date,utcnow(),limitations))
+    conn.execute('''INSERT INTO hazard_assessments
+       (id,facility_id,peril,status,source,source_url,hazard_zone,description,
+        precision,effective_date,retrieved_at,limitations,
+        reviewed_latitude,reviewed_longitude,location_reviewed_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+       ON CONFLICT(facility_id,peril,source) DO UPDATE SET
+          status=excluded.status,source_url=excluded.source_url,
+          hazard_zone=excluded.hazard_zone,description=excluded.description,
+          precision=excluded.precision,effective_date=excluded.effective_date,
+          retrieved_at=excluded.retrieved_at,limitations=excluded.limitations,
+          reviewed_latitude=excluded.reviewed_latitude,
+          reviewed_longitude=excluded.reviewed_longitude,
+          location_reviewed_at=excluded.location_reviewed_at''',
+        (hid,facility_id,peril,status,source,source_url,zone,description,
+         precision,effective_date,utcnow(),limitations,
+         site['latitude'],site['longitude'],review['verified_at']))
     conn.commit()
-    return {'facility_id':facility_id,'peril':peril,'status':status,'zone':zone}
+    return {'facility_id':facility_id,'peril':peril,'status':status,'zone':zone,
+            'reviewed_coordinate_snapshot':True}
+
 
 
 def assess_fema_payload(payload):
@@ -302,10 +330,23 @@ def get_intelligence(conn,facility_id):
         if loc['precision'] in ('site_verified','property_polygon') and not valid:
             loc['original_review_precision']=loc['precision']
             loc['precision']='review_stale'
+    hazard_checks=items(conn,'SELECT * FROM hazard_assessments WHERE facility_id=? ORDER BY peril',(facility_id,))
+    current_review=loc and is_reviewed_site_coordinate(facility,loc)
+    for hazard in hazard_checks:
+        valid=bool(current_review and
+                   hazard['reviewed_latitude'] is not None and
+                   hazard['reviewed_longitude'] is not None and
+                   hazard['reviewed_latitude']==facility['latitude'] and
+                   hazard['reviewed_longitude']==facility['longitude'] and
+                   hazard['location_reviewed_at']==loc['verified_at'])
+        hazard['valid_for_current_site_point']=valid
+        if not valid:
+            hazard['original_status']=hazard['status']
+            hazard['status']='stale_location_review'
     return dict(facility_id=facility_id,identifiers=items(conn,'SELECT * FROM identity_links WHERE facility_id=? ORDER BY namespace,status',(facility_id,)),
         candidates=items(conn,'SELECT * FROM match_candidates WHERE facility_id=? ORDER BY decision,name_similarity DESC',(facility_id,)),
         location=loc,
-        hazard_checks=items(conn,'SELECT * FROM hazard_assessments WHERE facility_id=? ORDER BY peril',(facility_id,)),
+        hazard_checks=hazard_checks,
         incidents=events,profile=one(conn,'SELECT * FROM exposure_profiles WHERE facility_id=?',(facility_id,)))
 
 
@@ -322,6 +363,15 @@ def intelligence_quality(conn):
           AND f.longitude BETWEEN -180 AND 180""").fetchone()[0],
       'historical_incidents':conn.execute('SELECT COUNT(*) FROM historical_events').fetchone()[0],
       'hazard_screenings':conn.execute('SELECT COUNT(*) FROM hazard_assessments').fetchone()[0],
+      'current_hazard_screenings':conn.execute("""SELECT COUNT(*) FROM hazard_assessments h
+          JOIN facilities f ON f.id=h.facility_id
+          JOIN location_reviews l ON l.facility_id=f.id
+          WHERE l.precision IN ('site_verified','property_polygon')
+            AND h.reviewed_latitude=f.latitude
+            AND h.reviewed_longitude=f.longitude
+            AND l.reviewed_latitude=f.latitude
+            AND l.reviewed_longitude=f.longitude
+            AND h.location_reviewed_at=l.verified_at""").fetchone()[0],
       'profiles':conn.execute('SELECT COUNT(*) FROM exposure_profiles').fetchone()[0],
       'live_source_checks':conn.execute('SELECT COUNT(*) FROM source_health').fetchone()[0]
     }
