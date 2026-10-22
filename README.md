@@ -1,4 +1,4 @@
-# Pharm3r Facility Risk Intelligence — Universal Facility Discovery / v0.7 development
+# Pharm3r Facility Risk Intelligence — Universal Facility Discovery / v0.7
 
 An evidence-first **all-industry facility discovery and risk research** application for insurance use. Every facility type is eligible for investigation; the initial FDA, Canada NPRI and Ireland EPA source populations are not the coverage universe. The 12 analyst facilities are case studies, not a limit on facility discovery. The all-industry backend registry is a separate source identity layer and is not yet a complete global inventory. The app deliberately **does not calculate a facility risk score**: the current inputs are public-source research, not a calibrated sample of insured losses.
 
