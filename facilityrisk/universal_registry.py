@@ -16,7 +16,7 @@ import re
 from urllib.parse import urlsplit
 
 MAX_BATCH = 2000
-MAX_RECORDS_PER_IMPORT = 3_000_000
+MAX_RECORDS_PER_IMPORT = 10_000_000
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS universal_sites (
@@ -171,7 +171,7 @@ def import_records(conn, source_key, records, source_url, *, vintage='', notes='
         for raw in records:
             read += 1
             if read > MAX_RECORDS_PER_IMPORT:
-                raise ValueError('Split source into smaller partitions (3 million limit)')
+                raise ValueError('Split source into smaller partitions (10 million limit)')
             r = normalize(source_key, raw)
             if r is None:
                 rejected += 1
