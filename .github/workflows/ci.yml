@@ -27,6 +27,12 @@ jobs:
           PY
       - name: Install Python dependencies
         run: python -m pip install -r requirements-dev.txt
+      - name: JavaScript syntax for private and public viewers
+        run: |
+          node --check web/app.js
+          node --check web/registry-ui.js
+          node --check web/intelligence-ui.js
+          node --check web/public-api.js
       - name: Python tests
         run: python -m pytest -q
       - name: JavaScript syntax tests
