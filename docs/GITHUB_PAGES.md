@@ -10,6 +10,10 @@
 - Map tiles and Leaflet load from public third-party networks; only use the public preview or appropriately anonymized coordinates for this feature.
 - The original `web/index.html` + `/api/` endpoints continue to run locally using the SQLite database.
 
+The hosted preview includes a **user-entered insurance scenario workbench** but it **is not a live government data feed, a fully hosted universal registry, a policy verification service, or a risk rating**. Users may start a new exposure review from a published source identity, but the selected peril is an analyst hypothesis, not a geocoded hazard assessment. The site may export JSON locally, while policy statuses remain unverified. The source registry publishes 50,368 FDA/Canada/Ireland identities. The separately validated 5,354,716-row EPA FRS SQLite and 101,979-row four-area Overture pilot are NOT available for search on public Pages.
+
+**Do not enter confidential client or policy documents in the public site.** Browser memory is transient but browser extensions and third-party scripts may have access to page content. Use the authenticated private environment for insured data.
+
 The hosted preview **is not a live government data feed**. It cannot run SQLite, server-side Python ingestion, monitoring jobs, or private authentication on GitHub Pages.
 
 ## Load private analyst data without publishing it
@@ -32,7 +36,9 @@ If the current Pages source is not `main /(root)`, select it under repository Se
 
 ## Checks
 
-- Public browser mode loads all seven navigation tabs without `/api/` calls.
+- October 22, 2026 real-origin Playwright audit [39827130663](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39827130663) passed actual Pages home, cross-industry workbench, coverage reference, published registry, mobile overflow and JavaScript error checks, with no unexpected private API calls. [Screenshots and results](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39827130663/artifacts/12446193954).
+
+- Public browser mode renders insurance assessment, source registry, research cases and supporting navigation without requiring private API calls.
 - Source linked evidence and SEC reference URLs lead to the original publisher.
 - Private JSON importer validates schema 1.0, duplicate facility IDs, orphan evidence and size limits (20 MB).
 - Public-demo city-level markers are **not** site geocodes and must not be used in property hazard overlays.
