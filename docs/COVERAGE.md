@@ -2,9 +2,9 @@
 
 ## Product intent
 
-The application must accept any pharmaceutical or medical-device facility for investigation. The **coverage universe** is not limited to the initial twelve analyst cases, and it is not limited to three public examples. All facilities discovered from official registries are eligible for investigation.
+The application must accept facilities in every industry for investigation, including offices, retail, industrial plants, utilities, hospitals, warehouses and life-science establishments. The **coverage universe** is not limited to the initial twelve analyst cases, and it is not limited to three public examples. All facilities discovered from official registries, permitted place datasets or manual entry are eligible for investigation.
 
-That does **not** mean all physical manufacturing sites in the world can be positively enumerated from public records. Our current initial corpus is FDA device registrations/listings plus, when the official export is compatible, FDA's separate Drug Establishments Current Registration Site (DECRS). These registries include foreign establishments involved in U.S.-market supply, but not facilities entirely outside U.S. market disclosure. Registrations are not evidence of FDA approval, active operation, or safe physical risk.
+That does **not** mean all physical manufacturing sites in the world can be positively enumerated from public records. The public catalog includes FDA device/drug sources, Canadian NPRI and Irish EPA. A separate private indexed EPA FRS corpus contains 5,354,716 source identities; Overture international coverage has been pilot-tested. Neither is hosted on public GitHub Pages. These registries include foreign establishments involved in U.S.-market supply, but not facilities entirely outside U.S. market disclosure. Registrations are not evidence of FDA approval, active operation, or safe physical risk.
 
 ## Distinct layers
 
