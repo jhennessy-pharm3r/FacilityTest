@@ -241,6 +241,15 @@ def decide_candidate(conn,candidate_id,decision,reviewer,evidence_url,note='',*,
             status='verified',provenance_url=excluded.provenance_url,
             provenance_note=excluded.provenance_note,reviewer=excluded.reviewer,reviewed_at=excluded.reviewed_at''',
           (key,row['facility_id'],row['namespace'],row['identifier'],'verified',evidence_url,note,reviewer,when,when))
+    else:
+        # A reviewed rejection also revokes an earlier accepted identifier.
+        # Leaving the previously verified crosswalk active would allow ECHO
+        # or other source data to keep attaching to a rejected physical site.
+        conn.execute("""UPDATE identity_links SET status='rejected',
+            provenance_url=?,provenance_note=?,reviewer=?,reviewed_at=?
+            WHERE facility_id=? AND namespace=? AND identifier=?""",
+            (evidence_url,note,reviewer,when,
+             row['facility_id'],row['namespace'],row['identifier']))
     audit(conn,'candidate_'+decision,row['facility_id'],reviewer,
           {'candidate_id':candidate_id,'identifier':row['identifier'],'evidence_url':evidence_url,'note':note})
     if commit:conn.commit()
