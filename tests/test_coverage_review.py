@@ -75,3 +75,28 @@ def test_private_api_approval_is_not_available_to_anonymous_or_local_shared_user
            'insurer':'x','policy_reference':'y','start_date':'2026-01-01',
            'end_date':'2027-01-01','location_schedule_reference':'item 1'})
         assert r.status_code==403
+
+
+def test_document_reviewed_exclusion_not_counted_as_available_coverage(db):
+    from facilityrisk.assessment import build_assessment,render_assessment_html
+    policy=make_policy(db)
+    term=save_term(db,policy,{'coverage_id':'flood','exclusions':'Flood explicitly excluded'},'reviewerA')
+    proposed=propose_term_review(db,term['term_id'],{
+      'proposed_status':'verified_excluded','document_reference':'secure-policy-archive-1',
+      'document_sha256':'f'*64,
+      'rationale':'Flood exclusion verified against applicable declarations and named terms'
+    },'reviewerA')
+    result=decide_term_review(db,proposed['review_id'],'approve','approverB',
+      'Independent confirmation of express flood exclusion wording')
+    assert result['status']=='approved'
+    snapshot=facility_policy_snapshot(db,'policy-site')
+    assert snapshot['document_reviewed_current_terms_count']==1
+    assert snapshot['verified_excluded_current_terms_count']==1
+    assert snapshot['verified_current_coverage_count']==0
+    report=build_assessment(db,'policy-site')
+    assert report['coverage']['insurance_terms']['status']=='document_reviewed_terms'
+    html=render_assessment_html(report)
+    assert 'Insurance contracts and coverage review' in html
+    assert 'verified_excluded' in html
+    assert 'secure-policy-archive-1' in html
+    assert 'No verified current-property hazard and policy crosswalk' in html
