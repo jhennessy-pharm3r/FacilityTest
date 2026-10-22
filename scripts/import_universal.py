@@ -39,8 +39,8 @@ def geojsonseq_rows(path):
             props=obj.get('properties') or {}
             names=props.get('names') or {}
             primary=names.get('primary') or props.get('name') or ''
-            cats=props.get('categories') or {}
-            cat=cats.get('primary') if isinstance(cats,dict) else ''
+            cats=props.get('taxonomy') or props.get('categories') or {}
+            cat=(cats.get('primary') if isinstance(cats,dict) else '') or props.get('basic_category') or ''
             geom=obj.get('geometry') or {}
             loc=geom.get('coordinates') if geom.get('type')=='Point' else []
             addresses=props.get('addresses') or []
