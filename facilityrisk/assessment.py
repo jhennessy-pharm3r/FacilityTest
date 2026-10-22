@@ -41,6 +41,9 @@ def build_assessment(conn,facility_id):
     facility=one(conn,'SELECT * FROM facilities WHERE id=?',(facility_id,))
     if facility is None:raise ValueError('Unknown facility')
     detail=get_intelligence(conn,facility_id)
+    from .coverage_review import facility_policy_snapshot,compare_hazards_and_coverage
+    policy_snapshot=facility_policy_snapshot(conn,facility_id)
+    coverage_crosswalk=compare_hazards_and_coverage(conn,facility_id)
     identifiers=detail['identifiers']
     verified_identifiers=[row for row in identifiers if row['status']=='verified']
     source_evidence=items(conn,'''SELECT id,source,program,date_raw,record_type,
@@ -86,6 +89,8 @@ def build_assessment(conn,facility_id):
           'reason':'Operations, protection and downtime exposures are not insured values unless documented'},
        'historical_outcomes':{'status':'retrospective_events' if events else 'unassessed',
           'reason':'Known cases are retrospective, not predictive validation; absence of cases is not absence of losses'},
+       'insurance_terms':{'status':'document_reviewed_terms' if policy_snapshot['verified_current_coverage_count'] else 'unassessed',
+          'reason':str(policy_snapshot['verified_current_coverage_count'])+' documented current-term decisions; no automatic assertion of payout'},
        'pre_event_visibility':{'status':'partially_documented' if available_date_count else 'unassessed',
           'reason':str(available_date_count)+' of '+str(source_evidence_total)+' evidence rows have separately verified public availability dates'}
     }
@@ -103,6 +108,7 @@ def build_assessment(conn,facility_id):
     if observations:action_items.append('Review regulatory observations with unconfirmed FEI-to-site attribution')
     if not profile:action_items.append('Collect construction, fire protection, water, power, BI values and recovery plans')
     if stale_hazards:action_items.append('Refresh or explicitly retire hazard overlays tied to an earlier or unreviewed site point')
+    if not policy_snapshot['verified_current_coverage_count']:action_items.append('Review actual insurance declarations and location-specific terms with independent approver')
     if not events:action_items.append('Research documented disruptions and comparable non-event periods')
     if available_date_count<source_evidence_total:action_items.append('Verify source publication dates before any historical prediction tests')
     return {
@@ -120,6 +126,8 @@ def build_assessment(conn,facility_id):
       'coverage':coverage,
       'sections':sections,
       'hazards':regional_hazards,
+      'insurance_policy_review':policy_snapshot,
+      'hazard_coverage_crosswalk':coverage_crosswalk,
       'evidence':source_evidence,
       'evidence_total':source_evidence_total,
       'evidence_displayed':len(source_evidence),
