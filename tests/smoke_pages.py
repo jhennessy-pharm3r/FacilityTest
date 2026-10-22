@@ -30,6 +30,9 @@ with sync_playwright() as pw:
     page.route('**/registry/catalog.json',lambda route:route.fulfill(status=200,content_type='application/json',body=json.dumps(sample)))
     page.on('dialog',lambda dialog:dialog.accept())
     page.goto(BASE,wait_until='domcontentloaded',timeout=45000)
+    page.locator('[data-page="universal"]').first.click()
+    expect(page.locator('#view-root')).to_contain_text('Universal facility discovery')
+    expect(page.locator('#view-root')).to_contain_text('private backend')
     page.locator('[data-page="registry"]').first.click()
     expect(page.locator('#view-root h1')).to_contain_text('All registered facilities',timeout=15000)
     # The real Ireland/Canada catalogs are also loaded. Initial results are

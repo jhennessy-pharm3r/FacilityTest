@@ -6,6 +6,7 @@ on:
     paths:
       - 'tests/smoke_pages.py'
       - 'web/registry-ui.js'
+      - 'web/universal-ui.js'
       - 'web/public-api.js'
       - '.github/workflows/browser-smoke.yml'
   workflow_dispatch:
