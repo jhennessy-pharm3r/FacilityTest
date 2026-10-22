@@ -205,3 +205,32 @@ def test_decrs_explicit_address_countries_only_and_no_geographic_guessing():
     assert authoritative['country']=='US' and authoritative['_country_origin']=='official_country_field'
     assert normalize_drug({'FIRM_NAME':'Test Facility','FEI_NUMBER':'1234567890',
         'ADDRESS':'Shenzhen, China','COUNTRY':'Canada'})['country']=='CA'
+
+
+def test_actual_fda_decrs_name_plus_iso3_country_suffix():
+    from facilityrisk.registry_catalog import country_from_explicit_address,normalize_drug
+    examples={
+        'Halte 10, Deurne, NOORD-BRABANT 5753 SH, Netherlands (NLD)':'NL',
+        '2590 Greensboro Rd, Martinsville, Virginia (VA) 24112-8105, United States (USA)':'US',
+        'Unit VII, Parawada, Andhra Pradesh 531019, India (IND)':'IN',
+        '84 Citation Dr Unit 14, Concord, ON L4K 3C1, Canada (CAN)':'CA',
+        'Pulverwiese 1, Ilsenburg, 38871, Germany (DEU)':'DE',
+        'Building 13, Nanjing, 210000, China (CHN)':'CN',
+        'ARCUEIL, 94110, France (FRA)':'FR',
+        'Site, Seoul, Korea, Republic of (KOR)':'KR',
+        'Industrial Park, Taichung, Taiwan (TWN)':'TW'
+    }
+    for address,iso in examples.items():
+        assert country_from_explicit_address(address)==iso,address
+        parsed=normalize_drug({'FIRM_NAME':'Source establishment',
+                               'FEI_NUMBER':'1234567890','ADDRESS':address})
+        assert parsed['country']==iso
+        assert parsed['_country_origin']=='explicit_address_suffix'
+    false_claims=[
+        'Warehouse, United States (CAN)','Factory, Canada (USA)',
+        'Office, India (INDO)','Village, Ontario (ONT)',
+        'Plant, Germany (FRA)','Street, road (USA)',
+        'Atlanta, Georgia (GA) 30301','Union, USA (ROA)'
+    ]
+    for address in false_claims:
+        assert country_from_explicit_address(address)=='',address
