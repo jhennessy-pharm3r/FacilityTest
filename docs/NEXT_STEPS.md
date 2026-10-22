@@ -7,7 +7,7 @@
 
 | Component | Verified result | Deployment gap |
 | --- | --- | --- |
-| Public GitHub Pages | Static preview, 3 sourced retrospective research cases and 50,368 FDA/Canadian/Irish source identities; browser smoke passing | Not universal live search or an insured-client portal |
+| Public GitHub Pages | Static preview, 3 sourced retrospective research cases and 50,368 FDA/Canadian/Irish source identities; **live origin Playwright verified October 22** | Not universal live search or an insured-client portal |
 | National EPA FRS | Complete official export: 5,354,716 valid records, 7,158 rejected; source provenance SHA256 | National registry excludes many commercial premises |
 | National indexed backend | 5,354,716 identities loaded and indexed; 11,174 search matches for warehouse; SQLite quick_check OK; 4.56 GB database; Actions run 39813812469 | An expiring Actions artifact, not running in a durable authenticated production host |
 | Overture pilot | 101,979 place observations across Halifax, Cleveland, Dublin, Singapore; 99,251 categorized in 1,364 categories; database integrity passed | Small sample areas, unverified property identity, no global census |
@@ -66,5 +66,8 @@ The public Pages workbench supports only scenario and policy-review preparation.
 
 - Issue #3: universal facility identity and production-grade registry.
 - Issue #4: verified catastrophe/incident and outcome evidence.
+- Issue #39: durable authenticated 5.35-million-identity facility search hosting.
+- Issue #40: actual property/BI/utility/parametric contract verification.
+- Issue #41: FDA drug-site country quality (10,068 source addresses, 0 structured country).
 
 **This file is the authoritative current backlog. Earlier development-stage notes are historical and must not overrule live source-validation results.**
