@@ -59,6 +59,25 @@ def audit():
         report['published_registry_label']=info[:650]
         page.screenshot(path=str(TARGET/'public-registry.png'),full_page=False)
         report['checks']['public_source_registry']='passed'
+        # Full deployed navigation check: CI passing on only the landing page is insufficient.
+        # Preserve exact page-level results for the published preview, including non-insurance tabs.
+        public_pages=('workbench','insurance','underwriting','map','universal',
+                      'registry','facilities','cases','evidence','disclosures','sources',
+                      'identity','feeds','quality','overview','methodology')
+        for name in public_pages:
+            nav=page.locator('.nav-item[data-page="'+name+'"]')
+            assert nav.count()==1,'Missing public navigation item: '+name
+            nav.click()
+            expect(nav).to_have_class('nav-item active',timeout=15000)
+            expect(page.locator('#view-root .loading-card')).to_have_count(0,timeout=20000)
+            expect(page.locator('#view-root')).not_to_be_empty(timeout=15000)
+            content=page.locator('#view-root').inner_text()
+            assert len(content.strip())>=30,'Blank published page '+name
+            assert 'Cannot read properties of undefined' not in content
+            report['checks']['page_'+name]='passed'
+            report.setdefault('page_content_characters',{})[name]=len(content.strip())
+        page.locator('.nav-item[data-page="workbench"]').click()
+        page.screenshot(path=str(TARGET/'navigation-check-desktop.png'),full_page=False)
         context.close()
         mobile=browser.new_context(viewport={'width':390,'height':844},device_scale_factor=1,
                                    is_mobile=True,has_touch=True)
