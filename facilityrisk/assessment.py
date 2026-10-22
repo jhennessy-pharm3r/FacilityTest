@@ -57,6 +57,7 @@ def build_assessment(conn,facility_id):
     loc=detail['location']
     point_verified=bool(loc and loc.get('review_valid_for_current_coordinates'))
     profile=detail['profile']
+    source_evidence_total=one(conn,'SELECT COUNT(*) AS n FROM evidence WHERE facility_id=?',(facility_id,))['n']
     available_date_count=sum(bool(r['availability_date']) for r in source_evidence)
     pending_crosswalks=sum(x['decision']=='pending' for x in detail['candidates'])
     has_fei=bool(facility['fei'])
@@ -109,7 +110,9 @@ def build_assessment(conn,facility_id):
       'sections':sections,
       'hazards':regional_hazards,
       'evidence':source_evidence,
-      'evidence_total':one(conn,'SELECT COUNT(*) AS n FROM evidence WHERE facility_id=?',(facility_id,))['n'],
+      'evidence_total':source_evidence_total,
+      'evidence_displayed':len(source_evidence),
+      'evidence_export_limited':len(source_evidence)<source_evidence_total,
       'regulatory_observations':observations,
       'nearby_events_review_queue':nearby,
       'documented_events':events,
@@ -168,6 +171,9 @@ a{color:#245c61}section{break-inside:avoid}ul{line-height:1.65}
 '<div class="columns">'+sections+'</div>'+
 '<h2>Physical hazard screening</h2><table><tr><th>Peril</th><th>Status</th><th>Description</th><th>Reference</th></tr>'+hazards+'</table>'+
 '<h2>Source-linked findings ('+e(report['evidence_total'])+')</h2>'+
+('<p class="muted">Only '+e(report['evidence_displayed'])+' of '+e(report['evidence_total'])+
+' findings appear in this report preview. Export the complete evidence table for full review.</p>'
+ if report['evidence_export_limited'] else '')+
 '<table><tr><th>Source</th><th>Raw date</th><th>Finding</th><th>Evidence</th></tr>'+evidence+'</table>'+
 '<p>Unverified regulatory observations: '+e(len(report['regulatory_observations']))+
 '. Nearby-event candidates are excluded from confirmed site evidence.</p>'+
