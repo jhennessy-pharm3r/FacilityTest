@@ -41,9 +41,9 @@ Status: source adapters tested with offline fixtures; **no live external API que
 - Scheduled public-source connectivity checks do not transmit client facility information or ingest the private database. Actual live ingest must run on a restricted environment and follow source/schema checks.
 
 
-## FDA pharmaceutical/source identity blocker, verified October 21, 2026
+## FDA pharmaceutical/source identity issue (resolved October 22, 2026)
 
-The FDA DECRS home page advertises an annual-registration ZIP, but the published `https://www.accessdata.fda.gov/cder/drls_reg.zip` returned **HTTP 404** during multiple GitHub-hosted refreshes. The catalog correctly marks `fda_drug: unavailable`, does not mislabel FDA NDC labelers as manufacturing sites, and preserves a prior good drug snapshot if one becomes available. The `--drug-zip` offline import is supported if an official ZIP can be lawfully downloaded manually. FDA OII's separate FEI API requires issued credentials and supports **per-FEI** firm verification, not global facility enumeration; the new opt-in connector archives observations as unverified. Obtaining a current permitted DECRS download or another official complete register remains a hard dependency to complete the pharmaceutical universe.
+The official FDA DECRS ZIP was successfully downloaded and parsed in the October 22, 2026 GitHub registry workflow, with 10,422 source records and 10,068 drug source identities. The earlier HTTP 404 was resolved through the official host's browser-compatible ZIP download path. Source identities are not independently verified physical sites. Current refresh, operation validity and site address verification remain open quality gates. FDA OII's separate FEI API requires issued credentials and supports per-FEI verification, not comprehensive global enumeration.
 
 
 ## v0.6 evidence-first delivery underway
@@ -61,3 +61,8 @@ The public GitHub Pages build cannot perform private source queries or create pe
 Property-level hazard overlays now store the **exact reviewed latitude, longitude and independent review timestamp** from the source lookup. A facility relocation, coordinate correction or a subsequent property review makes all earlier hazard overlays `stale_location_review` until the connector is explicitly rerun against the current verified point. The source's original classification is preserved as `original_status` for audit but never used as a current-site risk classification. Existing SQLite hazard rows cannot be retrospectively associated with an approved point: the additive migration leaves their snapshot fields NULL and marks them stale. Global QA distinguishes total historical screenings and current screenings, and the printable underwriting assessment downgrades stale-only hazard coverage to `unassessed`.
 
 A FEMA response is additionally pinned to the site coordinates and review version used **when the request began**. If the site moves or is reviewed again while the remote call is in flight, the response is rejected; it cannot become a current property assessment. Missing or stale hazard data is not evidence of low flood/fire/water risk.
+
+
+## v0.7 all-industry expansion
+
+Implementation in `docs/UNIVERSAL_FACILITIES.md` adds a private cross-industry source identity registry, FTS-backed search and pagination, all-sector CSV/GeoJSONSeq import, and unverified insurance coverage taxonomy including parametric and BI. No EPA FRS nationwide or Overture bulk feed has been imported or validated by this change. Remaining P0 requirements are production data import, universal frontend integration, site matching QA, and geographic/insurance loss validation.
