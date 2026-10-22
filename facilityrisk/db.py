@@ -163,6 +163,15 @@ def quality_report(conn: sqlite3.Connection) -> dict:
         AND (l.reviewed_latitude IS NULL OR l.reviewed_longitude IS NULL
              OR f.latitude IS NULL OR f.longitude IS NULL
              OR l.reviewed_latitude<>f.latitude OR l.reviewed_longitude<>f.longitude)''')
+    total_hazards=scalar(conn,'SELECT COUNT(*) FROM hazard_assessments')
+    current_hazards=scalar(conn,'''SELECT COUNT(*) FROM hazard_assessments h
+      JOIN facilities f ON f.id=h.facility_id
+      JOIN location_reviews l ON l.facility_id=f.id
+      WHERE l.precision IN ('site_verified','property_polygon')
+        AND h.reviewed_latitude=f.latitude AND h.reviewed_longitude=f.longitude
+        AND l.reviewed_latitude=f.latitude AND l.reviewed_longitude=f.longitude
+        AND h.location_reviewed_at=l.verified_at''')
+    stale_hazards=total_hazards-current_hazards
     duplicates = items(conn, 'SELECT fei,COUNT(*) AS n FROM facilities WHERE fei IS NOT NULL GROUP BY fei HAVING n>1')
     for r in duplicates:
         failures.append(f"Duplicated FEI: {r['fei']}")
@@ -178,6 +187,8 @@ def quality_report(conn: sqlite3.Connection) -> dict:
                 legacy_attribution_reasons=unsafe['by_reason'],
                 legacy_evidence_quarantined=quarantined,
                 stale_or_legacy_coordinate_reviews=stale_site_reviews,
+                current_hazard_screenings=current_hazards,
+                stale_or_legacy_hazard_screenings=stale_hazards,
                 external_registry_entities=external_entries,
                 external_source_imports=import_sources,
                 research_sites_without_evidence=tracked_without_evidence,

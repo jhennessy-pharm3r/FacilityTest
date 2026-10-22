@@ -94,6 +94,7 @@ def fetch_fema(conn,facility_id,session=None):
     if not is_reviewed_site_coordinate(site,loc):
         raise ValueError('FEMA screening blocked: site coordinates have not been manually verified for the current point')
     lat,lon=site['latitude'],site['longitude']
+    location_review_at=loc['verified_at']
     if lat is None or lon is None:raise ValueError('Missing property coordinates')
     # FEMA NFHL only for US sites and territories; international sites not eligible.
     country=(site['country'] or '').lower()
@@ -111,7 +112,8 @@ def fetch_fema(conn,facility_id,session=None):
     status,desc,zone=assess_fema_payload(payload)
     store_hazard(conn,facility_id,'Flood zone',status,'FEMA NFHL',desc,url,zone,
                  'reviewed_site_coordinate','',
-                 'NFHL zone is regulatory mapping, not building-level inundation probability; verify effective vintage and survey.')
+                 'NFHL zone is regulatory mapping, not building-level inundation probability; verify effective vintage and survey.',
+                 expected_latitude=lat,expected_longitude=lon,expected_reviewed_at=location_review_at)
     return {'facility_id':facility_id,'status':status,'zone':zone,'request_url':url}
 
 

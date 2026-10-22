@@ -267,3 +267,93 @@ def test_preexisting_coordinate_review_is_untrusted_until_rereview(db):
     review_location(db,fid,'site_verified','https://example.org/current-property',
                     'New reviewer','Revalidated precise coordinate and property record')
     assert intelligence_quality(db)['verified_site_locations']==1
+
+
+def test_hazard_screening_stales_after_site_point_changes_even_if_rereviewed(db):
+    from facilityrisk.intelligence import store_hazard
+    from facilityrisk.assessment import build_assessment
+    from facilityrisk.db import quality_report
+    fid='site-baxter-north-cove'
+    with pytest.raises(ValueError,match='requires reviewed coordinates'):
+        store_hazard(db,fid,'Flood zone','mapped_sfha','FEMA NFHL',
+                     'Area intersects mapped SFHA','https://www.fema.gov/',zone='AE')
+    review_location(db,fid,'site_verified','https://www.fema.gov/','Site Reviewer',
+                    'Independently checked building footprint')
+    saved=store_hazard(db,fid,'Flood zone','mapped_sfha','FEMA NFHL',
+                       'Regulatory flood map intersection','https://www.fema.gov/',zone='AE')
+    assert saved['reviewed_coordinate_snapshot']
+    current=get_intelligence(db,fid)['hazard_checks'][0]
+    assert current['valid_for_current_site_point'] is True
+    assert current['status']=='mapped_sfha'
+    assert intelligence_quality(db)['current_hazard_screenings']==1
+    db.execute('UPDATE facilities SET latitude=35.95 WHERE id=?',(fid,))
+    db.commit()
+    stale=get_intelligence(db,fid)['hazard_checks'][0]
+    assert stale['valid_for_current_site_point'] is False
+    assert stale['status']=='stale_location_review'
+    assert stale['original_status']=='mapped_sfha'
+    report=build_assessment(db,fid)
+    assert report['coverage']['natural_hazards']['status']=='unassessed'
+    assert '1 stale or legacy' in report['coverage']['natural_hazards']['reason']
+    assert any(x.startswith('Refresh or explicitly retire hazard overlays') for x in report['recommended_actions'])
+    assert intelligence_quality(db)['current_hazard_screenings']==0
+    review_location(db,fid,'site_verified','https://example.org/new-building-point',
+                    'Site Reviewer','Independently checked updated building footprint')
+    assert get_intelligence(db,fid)['hazard_checks'][0]['status']=='stale_location_review'
+    store_hazard(db,fid,'Flood zone','not_mapped','FEMA NFHL',
+                 'Updated point has no intersected polygon; not safe',
+                 'https://www.fema.gov/')
+    reassessed=get_intelligence(db,fid)['hazard_checks'][0]
+    assert reassessed['valid_for_current_site_point'] is True
+    assert reassessed['status']=='not_mapped'
+    assert reassessed['reviewed_latitude']==35.95
+    assert intelligence_quality(db)['current_hazard_screenings']==1
+
+
+def test_legacy_hazard_screenings_migrate_without_fake_coordinate_review(db):
+    from facilityrisk.intelligence import initialize_intelligence
+    fid='site-baxter-north-cove'
+    review_location(db,fid,'site_verified','https://www.fema.gov/','Reviewer',
+                    'Reviewed real property point')
+    db.execute('DROP TABLE hazard_assessments')
+    db.execute("""CREATE TABLE hazard_assessments (
+      id TEXT PRIMARY KEY, facility_id TEXT NOT NULL REFERENCES facilities(id),
+      peril TEXT NOT NULL, status TEXT NOT NULL, source TEXT NOT NULL,source_url TEXT,
+      hazard_zone TEXT,description TEXT,precision TEXT,effective_date TEXT,
+      retrieved_at TEXT NOT NULL,limitations TEXT,
+      UNIQUE(facility_id,peril,source))""")
+    db.execute("""INSERT INTO hazard_assessments
+      (id,facility_id,peril,status,source,retrieved_at)
+      VALUES('legacy-hazard',?,'Flood zone','mapped_sfha','FEMA NFHL','2025-01-01')""",
+      (fid,))
+    db.commit()
+    initialize_intelligence(db)
+    row=db.execute("SELECT reviewed_latitude,reviewed_longitude,location_reviewed_at FROM hazard_assessments").fetchone()
+    assert row['reviewed_latitude'] is None
+    assert row['reviewed_longitude'] is None
+    assert row['location_reviewed_at'] is None
+    hazard=get_intelligence(db,fid)['hazard_checks'][0]
+    assert hazard['status']=='stale_location_review'
+    assert hazard['original_status']=='mapped_sfha'
+    assert intelligence_quality(db)['hazard_screenings']==1
+    assert intelligence_quality(db)['current_hazard_screenings']==0
+
+
+def test_revised_property_during_inflight_hazard_fetch_cannot_attach_old_result(db):
+    from facilityrisk.intelligence import store_hazard
+    fid='site-pfizer-rocky-mount'
+    review_location(db,fid,'site_verified','https://example.org/site-one',
+                    'Reviewer','Original property coordinates examined')
+    loc=db.execute('SELECT * FROM location_reviews WHERE facility_id=?',(fid,)).fetchone()
+    point=db.execute('SELECT * FROM facilities WHERE id=?',(fid,)).fetchone()
+    db.execute('UPDATE facilities SET latitude=37.0 WHERE id=?',(fid,))
+    db.commit()
+    review_location(db,fid,'site_verified','https://example.org/site-two',
+                    'Reviewer','New position has been independently corroborated')
+    with pytest.raises(ValueError,match='changed during hazard source request'):
+        store_hazard(db,fid,'Flood zone','mapped_sfha','FEMA NFHL',
+                     'Old request location, no current relevance',
+                     'https://www.fema.gov/',expected_latitude=point['latitude'],
+                     expected_longitude=point['longitude'],
+                     expected_reviewed_at=loc['verified_at'])
+    assert db.execute('SELECT COUNT(*) FROM hazard_assessments').fetchone()[0]==0

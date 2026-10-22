@@ -54,3 +54,10 @@ The FDA DECRS home page advertises an annual-registration ZIP, but the published
 - **Still requiring substantial external research:** review 25 physical locations and dated evidence, establish legitimate comparator controls, validate business interruption/loss outcomes and insurer exposure denominator, audit old pre-hardening data, and implement production insurer SSO and two-person authorization.
 
 The public GitHub Pages build cannot perform private source queries or create persistent site reviews. The public registry is a discovery layer, not the completed underwriting analysis.
+
+
+## v0.6 physical hazard coordinate revision gate (October 2026)
+
+Property-level hazard overlays now store the **exact reviewed latitude, longitude and independent review timestamp** from the source lookup. A facility relocation, coordinate correction or a subsequent property review makes all earlier hazard overlays `stale_location_review` until the connector is explicitly rerun against the current verified point. The source's original classification is preserved as `original_status` for audit but never used as a current-site risk classification. Existing SQLite hazard rows cannot be retrospectively associated with an approved point: the additive migration leaves their snapshot fields NULL and marks them stale. Global QA distinguishes total historical screenings and current screenings, and the printable underwriting assessment downgrades stale-only hazard coverage to `unassessed`.
+
+A FEMA response is additionally pinned to the site coordinates and review version used **when the request began**. If the site moves or is reviewed again while the remote call is in flight, the response is rejected; it cannot become a current property assessment. Missing or stale hazard data is not evidence of low flood/fire/water risk.

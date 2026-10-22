@@ -54,6 +54,8 @@ def build_assessment(conn,facility_id):
     nearby=items(conn,'''SELECT source_key,status,COUNT(*) AS records FROM external_event_candidates
        WHERE facility_id=? GROUP BY source_key,status ORDER BY source_key,status''',(facility_id,))
     regional_hazards=detail['hazard_checks']
+    current_hazards=[h for h in regional_hazards if h.get('valid_for_current_site_point')]
+    stale_hazards=[h for h in regional_hazards if not h.get('valid_for_current_site_point')]
     loc=detail['location']
     point_verified=bool(loc and loc.get('review_valid_for_current_coordinates'))
     profile=detail['profile']
@@ -72,8 +74,10 @@ def build_assessment(conn,facility_id):
        'environmental':{'status':'source_observations' if any('environment' in
                         (e['risk_domain'] or '').lower() for e in source_evidence) else 'unassessed',
           'reason':'Source records may include regulatory observations; independently assess each program and date'},
-       'natural_hazards':{'status':'screened' if regional_hazards and point_verified else 'unassessed',
-          'reason':'Mapped exposure is not measured loss. Screening must be refreshed after coordinate changes'},
+       'natural_hazards':{'status':'screened' if current_hazards and point_verified else 'unassessed',
+          'reason':str(len(current_hazards))+' current property-point screenings; '+
+                  str(len(stale_hazards))+' stale or legacy screenings require refresh. '+
+                  'Mapped exposure is not insured property damage'},
        'operations_and_bi':{'status':'research_profile' if profile else 'unassessed',
           'reason':'Operations, protection and downtime exposures are not insured values unless documented'},
        'historical_outcomes':{'status':'retrospective_events' if events else 'unassessed',
@@ -94,6 +98,7 @@ def build_assessment(conn,facility_id):
     if pending_crosswalks:action_items.append('Resolve pending cross-agency site matching candidates')
     if observations:action_items.append('Review regulatory observations with unconfirmed FEI-to-site attribution')
     if not profile:action_items.append('Collect construction, fire protection, water, power, BI values and recovery plans')
+    if stale_hazards:action_items.append('Refresh or explicitly retire hazard overlays tied to an earlier or unreviewed site point')
     if not events:action_items.append('Research documented disruptions and comparable non-event periods')
     if available_date_count<source_evidence_total:action_items.append('Verify source publication dates before any historical prediction tests')
     return {
@@ -125,6 +130,7 @@ def build_assessment(conn,facility_id):
           'Missing information is unassessed and must not be recorded as low exposure.',
           'Regulatory registration or compliance classification is not property loss.',
           'Nearby events and modeled regional hazards do not prove facility impact.',
+          'Stale or legacy hazard screenings are historical context, never the current property classification.',
           'Historical and SEC facts are retrospective until pre-event public availability is validated.',
           'SEC filing values and recovered amounts must not be added across repeated disclosures.'
       ]
