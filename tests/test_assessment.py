@@ -96,10 +96,10 @@ def test_assessment_api_is_available_only_on_private_backend(conn):
 def test_report_explicitly_discloses_truncation_and_correct_full_date_denominator(conn):
     for i in range(300):
         conn.execute("""INSERT INTO evidence
-          (id,facility_id,source,record_type,finding,availability_date,origin,last_imported)
-          VALUES(?,?,?,?,?,?,?,?)""",
+          (id,facility_id,source,record_type,finding,availability_date,risk_domain,origin,last_imported)
+          VALUES(?,?,?,?,?,?,?,?,?)""",
           (f'bulk-{i}','site-a','FDA','Regulatory item','A source-level observation',
-           '2025-01-01' if i<60 else None,'fixture','2026-10-21'))
+           '2025-01-01' if i<60 else None,'Manufacturing regulation','fixture','2026-10-21'))
     conn.commit()
     report=build_assessment(conn,'site-a')
     assert report['evidence_total']==301
