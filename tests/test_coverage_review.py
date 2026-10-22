@@ -55,7 +55,7 @@ def test_invalid_input_and_no_hazard_inference(db):
         create_policy(db,'policy-site',{'insurer':'x','policy_reference':'y',
            'start_date':'2027-01-01','end_date':'2026-01-01',
            'location_schedule_reference':'ref'},'reviewerA')
-    with pytest.raises(ValueError,match='Numeric'):
+    with pytest.raises(ValueError,match='outside accepted bounds'):
         save_term(db,policy,{'coverage_id':'flood','limits':'NaN'},'reviewerA')
     with pytest.raises(ValueError,match='Unknown insurance'):
         save_term(db,policy,{'coverage_id':'not-real'},'reviewerA')
