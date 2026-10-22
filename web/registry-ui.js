@@ -114,8 +114,8 @@
   const count=meta.summary?.distinct_source_entities??meta.rows?.length??0;
   const d=meta.generated_at?new Date(meta.generated_at).toLocaleDateString('en-US'):'Not yet populated';
   const drug=meta.summary?.field_coverage_by_sector?.Pharmaceutical;
-  const missing=drug?` · Pharma: ${fmt(drug.with_reported_address)}/${fmt(drug.source_identities)} with source-reported address; ${fmt(drug.with_structured_country)} with structured country`:'';
-  el.textContent=`${fmt(count)} separate regulatory source identities · ${fmt(meta.summary?.countries)} country codes observed · FDA catalog: ${d} · ${sourceText(meta)}${missing}. Missing structured country must not be mistaken for U.S. location; registration is not a verified plant or risk score.`;
+  const missing=drug?` · Pharma: ${fmt(drug.with_reported_address)}/${fmt(drug.source_identities)} with reported address; ${fmt(drug.with_structured_country)} with a recognized country (${fmt(drug.with_source_country_field||0)} official country fields, ${fmt(drug.with_explicit_address_country||0)} explicit country suffixes)`:'';
+  el.textContent=`${fmt(count)} separate regulatory source identities · ${fmt(meta.summary?.countries)} country codes observed · FDA catalog: ${d} · ${sourceText(meta)}${missing}. Missing or ambiguous country must never default to U.S. location; registration is not a verified plant or risk score.`;
  }
  function sourceLink(r){
    if(r.source==='Ireland EPA LEAP' && /^[A-Z][A-Z0-9-]{2,40}$/.test(r.registration_number||''))return 'https://leap.epa.ie/licence-profile/'+encodeURIComponent(r.registration_number);
