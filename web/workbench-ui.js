@@ -51,7 +51,7 @@ const STATUS=[
  ['excluded','Reported excluded / not purchased']
 ];
 let state={
-  facility:'',industry:'',location:'',reference:'',days:'',daily:'',perils:new Set(),deps:new Set(),coverage:{}
+  facility:'',industry:'',location:'',reference:'',days:'',daily:'',perils:new Set(),deps:new Set(),coverage:{},sourceIdentity:null
 };
 let wired=false;
 const esc=v=>String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -84,6 +84,7 @@ function record(){
     generated_at:new Date().toISOString(),
     facility:{name:state.facility.trim()||'Unspecified facility',industry:state.industry.trim()||'Unspecified',location:state.location.trim()||'Not provided'},
     scope:'User-entered scenarios; no facility coordinate, hazard map, policy or claim verified',
+    source_observation:state.sourceIdentity,
     scenarios:selected.map(x=>({id:x.id,name:x.label,source:'analyst_selected_not_observed'})),
     financial_illustration:values?{downtime_days:values.days,contribution_margin_at_risk_per_day_usd:values.daily,
       gross_downtime_illustration_usd:values.grossScenarioValue,
@@ -233,10 +234,29 @@ function mount(){
    if(e.target.id==='wb-export')download();
    if(e.target.id==='wb-copy'){try{await navigator.clipboard.writeText(brief());note('Assessment review brief copied to clipboard.');}catch{note('Clipboard permission unavailable; use Export assessment JSON.');}}
    if(e.target.id==='wb-reset'){
-     state={facility:'',industry:'',location:'',reference:'',days:'',daily:'',perils:new Set(),deps:new Set(),coverage:{}};
+     state={facility:'',industry:'',location:'',reference:'',days:'',daily:'',perils:new Set(),deps:new Set(),coverage:{},sourceIdentity:null};
      root.innerHTML=render();note('Worksheet cleared from this browser session.');
    }
  });
 }
-window.WorkbenchUI={render,mount,assessment:()=>record()};
+function beginFromSource(item){
+  if(!item||typeof item!=='object')return;
+  // Starting on a new source identity clears earlier perils and reported
+  // coverages: exposure/insurance assumptions must NEVER migrate to another site.
+  const s=item.source_identities&&item.source_identities.length?item.source_identities[0]:{};
+  state={
+    facility:String(item.name||'').slice(0,200),
+    industry:String(item.sector||item.industry||'').slice(0,160),
+    location:[item.address,item.city,item.state,item.country].filter(Boolean).join(', ').slice(0,250),
+    reference:String(item.source_url||s.source_url||'').slice(0,1200),
+    days:'',daily:'',perils:new Set(),deps:new Set(),coverage:{},
+    sourceIdentity:{
+      source:String(item.source||s.source_key||'Unspecified source').slice(0,160),
+      source_id:String(item.registration_number||item.fei||s.source_identifier||item.id||'').slice(0,200),
+      source_url:String(item.source_url||s.source_url||'').slice(0,500),
+      physical_property_verified:false
+    }
+  };
+}
+window.WorkbenchUI={render,mount,assessment:()=>record(),beginFromSource};
 })();
