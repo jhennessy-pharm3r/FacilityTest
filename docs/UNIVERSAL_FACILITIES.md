@@ -71,3 +71,22 @@ python scripts/import_universal.py /private/places.geojsonseq --format geojsonse
 4. Move the public preview discovery tab to a hosted scalable service with access control; GitHub Pages remains static and does not execute Python.
 5. Batch-screen verified location candidates against catastrophe layers, and validate utility dependencies and event outcomes.
 6. Add client-specific policy documents and supervised coverage reviews only after tenant-scoped permissions and production security.
+
+
+## Official nationwide EPA FRS export pipeline
+
+GitHub Actions `EPA FRS national source staging` retrieves the EPA-published [national FRS single-file ZIP](https://www.epa.gov/frs/epa-frs-facilities-state-single-file-csv-download). It checks the upstream `REGISTRY_ID` and `PRIMARY_NAME` schema, independently hashes the downloaded ZIP and staged compressed CSV, and rejects suspiciously small imports. Successful workflow runs upload a **source-only artifact** `epa-frs-national-source-import` with `epa-frs-national.csv.gz` and `epa-frs-national-manifest.json`. This is a *downloadable source cohort*, not an internet-hosted facility database. No client information is uploaded.
+
+After obtaining the GitHub Actions artifact through an authorized channel, load the complete file locally or on an authenticated backend:
+
+```sh
+python scripts/import_universal.py data/epa-frs-national.csv.gz --format csv \
+  --source EPA_FRS \
+  --source-url https://www.epa.gov/frs/epa-frs-facilities-state-single-file-csv-download \
+  --field source_identifier=source_identifier --field name=name \
+  --field company=company --field address=address --field city=city \
+  --field state=state --field country=country --field industry=industry \
+  --field latitude=latitude --field longitude=longitude
+```
+
+Inspect the manifest first. If a workflow run fails or a source ZIP changes schema, **do not publish or score a partial cohort**. All records still remain unverified regulatory source identities pending site corroboration. State/city/country values are source-reported; missing country is not inferred to be US. This exporter omits contact persons, email addresses and telephone fields.
