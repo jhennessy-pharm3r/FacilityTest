@@ -17,6 +17,7 @@ from .source_extensions import catalog as extension_catalog, review_event_candid
 from .fei_api import lookup_fei
 from .assessment import build_assessment, render_assessment_html, iter_evidence_csv
 from .research import start_research,research_history,run_source,SourceNotEligible
+from .insurance import taxonomy as insurance_taxonomy, facility_screening as insurance_screen
 from .universal_registry import (search as universal_search, detail as universal_detail,
     statistics as universal_stats, track_for_research as universal_track)
 from .site_workspace import (SOURCES as REGULATOR_SOURCES, intake_site, search_external_registry,
@@ -46,6 +47,18 @@ def index():
 @app.get('/api/health')
 def health(c=Depends(conn_dependency)):
     return {'status':'ok','version':'0.6.0'}
+
+
+@app.get('/api/insurance/coverage-types')
+def insurance_coverage_types():
+    return {'coverages':insurance_taxonomy(),
+            'disclaimer':'Reference coverages; no policy attachment or risk price is inferred'}
+
+
+@app.get('/api/insurance/screen')
+def insurance_screening(hazard:str='',utility_dependent:bool=False):
+    hazards=[x.strip() for x in hazard.split(',') if x.strip()][:20]
+    return insurance_screen(hazards=hazards,utility_dependency=utility_dependent)
 
 
 @app.get('/api/universal-facilities/stats')
