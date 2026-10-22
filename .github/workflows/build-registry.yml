@@ -23,8 +23,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install bounded streaming JSON parser
-        run: python -m pip install 'ijson>=3.3,<4'
+      - name: Install declared catalog dependencies and bounded streaming parser
+        run: python -m pip install -r requirements.txt 'ijson>=3.3,<4'
       - name: Refresh all available FDA registration/listing partitions
         run: python scripts/build_catalog.py --output web/registry/catalog.json
       - name: Refresh official Ireland EPA licence profiles
@@ -39,6 +39,9 @@ jobs:
           assert d['sources']['fda_device']['status']=='imported'
           print('Public registered source entities:',len(d['rows']))
           print('Drug coverage:',d['sources'].get('fda_drug'))
+          pharma=d['summary']['field_coverage_by_sector'].get('Pharmaceutical',{})
+          assert pharma.get('with_source_country_field',0)+pharma.get('with_explicit_address_country',0) <= pharma.get('with_structured_country',0)
+          print('Drug ISO country sources:',{k:pharma.get(k,0) for k in ('with_structured_country','with_source_country_field','with_explicit_address_country')})
           ireland=validate_catalog(json.load(open('web/registry/ireland-leap.json',encoding='utf-8')))
           assert len(ireland['rows']) >= 1000,'Unexpectedly small Ireland EPA catalog'
           assert ireland['sources']['ireland_leap']['status']=='imported'
