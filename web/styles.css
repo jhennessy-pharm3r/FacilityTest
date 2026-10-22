@@ -79,3 +79,88 @@
 .registry-manual-grid label{display:grid;gap:7px;font-size:12px;color:#48645f}
 .registry-manual .registry-caveat{padding:12px 0 6px}
 @media(max-width:750px){.registry-overview-action,.registry-lead{flex-direction:column;align-items:flex-start}.registry-detail-grid,.registry-manual-grid{grid-template-columns:1fr}.registry-record-head{align-items:flex-start;flex-direction:column}}
+
+/* v0.8 insurance-first facility workbench — muted teal & terracotta */
+.sidebar{overflow-y:auto;scrollbar-width:thin}
+.nav-item{padding-block:10px}
+.side-label-spaced{margin-top:22px}
+button,textarea{font-family:inherit}
+textarea:focus-visible{outline:2px solid var(--terra);outline-offset:3px}
+.wb-page{max-width:1460px;margin:0 auto;display:grid;gap:20px}
+.wb-hero{position:relative;overflow:hidden;border-radius:16px;padding:34px 38px;background:linear-gradient(115deg,#183f42 0%,#285d5b 70%,#3c7269 100%);color:#fff;display:grid;grid-template-columns:minmax(0,1fr) 160px;gap:28px}
+.wb-hero:after{content:'';position:absolute;border:1px solid rgba(255,255,255,.15);width:450px;height:450px;border-radius:50%;right:-205px;top:-185px;pointer-events:none}
+.wb-eyebrow{display:block;font-size:11px;font-weight:800;letter-spacing:1.8px;color:#c8e5db}
+.wb-hero h1{font-size:clamp(25px,2.5vw,37px);letter-spacing:-1px;max-width:760px;margin:12px 0 13px;line-height:1.14;font-weight:750}
+.wb-hero p{font-size:14px;line-height:1.68;color:#e4f2ec;max-width:780px;margin:0}
+.wb-hero-links{margin-top:22px;display:flex;gap:11px;flex-wrap:wrap}
+.wb-hero-links .btn{min-height:38px;border-color:rgba(255,255,255,.4);color:#fff;background:rgba(255,255,255,.09)}
+.wb-hero-links .btn.primary{background:#d08b68;color:#fff;border:1px solid #d08b68}
+.wb-hero-mark{display:grid;grid-template-columns:34px 1fr;gap:11px 9px;align-content:center;position:relative;z-index:1}
+.wb-hero-mark span{display:grid;place-items:center;width:32px;height:32px;background:rgba(234,246,240,.13);border-radius:50%;border:1px solid rgba(234,246,240,.27);font-weight:850;font-size:12px;color:#f7e6d4}
+.wb-hero-mark strong{font-size:12px;color:#d7e8df;align-self:center;letter-spacing:.5px}
+.wb-disclaimer{font-size:13px;line-height:1.65;border:1px solid #e0d3c6;background:#faf5ef;color:#654b3b;border-left:4px solid #ba785c;padding:14px 20px;border-radius:11px}
+.wb-disclaimer strong{color:#704b39}
+.wb-layout{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(290px,1fr);gap:20px;align-items:start}
+.wb-left,.wb-right{display:grid;gap:20px;min-width:0}
+.wb-panel,.wb-summary-card,.wb-actions,.wb-coverage-section{overflow:visible}
+.wb-panel-head{display:flex;gap:13px;align-items:flex-start;padding:20px 23px 18px;border-bottom:1px solid #e8eeea}
+.wb-panel-head h2,.wb-actions h2{font-size:17px;letter-spacing:-.25px;margin:0;color:#244c4a}
+.wb-panel-head p,.wb-actions p{font-size:12px;color:#667e76;line-height:1.6;margin:5px 0 0}
+.wb-step{width:30px;height:30px;border-radius:9px;flex:0 0 auto;display:grid;place-items:center;background:#e4eee9;color:#2c6a64;font-weight:800;font-size:12px}
+.wb-step.accent{background:#fae9de;color:#ad674e}
+.wb-fields{padding:20px 22px 22px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.wb-fields label{display:flex;flex-direction:column;gap:8px;font-size:12px;font-weight:700;color:#3d625e}
+.wb-fields input,.wb-fields textarea{min-width:0;width:100%;border:1px solid #ccdcd4;border-radius:8px;background:#fff;padding:12px 13px;font-size:13px;color:#213e3b;line-height:1.45;outline-offset:1px}
+.wb-fields .wb-span{grid-column:1/-1}
+.wb-fields textarea{resize:vertical;min-height:68px}
+.wb-fields input::placeholder,.wb-fields textarea::placeholder{color:#9aa7a2;font-weight:400}
+.wb-check-grid{padding:16px 20px 21px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.wb-check{position:relative;display:flex;align-items:center;gap:8px;cursor:pointer;background:#fcfdfb;border:1px solid #dee9e3;border-radius:10px;padding:12px 13px;min-width:0;transition:background .15s,border-color .15s}
+.wb-check.active{border-color:#77aba0;background:#eef7f2}
+.wb-check:hover{border-color:#73a69c}
+.wb-check input{position:absolute;width:1px;height:1px;opacity:0}
+.wb-check:focus-within{outline:2px solid #bd7c60;outline-offset:2px}
+.wb-check-body{flex:1;min-width:0}
+.wb-check-body strong{display:block;font-weight:700;font-size:12px;color:#264d4a;line-height:1.5}
+.wb-check-body small{font-size:11px;line-height:1.4;display:block;color:#789087;margin-top:3px}
+.wb-check-mark{display:grid;place-items:center;width:24px;height:24px;flex:0 0 24px;border:1px solid #bfd8cf;border-radius:7px;background:#fff;color:#47857a;font-size:15px;font-weight:700}
+.wb-check.active .wb-check-mark{background:#3c8176;color:#fff;border-color:#3c8176}
+.wb-summary-card{position:sticky;top:18px}
+.wb-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;border-bottom:1px solid #e9efea}
+.wb-stats>div{padding:17px 10px 17px 19px;border-right:1px solid #e9efea;min-width:0}
+.wb-stats>div:last-child{border-right:0}
+.wb-stats span{display:block;color:#728880;font-size:10px;font-weight:700}
+.wb-stats strong{font-size:28px;font-weight:760;line-height:1.2;color:#23675e;display:block;margin:5px 0}
+.wb-stats small{font-size:10px;line-height:1.45;color:#7e958a}
+.wb-summary{padding:16px 21px 6px;font-size:12px;line-height:1.65;color:#58736a;margin:0}
+.wb-financial{margin:15px 20px;padding:18px;border-radius:11px;background:#e9f3ef;border:1px solid #d0e4dc}
+.wb-financial span{font-size:11px;color:#4e756a;font-weight:750;display:block}
+.wb-financial strong{font-size:25px;color:#285e58;display:block;letter-spacing:-.5px;margin:8px 0 4px}
+.wb-financial small{font-size:11px;line-height:1.45;color:#68867b}
+.wb-financial.wb-muted{background:#f5f8f6;border-color:#e1ebe5}
+.wb-financial.wb-muted strong{font-size:17px;color:#718781}
+.wb-microtitle{margin:18px 21px 7px;font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:#37645d;font-weight:800}
+.wb-questions{list-style:disc;padding:0 22px 22px 38px;margin:0;display:grid;gap:10px;line-height:1.6;color:#5b756d;font-size:12px}
+.wb-actions{padding:22px 23px}
+.wb-actions h2{margin-bottom:8px}
+.wb-export-buttons{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+.wb-export-buttons .btn{min-height:36px}
+.wb-reset{margin-left:auto}
+.wb-feedback{min-height:16px;color:#41695f;font-weight:600;font-size:12px;margin-top:12px!important}
+.wb-review-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;padding:22px}
+.wb-review-row{border:1px solid #dfebe5;border-radius:12px;padding:18px;background:#fcfdfc;display:flex;flex-direction:column;gap:10px;min-width:0}
+.wb-review-top{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
+.wb-category{display:block;font-size:10px;text-transform:uppercase;letter-spacing:1px;font-weight:800;color:#a16e53}
+.wb-review-row h3{font-size:15px;color:#244d49;margin:6px 0 3px}
+.wb-review-row p{font-size:12px;line-height:1.6;color:#59736b;margin:0}
+.wb-review-row p strong{color:#335e56}
+.wb-review-note{border-top:1px solid #e7ede9;padding-top:11px;margin-top:auto!important}
+.wb-user-status{min-width:210px}
+.wb-user-status label{display:block;font-size:10px;color:#718b80;margin-bottom:5px;font-weight:700}
+.wb-user-status select{width:100%;max-width:235px;border:1px solid #d2e2d8;background:#f9fcfa;border-radius:8px;padding:9px 8px;font-size:11px;color:#3d5f54}
+.wb-empty{padding:35px 25px;text-align:center;color:#728981;font-size:13px}
+.wb-bottom-note{font-size:12px;line-height:1.65;padding:16px 21px;color:#596f68;background:#ecf3ef;border:1px solid #dceae1;border-radius:11px}
+@media(max-width:1260px){.wb-layout{grid-template-columns:minmax(0,1fr)}.wb-summary-card{position:static}.wb-right{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
+@media(max-width:1050px){.wb-review-list{grid-template-columns:1fr}.wb-review-top{flex-wrap:wrap}.wb-right{grid-template-columns:1fr}}
+@media(max-width:760px){.wb-hero{grid-template-columns:1fr;padding:27px 22px}.wb-hero-mark{grid-template-columns:repeat(6,auto);justify-content:start}.wb-fields,.wb-check-grid,.wb-review-list{grid-template-columns:1fr}.wb-review-list{padding:12px}.wb-panel-head{padding:18px}.wb-fields{padding:17px}.wb-check-grid{padding:15px}.wb-user-status{min-width:0;width:100%}.wb-user-status select{max-width:none}.wb-stats>div{padding:13px 8px}.wb-stats strong{font-size:22px}.wb-review-top{gap:9px}}
+@media(prefers-reduced-motion:reduce){.wb-check{transition:none}}
