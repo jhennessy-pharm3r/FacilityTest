@@ -89,7 +89,7 @@ def build_assessment(conn,facility_id):
           'reason':'Operations, protection and downtime exposures are not insured values unless documented'},
        'historical_outcomes':{'status':'retrospective_events' if events else 'unassessed',
           'reason':'Known cases are retrospective, not predictive validation; absence of cases is not absence of losses'},
-       'insurance_terms':{'status':'document_reviewed_terms' if policy_snapshot['verified_current_coverage_count'] else 'unassessed',
+       'insurance_terms':{'status':'document_reviewed_terms' if policy_snapshot['document_reviewed_current_terms_count'] else 'unassessed',
           'reason':str(policy_snapshot['verified_current_coverage_count'])+' documented current-term decisions; no automatic assertion of payout'},
        'pre_event_visibility':{'status':'partially_documented' if available_date_count else 'unassessed',
           'reason':str(available_date_count)+' of '+str(source_evidence_total)+' evidence rows have separately verified public availability dates'}
