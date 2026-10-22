@@ -131,6 +131,14 @@ def add_security(app):
                      headers={'WWW-Authenticate':'Basic realm="Facility Risk Private"',
                               'Cache-Control':'no-store'})
         request.state.actor,request.state.role=context
+        if dual_review_enabled() and request.method in ('POST','PUT','PATCH','DELETE'):
+            role=request.state.role
+            if role not in ('researcher','reviewer','approver','admin'):
+                return JSONResponse(status_code=403,content={'detail':'Personal authorized write role required'},
+                                    headers={'Cache-Control':'no-store'})
+            if role=='approver' and not request.url.path.startswith('/api/review-approvals/'):
+                return JSONResponse(status_code=403,content={'detail':'Approval role cannot perform researcher writes'},
+                                    headers={'Cache-Control':'no-store'})
         response=await call_next(request)
         response.headers['X-Content-Type-Options']='nosniff'
         response.headers['X-Frame-Options']='DENY'
