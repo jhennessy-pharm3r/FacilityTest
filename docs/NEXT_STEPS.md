@@ -68,3 +68,7 @@ The public Pages workbench supports only scenario and policy-review preparation.
 - Issue #4: verified catastrophe/incident and outcome evidence.
 
 **This file is the authoritative current backlog. Earlier development-stage notes are historical and must not overrule live source-validation results.**
+
+## Policy-review implementation gate
+
+The private insurance policy metadata and coverage-term review module now supports independently authenticated reviewer/approver decisions, document SHA-256 references and versioned invalidation of earlier approval after coverage edits. The facility-level crosswalk connects **current, independently reviewed** hazard screenings to relevant **document-reviewed** terms only. It does not certify policy authenticity, coverage applicability, or claim payment. The public Pages version has no policy-storage access. Production deployment, multi-tenant security, client-provided contracts, real coverage review, national index hosting, geospatial production QA, and 25 independent facility case studies are still outstanding; do not claim otherwise.

@@ -18,6 +18,8 @@ from .fei_api import lookup_fei
 from .assessment import build_assessment, render_assessment_html, iter_evidence_csv
 from .research import start_research,research_history,run_source,SourceNotEligible
 from .insurance import taxonomy as insurance_taxonomy, facility_screening as insurance_screen
+from .coverage_review import (create_policy,save_term,propose_term_review,
+  list_reviews,decide_term_review,facility_policy_snapshot,compare_hazards_and_coverage)
 from .universal_registry import (search as universal_search, detail as universal_detail,
     statistics as universal_stats, track_for_research as universal_track)
 from .site_workspace import (SOURCES as REGULATOR_SOURCES, intake_site, search_external_registry,
@@ -59,6 +61,65 @@ def insurance_coverage_types():
 def insurance_screening(hazard:str='',utility_dependent:bool=False):
     hazards=[x.strip() for x in hazard.split(',') if x.strip()][:20]
     return insurance_screen(hazards=hazards,utility_dependency=utility_dependent)
+
+
+def _policy_write(request):
+    import os
+    if os.environ.get('FACILITY_RISK_ENABLE_WRITES')!='1' or not dual_review_enabled():
+        raise HTTPException(403,'Private policy modification requires independent-account mode')
+    try:require_review_role(request,'reviewer')
+    except PermissionError as exc:raise HTTPException(403,str(exc)) from exc
+
+
+@app.get('/api/facilities/{facility_id}/policies')
+def facility_policies(facility_id:str,c=Depends(conn_dependency)):
+    try:return facility_policy_snapshot(c,facility_id)
+    except ValueError as exc:raise HTTPException(404,str(exc)) from exc
+
+
+@app.get('/api/facilities/{facility_id}/coverage-crosswalk')
+def facility_coverage_crosswalk(facility_id:str,c=Depends(conn_dependency)):
+    try:return compare_hazards_and_coverage(c,facility_id)
+    except ValueError as exc:raise HTTPException(404,str(exc)) from exc
+
+
+@app.post('/api/facilities/{facility_id}/policies')
+async def policy_create(facility_id:str,request:Request,c=Depends(conn_dependency)):
+    _policy_write(request)
+    try:return create_policy(c,facility_id,await request.json(),request.state.actor)
+    except (ValueError,TypeError) as exc:raise HTTPException(422,str(exc)) from exc
+
+
+@app.post('/api/policies/{policy_id}/terms')
+async def policy_term_save(policy_id:str,request:Request,c=Depends(conn_dependency)):
+    _policy_write(request)
+    try:return save_term(c,policy_id,await request.json(),request.state.actor)
+    except (ValueError,TypeError) as exc:raise HTTPException(422,str(exc)) from exc
+
+
+@app.post('/api/policy-terms/{term_id}/propose-review')
+async def policy_term_propose(term_id:str,request:Request,c=Depends(conn_dependency)):
+    _policy_write(request)
+    try:return propose_term_review(c,term_id,await request.json(),request.state.actor)
+    except (ValueError,TypeError) as exc:raise HTTPException(422,str(exc)) from exc
+
+
+@app.get('/api/policy-reviews')
+def policy_review_queue(status:str='pending',facility_id:str='',c=Depends(conn_dependency)):
+    try:return list_reviews(c,status,facility_id)
+    except ValueError as exc:raise HTTPException(422,str(exc)) from exc
+
+
+@app.post('/api/policy-reviews/{review_id}/decide')
+async def policy_review_decision(review_id:str,request:Request,c=Depends(conn_dependency)):
+    import os
+    if os.environ.get('FACILITY_RISK_ENABLE_WRITES')!='1' or not dual_review_enabled():
+        raise HTTPException(403,'Independent policy approval is disabled')
+    try:require_review_role(request,'approver')
+    except PermissionError as exc:raise HTTPException(403,str(exc)) from exc
+    data=await request.json()
+    try:return decide_term_review(c,review_id,data.get('decision'),request.state.actor,data.get('note',''))
+    except (ValueError,TypeError,AttributeError) as exc:raise HTTPException(422,str(exc)) from exc
 
 
 @app.get('/api/universal-facilities/stats')
