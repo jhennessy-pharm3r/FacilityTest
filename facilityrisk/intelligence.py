@@ -5,6 +5,7 @@ engineering-quality site geocode. Review decisions are explicit and audited.
 """
 from __future__ import annotations
 import json
+from hashlib import sha256
 import uuid
 import sqlite3
 import math
@@ -18,7 +19,8 @@ CREATE TABLE IF NOT EXISTS identity_links (
  namespace TEXT NOT NULL, identifier TEXT NOT NULL, status TEXT NOT NULL
  CHECK(status IN ('observed','candidate','verified','rejected')),
  provenance_url TEXT, provenance_note TEXT, reviewer TEXT, reviewed_at TEXT,
- created_at TEXT NOT NULL, UNIQUE(facility_id,namespace,identifier)
+ created_at TEXT NOT NULL, site_fingerprint TEXT,
+ UNIQUE(facility_id,namespace,identifier)
 );
 CREATE INDEX IF NOT EXISTS idx_identity_links ON identity_links(namespace,identifier,status);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_identity_verified_global ON identity_links(namespace,identifier)
@@ -96,6 +98,11 @@ def initialize_intelligence(conn):
                        ('location_reviewed_at','TEXT')):
         if field not in known:
             conn.execute('ALTER TABLE hazard_assessments ADD COLUMN '+field+' '+kind)
+    # Legacy identity links contain no reviewed site revision. Never assume
+    # current names/addresses/geopoints match approvals from older versions.
+    identity_cols={r['name'] for r in conn.execute('PRAGMA table_info(identity_links)')}
+    if 'site_fingerprint' not in identity_cols:
+        conn.execute('ALTER TABLE identity_links ADD COLUMN site_fingerprint TEXT')
     # Analyst-provided FEI is "observed", not independently verified.
     for r in conn.execute("SELECT id,fei FROM facilities WHERE fei IS NOT NULL AND trim(fei)<>''"):
         conn.execute('''INSERT OR IGNORE INTO identity_links(id,facility_id,namespace,identifier,status,provenance_note,created_at)
@@ -123,6 +130,29 @@ def is_reviewed_site_coordinate(site, review):
     return (all(math.isfinite(v) for v in (lat,lon,checked_lat,checked_lon))
             and -90<=lat<=90 and -180<=lon<=180
             and lat==checked_lat and lon==checked_lon)
+
+
+def site_fingerprint(site):
+    """Fingerprint the operator, physical address, jurisdiction and site point.
+
+    A reference to a company at a different property is not a verified
+    cross-agency identity. Exact stored-value matching is intentionally
+    conservative; any revision requires a renewed source review.
+    """
+    fields=('name','company','address','country','latitude','longitude')
+    value=[site[f] for f in fields]
+    return sha256(json.dumps(value,ensure_ascii=False,default=str,
+                             separators=(',',':')).encode('utf-8')).hexdigest()
+
+
+def is_current_verified_identity(site,link):
+    if site is None or link is None or link['status']!='verified':
+        return False
+    if not link['site_fingerprint'] or link['site_fingerprint']!=site_fingerprint(site):
+        return False
+    if link['namespace']=='FDA_FEI' and link['identifier']!=site['fei']:
+        return False
+    return True
 
 
 def review_location(conn,facility_id,precision,evidence_url,reviewer,note='',method='document-and-map-review',*,commit=True):
@@ -167,7 +197,7 @@ def verify_fei(conn,facility_id,reviewer,evidence_url,note,*,commit=True):
     """Review analyst-recorded FDA FEI against a corroborating official source."""
     if not reviewer.strip() or not evidence_url.startswith('https://') or not note.strip():
         raise ValueError('Named reviewer, HTTPS source and rationale required for FEI verification')
-    f=conn.execute('SELECT id,fei FROM facilities WHERE id=?',(facility_id,)).fetchone()
+    f=conn.execute('SELECT * FROM facilities WHERE id=?',(facility_id,)).fetchone()
     if not f or not f['fei']:raise ValueError('Cannot verify missing FEI or unknown facility')
     when=utcnow()
     # A reassigned/updated establishment identifier is not an authorization
@@ -179,12 +209,12 @@ def verify_fei(conn,facility_id,reviewer,evidence_url,note,*,commit=True):
           AND status='verified'""",(reviewer,when,facility_id,f['fei']))
     rec=conn.execute("SELECT id FROM identity_links WHERE facility_id=? AND namespace='FDA_FEI' AND identifier=?",(facility_id,f['fei'])).fetchone()
     if rec:
-        conn.execute("UPDATE identity_links SET status='verified',provenance_url=?,provenance_note=?,reviewer=?,reviewed_at=? WHERE id=?",
-                     (evidence_url,note,reviewer,when,rec['id']))
+        conn.execute("UPDATE identity_links SET status='verified',provenance_url=?,provenance_note=?,reviewer=?,reviewed_at=?,site_fingerprint=? WHERE id=?",
+                     (evidence_url,note,reviewer,when,site_fingerprint(f),rec['id']))
     else:
-        conn.execute('''INSERT INTO identity_links(id,facility_id,namespace,identifier,status,provenance_url,provenance_note,reviewer,reviewed_at,created_at)
-        VALUES(?,?,?,?,?,?,?,?,?,?)''',
-        (stable_id('verified_fda_fei',facility_id,f['fei']),facility_id,'FDA_FEI',f['fei'],'verified',evidence_url,note,reviewer,when,when))
+        conn.execute('''INSERT INTO identity_links(id,facility_id,namespace,identifier,status,provenance_url,provenance_note,reviewer,reviewed_at,created_at,site_fingerprint)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?)''',
+        (stable_id('verified_fda_fei',facility_id,f['fei']),facility_id,'FDA_FEI',f['fei'],'verified',evidence_url,note,reviewer,when,when,site_fingerprint(f)))
     audit(conn,'fei_verified',facility_id,reviewer,{'fei':f['fei'],'evidence_url':evidence_url,'note':note})
     if commit:conn.commit()
     return {'facility_id':facility_id,'fei':f['fei'],'status':'verified','reviewed_at':when}
@@ -241,13 +271,16 @@ def decide_candidate(conn,candidate_id,decision,reviewer,evidence_url,note='',*,
     conn.execute('UPDATE match_candidates SET decision=?,reviewer=?,reviewed_at=?,review_note=? WHERE id=?',
                  (decision,reviewer,when,note,candidate_id))
     if decision=='accepted':
+        site=conn.execute('SELECT * FROM facilities WHERE id=?',(row['facility_id'],)).fetchone()
+        if site is None:raise ValueError('Candidate facility missing')
         key=stable_id('accepted_identifier',row['facility_id'],row['namespace'],row['identifier'])
-        conn.execute('''INSERT INTO identity_links(id,facility_id,namespace,identifier,status,provenance_url,provenance_note,reviewer,reviewed_at,created_at)
-          VALUES(?,?,?,?,?,?,?,?,?,?)
+        conn.execute('''INSERT INTO identity_links(id,facility_id,namespace,identifier,status,provenance_url,provenance_note,reviewer,reviewed_at,created_at,site_fingerprint)
+          VALUES(?,?,?,?,?,?,?,?,?,?,?)
           ON CONFLICT(facility_id,namespace,identifier) DO UPDATE SET
             status='verified',provenance_url=excluded.provenance_url,
-            provenance_note=excluded.provenance_note,reviewer=excluded.reviewer,reviewed_at=excluded.reviewed_at''',
-          (key,row['facility_id'],row['namespace'],row['identifier'],'verified',evidence_url,note,reviewer,when,when))
+            provenance_note=excluded.provenance_note,reviewer=excluded.reviewer,
+            reviewed_at=excluded.reviewed_at,site_fingerprint=excluded.site_fingerprint''',
+          (key,row['facility_id'],row['namespace'],row['identifier'],'verified',evidence_url,note,reviewer,when,when,site_fingerprint(site)))
     else:
         # A reviewed rejection also revokes an earlier accepted identifier.
         # Leaving the previously verified crosswalk active would allow ECHO
@@ -337,7 +370,7 @@ def make_underwriting_profile(conn,facility_id,sections,actor='analyst',source_s
 
 
 def get_intelligence(conn,facility_id):
-    facility=conn.execute('SELECT latitude,longitude,fei FROM facilities WHERE id=?',(facility_id,)).fetchone()
+    facility=conn.execute('SELECT * FROM facilities WHERE id=?',(facility_id,)).fetchone()
     if facility is None:return None
     from .db import items,one
     events=items(conn,'SELECT * FROM historical_events WHERE facility_id=? ORDER BY incident_date',(facility_id,))
@@ -352,12 +385,11 @@ def get_intelligence(conn,facility_id):
             loc['precision']='review_stale'
     identifiers=items(conn,'SELECT * FROM identity_links WHERE facility_id=? ORDER BY namespace,status',(facility_id,))
     for identifier in identifiers:
-        if identifier['namespace']=='FDA_FEI':
-            valid=(identifier['identifier']==facility['fei'])
-            identifier['valid_for_current_fei']=valid
-            if not valid and identifier['status']=='verified':
-                identifier['original_status']='verified'
-                identifier['status']='review_stale'
+        valid=is_current_verified_identity(facility,identifier)
+        identifier['valid_for_current_site_identity']=valid
+        if identifier['status']=='verified' and not valid:
+            identifier['original_status']='verified'
+            identifier['status']='review_stale'
     hazard_checks=items(conn,'SELECT * FROM hazard_assessments WHERE facility_id=? ORDER BY peril',(facility_id,))
     current_review=loc and is_reviewed_site_coordinate(facility,loc)
     for hazard in hazard_checks:
