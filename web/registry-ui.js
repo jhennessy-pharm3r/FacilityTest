@@ -77,7 +77,7 @@
  }
   function createSite(row,fields){return Object.fromEntries(fields.map((key,i)=>[key,row[i]]));}
  function match(row,fields,words){
-   const parts=['name','company','address','city','state','country','fei','registration_number','source'];
+   const parts=['name','company','address','city','state','country','fei','registration_number','source','activities'];
    const values=parts.map(k=>normalize(row[fields.indexOf(k)]));
    return words.every(w=>values.some(v=>v.includes(w)));
  }
@@ -113,7 +113,9 @@
   if(!meta){el.textContent='Opening establishment catalog…';return;}
   const count=meta.summary?.distinct_source_entities??meta.rows?.length??0;
   const d=meta.generated_at?new Date(meta.generated_at).toLocaleDateString('en-US'):'Not yet populated';
-  el.textContent=`${fmt(count)} separate regulatory source identities · ${fmt(meta.summary?.countries)} countries · FDA dataset: ${d} · ${sourceText(meta)}. Separate source identities may represent the same property; site and risk verification are separate.`;
+  const drug=meta.summary?.field_coverage_by_sector?.Pharmaceutical;
+  const missing=drug?` · Pharma: ${fmt(drug.with_reported_address)}/${fmt(drug.source_identities)} with source-reported address; ${fmt(drug.with_structured_country)} with structured country`:'';
+  el.textContent=`${fmt(count)} separate regulatory source identities · ${fmt(meta.summary?.countries)} country codes observed · FDA catalog: ${d} · ${sourceText(meta)}${missing}. Missing structured country must not be mistaken for U.S. location; registration is not a verified plant or risk score.`;
  }
  function sourceLink(r){
    if(r.source==='Ireland EPA LEAP' && /^[A-Z][A-Z0-9-]{2,40}$/.test(r.registration_number||''))return 'https://leap.epa.ie/licence-profile/'+encodeURIComponent(r.registration_number);

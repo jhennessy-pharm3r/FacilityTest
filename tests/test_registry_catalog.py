@@ -154,3 +154,17 @@ def test_same_fda_fei_conflicting_reported_sites_remains_reviewable():
     assert 'city' in collision['conflicting_fields']
     assert d['summary']['source_rows']==2
     validate_catalog(d)
+
+
+def test_drug_registration_metadata_reports_missing_structured_location():
+    row=normalize_drug({'FIRM_NAME':'Test Drug Registration','FEI_NUMBER':'1234567890',
+                         'ADDRESS':'Unstructured reported address, Canada',
+                         'OPERATIONS':'MANUFACTURE'})
+    assert row is not None
+    result=make_catalog([row],{'fda_drug':{'status':'imported'}})
+    c=result['summary']['field_coverage_by_sector']['Pharmaceutical']
+    assert c['source_identities']==1
+    assert c['with_fei']==1 and c['with_reported_address']==1
+    assert c['with_structured_country']==0 and c['with_structured_city']==0
+    assert c['with_operations']==1
+    validate_catalog(result)

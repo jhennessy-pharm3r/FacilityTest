@@ -44,6 +44,8 @@ def test_report_stays_unranked_even_with_evidence_and_fei(conn):
     assert report['coverage']['regulatory_identity']['status']=='unassessed'
     assert report['coverage']['pre_event_visibility']['status']=='unassessed'
     assert report['evidence_total']==1
+    assert report['evidence_displayed']==1
+    assert report['evidence_export_limited'] is False
     assert len(report['regulatory_observations'])==1
     assert report['coverage']['physical_site']['status']=='unassessed'
     assert report['sections'][0]['assessment']=='Not assessed'
@@ -89,3 +91,21 @@ def test_assessment_api_is_available_only_on_private_backend(conn):
         assert 'text/html' in printed.headers['content-type']
         assert '&lt;script&gt;' in printed.text
         assert client.get('/api/facilities/missing/assessment').status_code==404
+
+
+def test_report_explicitly_discloses_truncation_and_correct_full_date_denominator(conn):
+    for i in range(300):
+        conn.execute("""INSERT INTO evidence
+          (id,facility_id,source,record_type,finding,availability_date,risk_domain,origin,last_imported)
+          VALUES(?,?,?,?,?,?,?,?,?)""",
+          (f'bulk-{i}','site-a','FDA','Regulatory item','A source-level observation',
+           '2025-01-01' if i<60 else None,'Manufacturing regulation','fixture','2026-10-21'))
+    conn.commit()
+    report=build_assessment(conn,'site-a')
+    assert report['evidence_total']==301
+    assert report['evidence_displayed']==250
+    assert report['evidence_export_limited'] is True
+    assert '60 of 301 evidence rows' in report['coverage']['pre_event_visibility']['reason']
+    html=render_assessment_html(report)
+    assert 'Only 250 of 301 findings' in html
+    assert 'complete evidence table' in html
