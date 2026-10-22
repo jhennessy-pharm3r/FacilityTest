@@ -33,7 +33,8 @@ def geojsonseq_rows(path):
     """Supports GeoJSON lines exports of point *places*, not anonymous polygons."""
     with open_text(path) as f:
         for line in f:
-            if not line.strip():continue
+            line=line.lstrip('\x1e').strip()
+            if not line:continue
             obj=json.loads(line)
             props=obj.get('properties') or {}
             names=props.get('names') or {}
