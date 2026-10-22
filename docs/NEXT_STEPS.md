@@ -1,68 +1,70 @@
-# Build backlog — recommended order
+# Facility Risk Intelligence — verified status and current roadmap
 
-**Gate 1 (done): local evidence prototype.** Ingest analyst workbook; preserve URLs and caveats; create searchable facility profile, source inventory, SEC page, data quality; run offline adapter and API tests.
+**As of:** October 22, 2026.
+**Universal scope:** All facility types and industries; life sciences are one optional vertical. Sources cover only the places each publisher reports. Regulatory identities, place observations and insured physical properties are not interchangeable.
 
-**Gate 2 (implementation built; verification pending): verified identity crosswalk.** Add audited FEI ↔ EPA FRS ↔ RCRA / NPDES / TRI / OSHA IDs and source-specific address normalization. Keep candidates and rejected matches, reviewers and original matching evidence. Add campus/building distinction and geocoding source/precision. Do not equate company ownership with a physical site.
+## Verified implementation
 
-**Gate 3 (connectors built; live matching pending): operational ingestion.** Test official EPA ECHO DFR responses for selected, *verified* FRS registry IDs; normalize inspection, enforcement, compliance and permit history only when API field meanings are confirmed. Schedule update/version capture and source-license review. Add tested NOAA, USGS, WRI, FEMA and industrial-hazard ingestion by geography with hazard-specific units.
+| Component | Verified result | Deployment gap |
+| --- | --- | --- |
+| Public GitHub Pages | Static preview, 3 sourced retrospective research cases and 50,368 FDA/Canadian/Irish source identities; browser smoke passing | Not universal live search or an insured-client portal |
+| National EPA FRS | Complete official export: 5,354,716 valid records, 7,158 rejected; source provenance SHA256 | National registry excludes many commercial premises |
+| National indexed backend | 5,354,716 identities loaded and indexed; 11,174 search matches for warehouse; SQLite quick_check OK; 4.56 GB database; Actions run 39813812469 | An expiring Actions artifact, not running in a durable authenticated production host |
+| Overture pilot | 101,979 place observations across Halifax, Cleveland, Dublin, Singapore; 99,251 categorized in 1,364 categories; database integrity passed | Small sample areas, unverified property identity, no global census |
+| Facility identity and research | Separate cross-source observations, review gates and evidence-linked case reports | Building/campus and company parent reconciliation pending |
+| Natural hazards / incidents | FEMA, NOAA, USGS, WRI and EPA connectors / review flows | Not screened for all discovered sites; no claim or property-impact validation |
+| Insurance coverage reference | Property, flood, windstorm, earthquake, wildfire, standard/contingent BI, utility, extra expense, spoilage, non-damage BI and parametric types | Reference only, no insured policy terms |
+| Insurance workbench | User-selected cross-industry exposure scenarios, utility/supplier dependencies, review topics, illustrative downtime cost, JSON export | No live geohazard crosswalk; user-entered policy statuses are not verified |
+| Model scoring | No published overall actuarial risk score | Claims outcomes and insured denominators have not been validated |
 
-**Gate 4 (3 public case studies seeded; cohort pending): temporal validation.** For at least 25 facilities, capture evidence publication dates, confirmed event dates, claims / BI outcomes, public recovery milestones and no-event controls. Prevent future information leakage. Record sampling bias and the absence of insurance losses in public filings.
+**Primary distinction:** A source-identity count is not a physical property count. A nearby storm or chemical report is not an insured loss. A policy product being offered is not proof of insured coverage. Unassessed does not mean low risk.
 
-**Gate 5 (evidence categories built; insured values pending): real underwriting data.** Add construction, protection, replacement values, business-interruption values, property engineering, process hazards, backup power/water and supplier redundancy. Keep per-coverage loss pathways separate (property, BI, environmental, product and political risk).
+## Intended underwriting workflow
 
-**Gate 6: evidence-based screening, then calibrated risk.** Test indicators against a validated cohort and exposure denominator before any weighted risk score or loss propensity model. Track model version, exceptions and human approval. Score insufficient evidence as unranked, not low risk.
+**Discover facility → resolve property/parent/operator → assess verified location and perils → map operations and dependencies → inspect insured policies and parametric alternatives → distinguish verified gaps from unknowns → document financial loss scenarios → export sourced assessment.**
 
-## Specific data anomalies in the analyst workbook
+The public Pages workbench supports only scenario and policy-review preparation. It never measures actual property hazard, validates a contract, computes an insured claim or prices risk.
 
-- 12 facility profiles, 11 with documented site points, 11 with FEIs.
-- 990 evidence records and all source URLs populated, but *none* has a separately verified public-availability date.
-- 19 SEC findings, 11 unlinked to a specific imported site. Many findings describe overlapping fiscal/event periods.
-- The raw dates include **two post-2026 dates** in EPA program crosswalk records. These may be permit expiration/effective dates, not future incidents; verify semantics.
-- Curated source labels do not exactly correspond to the 10 source-family names in the inventory.
+## P0 — universal backend for all industries
 
-## Proposed new-source tests
+1. Move the 4.56 GB validated EPA indexed database out of time-limited Actions artifacts into durable secured storage with reliable backup, refresh, published vintage, source and checksum metadata. Do not commit it to Pages.
+2. Deploy the indexed facility search as an authenticated private endpoint, test names/source IDs/NAICS/industry/country/pagination against >=5 million identities, and report actual p50/p95 response times. Optimize FTS and prefix lookups; evaluate Postgres/PostGIS if necessary.
+3. Ingest and reconcile all source families: EPA FRS, FDA drug/device, Ireland EPA, Canada NPRI, and permitted Overture subsets. Keep independent source records and review all possible cross-regulator equivalences before merging.
+4. Add physical site vs building vs campus/parcel; operator and ultimate parent; country-code normalization; geocoder and coordinate provenance; historical relocations and operator changes; duplicate evidence and false-positive QA.
+5. Expand Overture geographic coverage legally and gradually. Overture Places includes retail, restaurants and other points that cannot automatically be counted as verified insurable structures.
+6. Implement tenant isolation, permissions, backup, access logs and rate limits before client data and policy documents can be hosted.
 
-1. National Response Center — official incident reports; confirm whether investigation or corrective action verifies site attribution.
-2. U.S. Chemical Safety Board — investigate major fires/explosions and documented causes and recovery.
-3. EPA RMP — check data access and disclosure limitations before implementation.
-4. EIA 861 — utility-level reliability context rather than exact factory outages.
-5. Irish EPA LEAP — confirm actual facility IDs for Galway and Clonmel.
-6. EU Industrial Emissions and Canada's NPRI — non-U.S. facility compliance and emissions context.
-7. FEMA flood risk, historical NOAA storm footprint, USFS wildfire, WRI flood and water stress — quantitative *hazard exposure*, not site loss.
+**Gate:** Every identified facility appears as searchable, even without adverse events, losses, inspections or FDA registration. All unscreened properties display unknown/unassessed.
 
-Status: source adapters tested with offline fixtures; **no live external API queries were completed within the development sandbox** due restricted outbound DNS/network.
+## P1 — measured hazards, operations, BI and policy verification
 
-## Build 2 completion and remaining operational blockers
+1. For independently reviewed property geometries, integrate FEMA NFHL flood, NOAA wind/storm tracks, USGS seismic hazard, wildfire potential, heat/water stress, and jurisdiction-appropriate Canadian/European datasets. Store units, source URL, model vintage, resolution, location-review revision and uncertainty. Stale points invalidate old overlays.
+2. Ingest reviewed environmental/industrial incident evidence from EPA ECHO, RCRA, TRI, USCG NRC, CSB, PHMSA, OSHA and other regulators without confusing geographic proximity with an actual property loss.
+3. Build operational dependency tables: serving utility (if known), outage exposure, backup power and water, temperature control, suppliers, transport access, restoration time and alternative production capacity. EIA-861 measures utility-level reliability, not a verified specific-facility outage.
+4. Add authenticated policy records and location schedules, property/BI limits, catastrophe sublimits, attachments, deductibles, waiting periods, utility/CBI endorsements, coverage territories, exclusions and effective/expiry dates.
+5. Parametric contract details: index provider, point/polygon/measurement, threshold, payout ladder, local insurable interest/loss tests when applicable and explicit basis risk.
+6. Set policy status to reported, unknown, conditional, document-reviewed covered or document-reviewed excluded. Only independently reviewed, cited policy terms may support verified status.
+7. Keep physical hazard, operational vulnerability, coverage quality and residual financial exposure as separate dimensions; do not conflate hazard intensity with insured loss or payout.
 
-- Built an interactive actual tile-based map, but none of the imported analyst coordinates is yet independently reviewed as an exact physical property point. No valid parcel-scale flood screen may be asserted.
-- Built auditable FRS match review and secure-gated FEMA and ECHO source adapters. No live source registry matches have been independently corroborated.
-- Added incident timelines and five evidence-based exposure sections. The three cases are retrospective; do not use them as pre-event predictive validation.
-- Container/Compose and CI are reproducible prototypes, not a deployed production backend; enterprise RBAC/SSO and encryption/backup governance remain prerequisites.
-- Scheduled public-source connectivity checks do not transmit client facility information or ingest the private database. Actual live ingest must run on a restricted environment and follow source/schema checks.
+**Gate:** At least 25 real mixed-sector facilities independently geocoded and evaluated with data vintage, source and reviewer. Verified exclusions are distinguishable from unanswered questions.
 
+## P2 — insurer-ready reporting and historical validation
 
-## FDA pharmaceutical/source identity issue (resolved October 22, 2026)
+1. Company and parent portfolio view spanning all facilities; industry and geography filters; maps and concentration exposures; property vs insured location distinctions.
+2. Multi-property risk profiles and client-ready PDFs/CSV with linked evidence, insurance review status, caveats, source dates and analyst approvals.
+3. A properly designed longitudinal event/non-event cohort with verified pre-event publication dates and economic/insurance outcomes, including adverse selection and denominator controls. Avoid double-counting SEC disclosures.
+4. Only introduce a calibrated numerical rating when independently verified exposures, losses and denominators justify it; otherwise remain unranked.
 
-The official FDA DECRS ZIP was successfully downloaded and parsed in the October 22, 2026 GitHub registry workflow, with 10,422 source records and 10,068 drug source identities. The earlier HTTP 404 was resolved through the official host's browser-compatible ZIP download path. Source identities are not independently verified physical sites. Current refresh, operation validity and site address verification remain open quality gates. FDA OII's separate FEI API requires issued credentials and supports per-FEI verification, not comprehensive global enumeration.
+## Product quality and public Pages
 
+- Pages source list is a limited public registry. The 5.35-million EPA database and Overture pilot are indexed Actions artifacts and are **not** available through the static Pages search bar.
+- Do not type sensitive client policy documents or proprietary data into a public site; the private authenticated backend is the correct location.
+- The interactive workbench shows analyst-selected possibilities, not parcel-specific verified hazards. Policy fields in browser memory remain user-entered and explicitly unverified.
+- CI and local Playwright browser tests should be complemented with post-deployment checks against the actual public Pages URL, including desktop/mobile, risk input, coverage matrix, export and console errors.
 
-## v0.6 evidence-first delivery underway
+## Primary tracked work
 
-- **Done in PR #14:** quarantine NOAA proximity as contextual candidates; enforce current location review before USGS/WRI screening; hold inspections with unverified FEI identity separately from accepted evidence.
-- **Implemented in development:** explicit private research plans and opt-in single-source checks; source-linked unranked assessment JSON and printable HTML; deterministic 25-row pilot *candidate* generator with no invented no-event controls. See [pilot protocol](PILOT_PROTOCOL.md).
-- **Still blocked:** obtain current FDA DECRS bulk dataset through a permitted access path; confirm publication and actual parser schema. The authenticated per-FEI FDA OII API does not replace DECRS enumeration.
-- **Still requiring substantial external research:** review 25 physical locations and dated evidence, establish legitimate comparator controls, validate business interruption/loss outcomes and insurer exposure denominator, audit old pre-hardening data, and implement production insurer SSO and two-person authorization.
+- Issue #3: universal facility identity and production-grade registry.
+- Issue #4: verified catastrophe/incident and outcome evidence.
 
-The public GitHub Pages build cannot perform private source queries or create persistent site reviews. The public registry is a discovery layer, not the completed underwriting analysis.
-
-
-## v0.6 physical hazard coordinate revision gate (October 2026)
-
-Property-level hazard overlays now store the **exact reviewed latitude, longitude and independent review timestamp** from the source lookup. A facility relocation, coordinate correction or a subsequent property review makes all earlier hazard overlays `stale_location_review` until the connector is explicitly rerun against the current verified point. The source's original classification is preserved as `original_status` for audit but never used as a current-site risk classification. Existing SQLite hazard rows cannot be retrospectively associated with an approved point: the additive migration leaves their snapshot fields NULL and marks them stale. Global QA distinguishes total historical screenings and current screenings, and the printable underwriting assessment downgrades stale-only hazard coverage to `unassessed`.
-
-A FEMA response is additionally pinned to the site coordinates and review version used **when the request began**. If the site moves or is reviewed again while the remote call is in flight, the response is rejected; it cannot become a current property assessment. Missing or stale hazard data is not evidence of low flood/fire/water risk.
-
-
-## v0.7 all-industry expansion
-
-Implementation in `docs/UNIVERSAL_FACILITIES.md` adds a private cross-industry source identity registry, FTS-backed search and pagination, all-sector CSV/GeoJSONSeq import, and unverified insurance coverage taxonomy including parametric and BI. No EPA FRS nationwide or Overture bulk feed has been imported or validated by this change. Remaining P0 requirements are production data import, universal frontend integration, site matching QA, and geographic/insurance loss validation.
+**This file is the authoritative current backlog. Earlier development-stage notes are historical and must not overrule live source-validation results.**
