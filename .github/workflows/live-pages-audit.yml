@@ -9,6 +9,10 @@ on:
       - 'web/registry/**'
       - 'VERSION'
       - '.github/workflows/live-pages-audit.yml'
+  pull_request:
+    paths:
+      - 'tests/smoke_live_pages.py'
+      - '.github/workflows/live-pages-audit.yml'
   workflow_run:
     workflows: ["pages build and deployment"]
     types: [completed]
