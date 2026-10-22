@@ -4,6 +4,10 @@ on:
     branches: [main]
     paths:
       - 'tests/smoke_live_pages.py'
+      - 'index.html'
+      - 'web/**'
+      - 'web/registry/**'
+      - 'VERSION'
       - '.github/workflows/live-pages-audit.yml'
   workflow_run:
     workflows: ["pages build and deployment"]
