@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
     paths:
+      - 'scripts/import_universal.py'
       - '.github/workflows/validate-overture.yml'
 permissions:
   contents: read

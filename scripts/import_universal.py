@@ -24,7 +24,7 @@ def csv_rows(path, fields):
         reader=csv.DictReader(f)
         if reader.fieldnames is None:
             raise ValueError('CSV header missing')
-        if fields.get('id') not in reader.fieldnames or fields.get('name') not in reader.fieldnames:
+        if fields.get('source_identifier') not in reader.fieldnames or fields.get('name') not in reader.fieldnames:
             raise ValueError('Mapping requires real source ID and name columns')
         for r in reader:
             yield {dest: r.get(original,'') for dest,original in fields.items() if original}
