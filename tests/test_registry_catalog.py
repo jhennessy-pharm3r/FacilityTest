@@ -107,7 +107,7 @@ def test_realistic_decrs_windows1252_tsv_and_no_contacts(tmp_path):
     assert got[0]['fei']=='0000000360'
     assert got[0]['name']=='PHARMACIE QUÉBEC'
     assert got[0]['registration_number']=='001234567'
-    assert got[0]['country']=='CANADA'
+    assert got[0]['country']=='CA'
     assert got[0]['address']=='1 RUE DU CANAL'
     assert 'private@example.net' not in json.dumps(got)
     assert got[0]['expiry_year']=='2026-12-31'
@@ -165,6 +165,43 @@ def test_drug_registration_metadata_reports_missing_structured_location():
     c=result['summary']['field_coverage_by_sector']['Pharmaceutical']
     assert c['source_identities']==1
     assert c['with_fei']==1 and c['with_reported_address']==1
-    assert c['with_structured_country']==0 and c['with_structured_city']==0
+    assert c['with_structured_country']==1 and c['with_structured_city']==0
+    assert c['with_source_country_field']==0
+    assert c['with_explicit_address_country']==1
     assert c['with_operations']==1
     validate_catalog(result)
+
+
+def test_decrs_explicit_address_countries_only_and_no_geographic_guessing():
+    from facilityrisk.registry_catalog import country_from_explicit_address
+    cases={
+       '3 Industrial Road, Shenzhen, China':'CN',
+       '14 River Street, Toronto, Canada':'CA',
+       'Unit 6, Cork, Ireland':'IE',
+       'Cambridge, United Kingdom':'GB',
+       '100 5th Ave, New York, United States of America':'US',
+       '123 Highway, Taichung, Taiwan':'TW',
+       'Mumbai, India':'IN',
+       'Austin TX 78701, USA':'US',
+       'Industrial Street, Cambridge MA 02139':'',
+       'Savannah, Georgia':'',
+       'Atlanta GA 30301, GA':'',
+       '160 Canadian Boulevard, Toronto':'',
+       'Factory Place, New Mexico':'',
+       'Springfield, USA Road':'',
+       'Company Office, CA':'',
+       'Unclear Address':''
+    }
+    for address,expected in cases.items():
+        assert country_from_explicit_address(address)==expected,address
+    row=normalize_drug({'FIRM_NAME':'Test Facility','FEI_NUMBER':'1234567890',
+        'ADDRESS':'Factory Street, Shenzhen, China'})
+    assert row['country']=='CN' and row['_country_origin']=='explicit_address_suffix'
+    ambiguous=normalize_drug({'FIRM_NAME':'Test Facility','FEI_NUMBER':'1234567890',
+        'ADDRESS':'Savannah, Georgia'})
+    assert ambiguous['country']=='' and ambiguous['_country_origin']=='unresolved'
+    authoritative=normalize_drug({'FIRM_NAME':'Test Facility','FEI_NUMBER':'1234567890',
+        'ADDRESS':'Savannah, Georgia','COUNTRY':'United States'})
+    assert authoritative['country']=='US' and authoritative['_country_origin']=='official_country_field'
+    assert normalize_drug({'FIRM_NAME':'Test Facility','FEI_NUMBER':'1234567890',
+        'ADDRESS':'Shenzhen, China','COUNTRY':'Canada'})['country']=='CA'

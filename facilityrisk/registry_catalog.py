@@ -18,6 +18,7 @@ import json
 import re
 import sqlite3
 import zipfile
+import pycountry
 
 FIELDS = ('id','name','company','city','state','country','fei','registration_number',
           'activities','sector','address','expiry_year','source','source_records')
@@ -77,6 +78,49 @@ def first(row,*aliases):
     return ''
 
 
+def _iso_countries():
+    """Exact ISO names only, never fuzzy geography matching."""
+    mapping={}
+    for c in pycountry.countries:
+        for name in (getattr(c,'name',''),getattr(c,'official_name',''),
+                     getattr(c,'common_name','')):
+            if name:mapping[name.casefold()]=c.alpha_2
+        mapping[c.alpha_2.casefold()]=c.alpha_2
+    mapping.update({
+        'united states of america':'US','usa':'US','u.s.a.':'US',
+        'u.s.':'US','great britain':'GB','uk':'GB',
+        'south korea':'KR','north korea':'KP','russia':'RU',
+        'taiwan':'TW','vietnam':'VN','turkey':'TR',
+        'czech republic':'CZ','ivory coast':'CI'
+    })
+    return mapping
+
+
+COUNTRY_NAMES=_iso_countries()
+
+
+def country_from_explicit_address(address):
+    """Recognize only an *explicit final country segment* in source address text.
+
+    E.g., `Factory Road, Cork, Ireland` -> IE.
+    No postal-state inference and no substring matching ("Canadian Street").
+    Ambiguous country/state place names remain unresolved.
+    """
+    parts=[x.strip(' .\\t') for x in re.split(r'[,;]',clean(address,500))]
+    if len(parts)<2:return ''
+    last=parts[-1].casefold()
+    if last in ('ca','in','ga','georgia','congo'):return ''  # ambiguous state/region names
+    return COUNTRY_NAMES.get(last,'')
+
+
+def exact_country_field(value):
+    """Country field must be an exact published ISO name/code, never guessed."""
+    raw=clean(value,120).casefold()
+    if raw in ('us','ca','in','ga') and len(raw)==2:
+        return COUNTRY_NAMES.get(raw,'')  # dedicated field is unambiguous
+    return COUNTRY_NAMES.get(raw,'')
+
+
 def normalize_drug(row):
     """Map official DECRS columns; never use contact/agent fields as site data.
 
@@ -95,8 +139,13 @@ def normalize_drug(row):
             'address','street address','address line 1','address_1',
             'address1','street_address','address 1','facility address')
     city=first(row,'city','establishment city','firm city')
-    country=first(row,'country','country code','country name','iso country code',
-                  'iso_country_code','establishment country').upper()
+    explicit_country=first(row,'country','country code','country name','iso country code',
+                           'iso_country_code','establishment country')
+    country=exact_country_field(explicit_country) if explicit_country else ''
+    address_country=country_from_explicit_address(a) if not country else ''
+    country=country or address_country
+    country_origin=('official_country_field' if country and explicit_country else
+                    'explicit_address_suffix' if address_country else 'unresolved')
     if not name or not (fei or duns or (a and city and country)):
         return None
     explicit_registration=ident(first(row,'registration number','drug establishment registration number'))
@@ -107,6 +156,7 @@ def normalize_drug(row):
         company=first(row,'registrant name','registrant','labeler name',
                       'owner operator','company name') or name,
         city=city,state=first(row,'state','state province','state code','province','firm state'),
+        _country_origin=country_origin,
         country=country,fei=fei,registration_number=secondary,
         activities=first(row,'business operation','business operations',
                          'business_operation','operations','activity',
@@ -137,6 +187,8 @@ def merge(target, record):
     old['activities']='; '.join(roles)[:300]
     for k in ('name','company','city','state','country','address','fei','registration_number','expiry_year'):
         if not old[k] and record[k]: old[k]=record[k]
+    if record.get('country') and not old.get('country'):
+        old['_country_origin']=record.get('_country_origin','unresolved')
     if record['address'] and old['address'] and normal_key(record['address'])!=normal_key(old['address']):
         old['identity_warning']='Same reported identifier occurs with different street addresses; site review required'
 
@@ -215,6 +267,8 @@ def make_catalog(records,source_status,*,generated_at=None):
             'with_reported_address':sum(bool(x['address']) for x in group),
             'with_structured_city':sum(bool(x['city']) for x in group),
             'with_structured_country':sum(bool(x['country']) for x in group),
+            'with_source_country_field':sum(x.get('_country_origin')=='official_country_field' for x in group),
+            'with_explicit_address_country':sum(x.get('_country_origin')=='explicit_address_suffix' for x in group),
             'with_operations':sum(bool(x['activities']) for x in group)}
     conflicts=[{'id':r['id'],'source':r['source'],'fei':r.get('fei',''),
                 'requires_site_review':True,'conflicting_fields':r['_source_conflicts']}
