@@ -7,7 +7,7 @@ const DRAWER = $('#detail-drawer');
 const CONTENT = $('#drawer-content');
 const state = {
   overview:null, facilities:[], sources:null, finance:null, quality:null,
-  page:'registry', facility:null, detail:null, evidence:null, risk:null, reportAvailable:false, reviewQueue:null, tab:'summary',
+  page:'workbench', facility:null, detail:null, evidence:null, risk:null, reportAvailable:false, reviewQueue:null, tab:'summary',
   facilityQuery:'', country:'', source:'', disclosureQuery:'',
   evQuery:'', evSource:'', evDomain:'', evOffset:0, evLimit:25,
   globalQuery:'',globalSource:'',globalDomain:'',globalOffset:0,globalRecords:null,requestToken:0
@@ -34,12 +34,12 @@ function renderMap(sites){const W=940,H=260;const x=lon=>((Number(lon)+180)/360*
 }
 function countryLabel(s){return String(s.country||'Unknown').replace('United States (Puerto Rico)','Puerto Rico');}
 function renderOverview(){const o=state.overview,q=o.stats;const countries=[...new Set(o.facilities.map(x=>x.country))];const max=Math.max(1,...o.domains.map(x=>x.records));const totalSourceEvidence=o.sources.reduce((a,x)=>a+x.records,0);
-  const top=heading('Underwriting research / overview','Facility Risk Intelligence','Physical sites, source-linked findings, historical loss evidence and data quality.','<button class="btn primary" data-page="facilities">Explore facilities →</button>');
+  const top=heading('Case-study research / source evidence','Facility Research Overview','Investigated cases, dated event evidence and source-quality metrics—not the full universe of facilities.','<button class="btn primary" data-page="workbench">Start assessment →</button>');
   const stats=`<div class="stat-grid">${stat('Research facilities',num(q.facilities),`${countries.length} jurisdiction labels · ${q.geo_matched} geocoded`,'⌂')}${stat('Evidence records',num(q.evidence),`<span>${num(q.evidence_with_url)} source-linked</span> records`,'▤')}${stat('SEC disclosures',num(q.sec_findings),`${q.unmatched_sec_findings} without verified site link`,'≡')}${stat('Source families',num(q.sources),`${o.sources.length} observed evidence labels`,'◫')}</div>`;
   const domains=o.domains.map((d,i)=>`<div class="domain-row"><span class="domain-label" title="${attr(d.name)}">${escapeHTML(d.name)}</span><div class="bar-track"><div class="bar-fill ${i%4===2?'warm':''}" style="width:${Math.max(2,100*d.records/max)}%"></div></div><strong class="bar-count">${num(d.records)}</strong></div>`).join('');
   const siteRows=o.facilities.slice(0,8).map(s=>`<tr class="row-action" data-site="${attr(s.id)}" tabindex="0"><td><strong>${escapeHTML(s.name)}</strong><div class="mini-location">${escapeHTML(countryLabel(s))}</div></td><td class="nowrap">${s.fei?`<span class="mono">${escapeHTML(s.fei)}</span>`:'<span class="small-muted">Unknown</span>'}</td><td>${num(s.source_count)} sources</td><td><strong>${num(s.evidence_count)}</strong></td><td class="nowrap">Open ↗</td></tr>`).join('');
   const sources=o.sources.slice(0,7).map(s=>`<div class="compact-item"><div class="label-row"><span class="kicker">${escapeHTML(s.source)}</span><b>${num(s.records)} records</b></div><div class="detail">${s.programs} program(s) · ${pct(s.linked,s.records)} source URLs</div></div>`).join('');
-  return top+`<div class="registry-overview-action"><div><strong>Need another facility?</strong><span>Search the FDA registered establishment catalog by operator, site name, FEI or location. Existing case studies are not the coverage limit.</span></div><button class="btn primary" data-page="registry">Search all facilities →</button></div>`+stats+note('Research evidence is not a calibrated insurance risk score. A nearby hazard does not establish site damage, and post-event disclosures cannot be used as pre-event predictors.')+
+  return top+`<div class="registry-overview-action"><div><strong>Assess any facility</strong><span>Begin an insurance exposure assessment for any property. Public source discovery currently includes FDA, Canada NPRI and Ireland EPA identities; nationwide EPA and Overture indices require a hosted backend.</span></div><button class="btn primary" data-page="registry">Browse public registry →</button></div>`+stats+note('Research evidence is not a calibrated insurance risk score. A nearby hazard does not establish site damage, and post-event disclosures cannot be used as pre-event predictors.')+
   `<div class="twocol">${panel('Facility footprint','Research-site reference locations',renderMap(o.facilities))}${panel('Evidence by risk domain','Record volume measures research coverage, not risk severity',`<div class="panel-body">${domains||'<div class="empty">No records imported.</div>'}</div>`)}</div>`+
   `<div class="lowergrid">${panel('Facility research coverage','Select a site to inspect original evidence',`<div class="table-wrap"><table><thead><tr><th>Facility</th><th>FDA FEI</th><th>Coverage</th><th>Records</th><th></th></tr></thead><tbody>${siteRows}</tbody></table></div><div class="panel-body"><button class="btn tiny" data-page="facilities">View all facilities →</button></div>`)}${panel('Leading source labels','Observed labels in imported research',`<div class="item-stack">${sources}</div><div class="panel-body"><button class="btn tiny" data-page="sources">View source inventory →</button></div>`)}</div>`;
 }
@@ -143,20 +143,21 @@ async function decideReview(id,decision){
   }catch(err){showToast(err.message);}
 }
 
-function renderPage(){const views={insurance:()=>window.InsuranceUI.render(),universal:()=>window.UniversalUI.render(),registry:()=>window.RegistryUI.render(),overview:renderOverview,facilities:renderFacilities,evidence:renderGlobalPage,disclosures:renderDisclosures,reviews:renderApprovalQueue,sources:renderSources,quality:renderQuality,methodology:renderMethodology,
+function renderPage(){const views={workbench:()=>window.WorkbenchUI.render(),insurance:()=>window.InsuranceUI.render(),universal:()=>window.UniversalUI.render(),registry:()=>window.RegistryUI.render(),overview:renderOverview,facilities:renderFacilities,evidence:renderGlobalPage,disclosures:renderDisclosures,reviews:renderApprovalQueue,sources:renderSources,quality:renderQuality,methodology:renderMethodology,
     cases:()=>window.IntelligenceUI.render('cases'),map:()=>window.IntelligenceUI.render('map'),
     identity:()=>window.IntelligenceUI.render('identity'),underwriting:()=>window.IntelligenceUI.render('underwriting'),
     feeds:()=>window.IntelligenceUI.render('feeds')};
   state.page=views[state.page]?state.page:'overview';
   ROOT.innerHTML=views[state.page]();
   $$('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.page===state.page));
-  $('#breadcrumb-page').textContent=({insurance:'INSURANCE OPTIONS',universal:'UNIVERSAL FACILITIES',registry:'ALL FACILITIES',overview:'OVERVIEW',facilities:'RESEARCH CASES',evidence:'EVIDENCE SEARCH',disclosures:'SEC DISCLOSURES',sources:'DATA SOURCES',quality:'DATA QUALITY',reviews:'APPROVAL QUEUE',methodology:'METHODOLOGY',cases:'CASE STUDIES',map:'HAZARD MAP',identity:'IDENTITY REVIEW',underwriting:'EXPOSURE PROFILES',feeds:'SOURCE STATUS'})[state.page];
+  $('#breadcrumb-page').textContent=({workbench:'ASSESSMENT WORKBENCH',insurance:'INSURANCE OPTIONS',universal:'UNIVERSAL FACILITIES',registry:'ALL FACILITIES',overview:'OVERVIEW',facilities:'RESEARCH CASES',evidence:'EVIDENCE SEARCH',disclosures:'SEC DISCLOSURES',sources:'DATA SOURCES',quality:'DATA QUALITY',reviews:'APPROVAL QUEUE',methodology:'METHODOLOGY',cases:'CASE STUDIES',map:'HAZARD MAP',identity:'IDENTITY REVIEW',underwriting:'EXPOSURE PROFILES',feeds:'SOURCE STATUS'})[state.page];
   $('#side-facility-count').textContent=state.facilities.length;
   if(state.page==='evidence'&&!state.globalRecords)loadGlobalEvidence();
   if(state.page==='reviews')loadApprovalQueue();
   if(state.page==='registry'&&window.RegistryUI)window.RegistryUI.mount();
   if(state.page==='universal'&&window.UniversalUI)window.UniversalUI.mount();
   if(state.page==='insurance'&&window.InsuranceUI)window.InsuranceUI.mount();
+  if(state.page==='workbench'&&window.WorkbenchUI)window.WorkbenchUI.mount();
   if(window.IntelligenceUI?.pages?.[state.page])window.IntelligenceUI.mount(state.page,{state,api});
 }
 function siteTab(t){state.tab=t;renderDrawer();DRAWER.scrollTop=0;}
@@ -234,6 +235,6 @@ function setupEvents(){document.addEventListener('click',async e=>{
   });
   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&state.facility)closeDrawer();if(e.key==='Enter'&&e.target.matches('tr[data-site],g[data-site]')){e.preventDefault();openSite(e.target.dataset.site);}});
 }
-async function reloadDataset(){try{const [overview,facilities,sources,finance,quality]=await Promise.all([api('overview'),api('facilities?limit=500'),api('sources'),api('financial'),api('quality')]);Object.assign(state,{overview,facilities:facilities.items,sources,finance,quality,globalRecords:null,globalOffset:0,facilityQuery:'',country:'',disclosureQuery:'',globalQuery:'',globalSource:'',globalDomain:'',page:state.overview?state.page:'registry'});closeDrawer();renderPage();}catch(e){ROOT.innerHTML=`<section class="loading-card"><h2>Unable to load research data</h2><p class="subhead">${escapeHTML(e.message)}</p><p class="subhead">${window.PublicRiskAPI?'Check the published static dataset or selected JSON file.':'Initialize the database and import the analyst workbook, then refresh this page.'}</p></section>`;}}
+async function reloadDataset(){try{const [overview,facilities,sources,finance,quality]=await Promise.all([api('overview'),api('facilities?limit=500'),api('sources'),api('financial'),api('quality')]);Object.assign(state,{overview,facilities:facilities.items,sources,finance,quality,globalRecords:null,globalOffset:0,facilityQuery:'',country:'',disclosureQuery:'',globalQuery:'',globalSource:'',globalDomain:'',page:state.overview?state.page:'workbench'});closeDrawer();renderPage();}catch(e){ROOT.innerHTML=`<section class="loading-card"><h2>Unable to load research data</h2><p class="subhead">${escapeHTML(e.message)}</p><p class="subhead">${window.PublicRiskAPI?'Check the published static dataset or selected JSON file.':'Initialize the database and import the analyst workbook, then refresh this page.'}</p></section>`;}}
 async function init(){setupEvents();window.addEventListener('facilityrisk:dataset-changed',reloadDataset);await reloadDataset();}
 init();
