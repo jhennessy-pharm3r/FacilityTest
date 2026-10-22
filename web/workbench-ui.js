@@ -147,10 +147,10 @@ function render(){
   '<div class="wb-hero"><div><span class="wb-eyebrow">INSURANCE INTELLIGENCE / ASSESSMENT WORKSPACE</span>'+
   '<h1>Facility exposure & coverage workbench</h1>'+
   '<p>Start with any property, in any industry. Select the exposures to investigate, inspect potentially relevant coverage structures and document unanswered underwriting questions.</p>'+
-  '<div class="wb-hero-links"><button class="btn primary" data-page="universal">Discover facilities →</button>'+
+  '<div class="wb-hero-links"><button class="btn primary" data-page="'+(window.PublicRiskAPI?'registry':'universal')+'">'+(window.PublicRiskAPI?'Browse published source identities →':'Discover all-industry facilities →')+'</button>'+
   '<button class="btn" data-page="insurance">Coverage reference</button></div></div>'+
   '<div class="wb-hero-mark"><span>01</span><strong>Identify</strong><span>02</span><strong>Screen</strong><span>03</span><strong>Verify</strong></div></div>'+
-  '<div class="wb-disclaimer" role="note"><strong>Research worksheet — not a facility risk rating.</strong> Perils are selected by the analyst, not detected from an address. No coverage is confirmed without examining the actual insurance policy. Inputs remain in this browser session unless you choose to export them.</div>'+
+  '<div class="wb-disclaimer" role="note"><strong>Research worksheet — not a facility risk rating.</strong> Perils are selected by the analyst, not detected from an address. No coverage is confirmed without examining the actual insurance policy. Inputs remain in this browser session unless you export them. Do not enter confidential client or policy documents into the public preview.</div>'+
   '<div class="wb-layout"><div class="wb-left">'+
     '<section class="panel wb-panel"><div class="wb-panel-head"><span class="wb-step">1</span><div><h2>Identify the location</h2><p>Any facility type; registration and FEI are not required.</p></div></div>'+
     '<div class="wb-fields"><label>Facility name <input data-wb-field="facility" maxlength="200" placeholder="Facility or property name" value="'+esc(state.facility)+'"></label>'+
