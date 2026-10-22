@@ -9,7 +9,8 @@ from fastapi.staticfiles import StaticFiles
 from .db import connect, initialize, one, items, quality_report, source_breakdown
 from .match import preview_match
 from .intelligence import get_intelligence, intelligence_quality, decide_candidate, review_location, make_underwriting_profile, verify_fei
-from .security import add_security
+from .security import add_security,dual_review_enabled,require_review_role
+from .approval import create_proposal,list_approvals,decide_approval
 from .advanced_sources import SOURCE_META
 from .registry_catalog import init_registry, registry_search
 from .source_extensions import catalog as extension_catalog, review_event_candidate
@@ -324,6 +325,26 @@ def source_extensions(c=Depends(conn_dependency)):
     return {'items':extension_catalog(c), 'caveat':'Source status is a documentation or endpoint check only. No incident becomes verified site evidence without review.'}
 
 
+@app.get('/api/review-approvals')
+def pending_independent_reviews(status:str='pending',facility_id:str='',
+        limit:int=Query(100,ge=1,le=200),c=Depends(conn_dependency)):
+    try:return list_approvals(c,status=status,facility_id=facility_id,limit=limit)
+    except ValueError as e:raise HTTPException(422,str(e)) from e
+
+
+@app.post('/api/review-approvals/{approval_id}/decide')
+async def independent_review_decision(approval_id:str,request:Request,c=Depends(conn_dependency)):
+    if __import__('os').environ.get('FACILITY_RISK_ENABLE_WRITES')!='1':
+        raise HTTPException(403,'Review actions are disabled')
+    if not dual_review_enabled():raise HTTPException(409,'Independent review mode is disabled')
+    try:require_review_role(request,'approver')
+    except PermissionError as e:raise HTTPException(403,str(e)) from e
+    p=await request.json()
+    if not isinstance(p,dict):raise HTTPException(422,'Expected decision object')
+    try:return decide_approval(c,approval_id,p.get('decision',''),request.state.actor,p.get('note',''))
+    except ValueError as e:raise HTTPException(422,str(e)) from e
+
+
 @app.get('/api/quality')
 def quality(c=Depends(conn_dependency)):
     results=quality_report(c)
@@ -402,6 +423,14 @@ async def review_frs_match(candidate_id:str,request:Request,c=Depends(conn_depen
     if __import__('os').environ.get('FACILITY_RISK_ENABLE_WRITES')!='1':
         raise HTTPException(403,'Analyst review writes are disabled')
     p=await request.json()
+    if dual_review_enabled():
+        try:require_review_role(request,'reviewer')
+        except PermissionError as e:raise HTTPException(403,str(e)) from e
+        candidate=one(c,'SELECT facility_id FROM match_candidates WHERE id=?',(candidate_id,))
+        if candidate is None:raise HTTPException(404,'Unknown identity candidate')
+        try:return create_proposal(c,'match_candidate',candidate['facility_id'],
+                     {**p,'candidate_id':candidate_id},request.state.actor)
+        except ValueError as e:raise HTTPException(422,str(e)) from e
     try:return decide_candidate(c,candidate_id,p.get('decision',''),request.state.actor,p.get('evidence_url',''),p.get('note',''))
     except ValueError as e:raise HTTPException(422,str(e)) from e
 
@@ -426,6 +455,11 @@ async def facility_fei_review(facility_id:str,request:Request,c=Depends(conn_dep
     if __import__('os').environ.get('FACILITY_RISK_ENABLE_WRITES')!='1':
         raise HTTPException(403,'Analyst review writes are disabled')
     p=await request.json()
+    if dual_review_enabled():
+        try:require_review_role(request,'reviewer')
+        except PermissionError as e:raise HTTPException(403,str(e)) from e
+        try:return create_proposal(c,'fei',facility_id,p,request.state.actor)
+        except ValueError as e:raise HTTPException(422,str(e)) from e
     try:return verify_fei(c,facility_id,request.state.actor,p.get('evidence_url',''),p.get('note',''))
     except ValueError as e:raise HTTPException(422,str(e)) from e
 
@@ -435,6 +469,11 @@ async def facility_location_review(facility_id:str,request:Request,c=Depends(con
     if __import__('os').environ.get('FACILITY_RISK_ENABLE_WRITES')!='1':
         raise HTTPException(403,'Location review writes are disabled')
     p=await request.json()
+    if dual_review_enabled():
+        try:require_review_role(request,'reviewer')
+        except PermissionError as e:raise HTTPException(403,str(e)) from e
+        try:return create_proposal(c,'location',facility_id,p,request.state.actor)
+        except ValueError as e:raise HTTPException(422,str(e)) from e
     try:return review_location(c,facility_id,p.get('precision',''),p.get('evidence_url',''),request.state.actor,p.get('note',''))
     except ValueError as e:raise HTTPException(422,str(e)) from e
 

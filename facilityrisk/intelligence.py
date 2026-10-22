@@ -125,7 +125,7 @@ def is_reviewed_site_coordinate(site, review):
             and lat==checked_lat and lon==checked_lon)
 
 
-def review_location(conn,facility_id,precision,evidence_url,reviewer,note='',method='document-and-map-review'):
+def review_location(conn,facility_id,precision,evidence_url,reviewer,note='',method='document-and-map-review',*,commit=True):
     if precision not in ('city','approximate','site_verified','property_polygon'):
         raise ValueError('Unsupported location precision')
     approved=precision in ('site_verified','property_polygon')
@@ -157,19 +157,26 @@ def review_location(conn,facility_id,precision,evidence_url,reviewer,note='',met
     audit(conn,'location_review',facility_id,reviewer or 'anonymous',
           {'precision':precision,'source':evidence_url,
            'reviewed_latitude':checked_lat,'reviewed_longitude':checked_lon})
-    conn.commit()
+    if commit:conn.commit()
     return {'facility_id':facility_id,'precision':precision,'reviewed_at':when,
             'point_locked_to_review':approved}
 
 
 
-def verify_fei(conn,facility_id,reviewer,evidence_url,note):
+def verify_fei(conn,facility_id,reviewer,evidence_url,note,*,commit=True):
     """Review analyst-recorded FDA FEI against a corroborating official source."""
     if not reviewer.strip() or not evidence_url.startswith('https://') or not note.strip():
         raise ValueError('Named reviewer, HTTPS source and rationale required for FEI verification')
     f=conn.execute('SELECT id,fei FROM facilities WHERE id=?',(facility_id,)).fetchone()
     if not f or not f['fei']:raise ValueError('Cannot verify missing FEI or unknown facility')
     when=utcnow()
+    # A reassigned/updated establishment identifier is not an authorization
+    # to keep an older FDA FEI marked verified for this physical site.
+    conn.execute("""UPDATE identity_links SET status='observed',
+        provenance_note=coalesce(provenance_note,'') || ' | superseded by a separately reviewed FEI',
+        reviewer=?,reviewed_at=?
+        WHERE facility_id=? AND namespace='FDA_FEI' AND identifier<>?
+          AND status='verified'""",(reviewer,when,facility_id,f['fei']))
     rec=conn.execute("SELECT id FROM identity_links WHERE facility_id=? AND namespace='FDA_FEI' AND identifier=?",(facility_id,f['fei'])).fetchone()
     if rec:
         conn.execute("UPDATE identity_links SET status='verified',provenance_url=?,provenance_note=?,reviewer=?,reviewed_at=? WHERE id=?",
@@ -179,7 +186,7 @@ def verify_fei(conn,facility_id,reviewer,evidence_url,note):
         VALUES(?,?,?,?,?,?,?,?,?,?)''',
         (stable_id('verified_fda_fei',facility_id,f['fei']),facility_id,'FDA_FEI',f['fei'],'verified',evidence_url,note,reviewer,when,when))
     audit(conn,'fei_verified',facility_id,reviewer,{'fei':f['fei'],'evidence_url':evidence_url,'note':note})
-    conn.commit()
+    if commit:conn.commit()
     return {'facility_id':facility_id,'fei':f['fei'],'status':'verified','reviewed_at':when}
 
 
@@ -221,7 +228,7 @@ def register_frs_candidates(conn,facility_id,records,source_url,when=None):
     return count
 
 
-def decide_candidate(conn,candidate_id,decision,reviewer,evidence_url,note=''):
+def decide_candidate(conn,candidate_id,decision,reviewer,evidence_url,note='',*,commit=True):
     if decision not in ('accepted','rejected'):raise ValueError('Decision must be accepted/rejected')
     if not reviewer.strip() or not evidence_url.startswith('https://') or not note.strip():
         raise ValueError('Reviewer, HTTPS corroborating source, and review rationale required')
@@ -241,9 +248,18 @@ def decide_candidate(conn,candidate_id,decision,reviewer,evidence_url,note=''):
             status='verified',provenance_url=excluded.provenance_url,
             provenance_note=excluded.provenance_note,reviewer=excluded.reviewer,reviewed_at=excluded.reviewed_at''',
           (key,row['facility_id'],row['namespace'],row['identifier'],'verified',evidence_url,note,reviewer,when,when))
+    else:
+        # A reviewed rejection also revokes an earlier accepted identifier.
+        # Leaving the previously verified crosswalk active would allow ECHO
+        # or other source data to keep attaching to a rejected physical site.
+        conn.execute("""UPDATE identity_links SET status='rejected',
+            provenance_url=?,provenance_note=?,reviewer=?,reviewed_at=?
+            WHERE facility_id=? AND namespace=? AND identifier=?""",
+            (evidence_url,note,reviewer,when,
+             row['facility_id'],row['namespace'],row['identifier']))
     audit(conn,'candidate_'+decision,row['facility_id'],reviewer,
           {'candidate_id':candidate_id,'identifier':row['identifier'],'evidence_url':evidence_url,'note':note})
-    conn.commit()
+    if commit:conn.commit()
     return {'candidate':candidate_id,'decision':decision,'reviewed_at':when}
 
 
@@ -321,7 +337,7 @@ def make_underwriting_profile(conn,facility_id,sections,actor='analyst',source_s
 
 
 def get_intelligence(conn,facility_id):
-    facility=conn.execute('SELECT latitude,longitude FROM facilities WHERE id=?',(facility_id,)).fetchone()
+    facility=conn.execute('SELECT latitude,longitude,fei FROM facilities WHERE id=?',(facility_id,)).fetchone()
     if facility is None:return None
     from .db import items,one
     events=items(conn,'SELECT * FROM historical_events WHERE facility_id=? ORDER BY incident_date',(facility_id,))
@@ -334,6 +350,14 @@ def get_intelligence(conn,facility_id):
         if loc['precision'] in ('site_verified','property_polygon') and not valid:
             loc['original_review_precision']=loc['precision']
             loc['precision']='review_stale'
+    identifiers=items(conn,'SELECT * FROM identity_links WHERE facility_id=? ORDER BY namespace,status',(facility_id,))
+    for identifier in identifiers:
+        if identifier['namespace']=='FDA_FEI':
+            valid=(identifier['identifier']==facility['fei'])
+            identifier['valid_for_current_fei']=valid
+            if not valid and identifier['status']=='verified':
+                identifier['original_status']='verified'
+                identifier['status']='review_stale'
     hazard_checks=items(conn,'SELECT * FROM hazard_assessments WHERE facility_id=? ORDER BY peril',(facility_id,))
     current_review=loc and is_reviewed_site_coordinate(facility,loc)
     for hazard in hazard_checks:
@@ -347,7 +371,7 @@ def get_intelligence(conn,facility_id):
         if not valid:
             hazard['original_status']=hazard['status']
             hazard['status']='stale_location_review'
-    return dict(facility_id=facility_id,identifiers=items(conn,'SELECT * FROM identity_links WHERE facility_id=? ORDER BY namespace,status',(facility_id,)),
+    return dict(facility_id=facility_id,identifiers=identifiers,
         candidates=items(conn,'SELECT * FROM match_candidates WHERE facility_id=? ORDER BY decision,name_similarity DESC',(facility_id,)),
         location=loc,
         hazard_checks=hazard_checks,
@@ -358,6 +382,14 @@ def intelligence_quality(conn):
     return {
       'verified_frs_links':conn.execute("SELECT COUNT(*) FROM identity_links WHERE namespace='EPA_FRS' AND status='verified'").fetchone()[0],
       'frs_candidates_pending':conn.execute("SELECT COUNT(*) FROM match_candidates WHERE decision='pending'").fetchone()[0],
+      'verified_current_fei_links':conn.execute("""SELECT COUNT(*) FROM identity_links l
+        JOIN facilities f ON f.id=l.facility_id
+        WHERE l.namespace='FDA_FEI' AND l.status='verified'
+          AND l.identifier=f.fei""").fetchone()[0],
+      'stale_verified_fei_links':conn.execute("""SELECT COUNT(*) FROM identity_links l
+        JOIN facilities f ON f.id=l.facility_id
+        WHERE l.namespace='FDA_FEI' AND l.status='verified'
+          AND l.identifier<>coalesce(f.fei,'')""").fetchone()[0],
       'verified_site_locations':conn.execute("""SELECT COUNT(*) FROM location_reviews l
         JOIN facilities f ON f.id=l.facility_id
         WHERE l.precision IN ('site_verified','property_polygon')

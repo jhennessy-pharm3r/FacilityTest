@@ -36,3 +36,22 @@ The container is unprivileged and read-only apart from the database volume and t
 ## Hard requirements still outstanding before external client access
 
 Implement OIDC/SSO with tenant-scoped roles, CSRF protection for cookie-authenticated writes, row-level separation of clients, database access encryption/backup and restore, peer-reviewed risk definitions, change control, monitoring/alerting, enterprise secrets, and a security penetration assessment. Do not represent the app as production secure or as an actuarially calibrated insurer rating system.
+
+
+## Independent human review of consequential site matches
+
+The private backend includes a *two-distinct-authenticated-account* review mode for three actions: approving a physical site location, promoting an observed FDA FEI to verified, or accepting/rejecting an EPA/other regulatory identity crosswalk. This is **not** enterprise OIDC or insurer multi-tenant RBAC.
+
+To enable it on a controlled private deployment:
+
+1. Generate a **different** 16+ character password for each person. Derive salted PBKDF2-SHA256 verifiers without writing passwords to a file:
+   ```powershell
+   python -c "from facilityrisk.security import make_password_hash; import getpass; print(make_password_hash(getpass.getpass('Individual password: ')))"
+   ```
+2. Store a JSON secret in the secret manager as `FACILITY_RISK_USERS_JSON`, with distinct, non-shared usernames and roles. Shape: `{"analystA":{"role":"reviewer","password_hash":"pbkdf2_sha256$260000$..."},"managerB":{"role":"approver","password_hash":"pbkdf2_sha256$260000$..."}}`. **Do not copy example verifiers.**
+3. Enable `FACILITY_RISK_DUAL_REVIEW=1` and `FACILITY_RISK_ENABLE_WRITES=1`. Serve behind TLS and an identity-aware proxy/VPN. In dual mode, shared service Bearer tokens cannot make protected decisions; viewer accounts cannot write.
+4. A reviewer authenticated as `reviewer` or `admin` submits the existing location/FEI/crosswalk review POST request. It returns `pending`, with no underlying identity/point promoted.
+5. A separate authenticated `approver` or `admin` queries `GET /api/review-approvals?status=pending` and submits `POST /api/review-approvals/{approval_id}/decide` with `{"decision":"approve","note":"Independently checked corroborating source and site address"}`. Same-account approvals are rejected. Changed coordinates/FEI/upstream candidates invalidate the proposal and require new evidence.
+6. Audit records preserve both user IDs and the source snapshot. A second approver may explicitly reject an application without promoting evidence.
+
+`FACILITY_RISK_DUAL_REVIEW=0` preserves the existing *local prototype* single-review behavior for backward compatibility. **Any non-loopback deployment with private writes enabled now refuses to start unless dual review is configured.** Local CLI commands run as a trusted operator and are not independently authenticated reviewers; restrict shell access and do not use CLI direct-review commands for production decisions. Historical source reviews made before dual mode remain legacy and must not be presented as two-person-approved. Tenant scoping, SSO/MFA, CSRF protection for cookie-based auth, external authorization audit, and penetration testing remain mandatory for insurance-client production access.

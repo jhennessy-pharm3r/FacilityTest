@@ -109,6 +109,8 @@ def initialize(conn: sqlite3.Connection) -> None:
     initialize_research(conn)
     from .legacy_audit import initialize_legacy
     initialize_legacy(conn)
+    from .approval import initialize_approvals
+    initialize_approvals(conn)
     conn.commit()
 
 
