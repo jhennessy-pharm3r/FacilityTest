@@ -8,6 +8,11 @@ on:
       - 'web/registry-ui.js'
       - 'web/universal-ui.js'
       - 'web/insurance-ui.js'
+      - 'web/workbench-ui.js'
+      - 'web/app.js'
+      - 'web/styles.css'
+      - 'index.html'
+      - 'web/index.html'
       - 'web/public-api.js'
       - '.github/workflows/browser-smoke.yml'
   workflow_dispatch:
