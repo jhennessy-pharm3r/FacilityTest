@@ -112,7 +112,7 @@ def country_from_explicit_address(address):
     # Commas sometimes occur within the ISO country's official name.
     for count in range(1,min(len(parts),4)):
         last=', '.join(parts[-count:])
-        match=re.fullmatch(r'(.+?)\\s*\\(([A-Za-z]{3})\\)',last)
+        match=re.fullmatch(r'(.+?)\s*\(([A-Za-z]{3})\)',last)
         if not match:continue
         country=pycountry.countries.get(alpha_3=match.group(2).upper())
         label=COUNTRY_NAMES.get(match.group(1).strip().casefold())
