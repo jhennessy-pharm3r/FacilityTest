@@ -26,7 +26,7 @@ from .site_workspace import (SOURCES as REGULATOR_SOURCES, intake_site, search_e
 
 ROOT=Path(__file__).resolve().parent.parent
 WEB=ROOT/'web'
-app=FastAPI(title='Pharm3r Facility Risk Intelligence',version='0.6.0',
+app=FastAPI(title='Pharm3r Facility Risk Intelligence',version='0.7.0',
             description='Evidence research prototype; not an actuarially calibrated risk score.')
 app.mount('/assets',StaticFiles(directory=WEB),name='assets')
 add_security(app)
@@ -46,7 +46,7 @@ def index():
 
 @app.get('/api/health')
 def health(c=Depends(conn_dependency)):
-    return {'status':'ok','version':'0.6.0'}
+    return {'status':'ok','version':'0.7.0'}
 
 
 @app.get('/api/insurance/coverage-types')
