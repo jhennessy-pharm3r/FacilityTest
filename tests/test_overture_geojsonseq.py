@@ -33,3 +33,25 @@ def test_overture_geojsonseq_record_separator_and_source_identity(tmp_path):
     assert search(c,country='CA')['total']==1
     assert search(c)['total']==2
     c.close()
+
+
+def test_current_overture_2026_taxonomy_and_category_fallback(tmp_path):
+    path=tmp_path/'current.geojsonseq'
+    records=[
+        {'type':'Feature','geometry':{'type':'Point','coordinates':[-6.2,53.3]},
+         'properties':{'id':'GERS-HOSPITAL','names':{'primary':'City Hospital'},
+                       'basic_category':'hospital','taxonomy':{'primary':'general_hospital'},
+                       'addresses':[{'country':'IE'}]}},
+        {'type':'Feature','geometry':{'type':'Point','coordinates':[-6.21,53.31]},
+         'properties':{'id':'GERS-FACTORY','names':{'primary':'Chemical Manufacturing Site'},
+                       'basic_category':'factory','taxonomy':{'primary':'chemical_factory'},
+                       'addresses':[{'country':'IE'}]}},
+        {'type':'Feature','geometry':{'type':'Point','coordinates':[-6.22,53.32]},
+         'properties':{'id':'GERS-WAREHOUSE','names':{'primary':'Distribution Warehouse'},
+                       'basic_category':'warehouse',
+                       'addresses':[{'country':'IE'}]}}
+    ]
+    path.write_text('\n'.join(json.dumps(row) for row in records),encoding='utf-8')
+    actual=list(geojsonseq_rows(path))
+    assert [r['industry'] for r in actual]==['general_hospital','chemical_factory','warehouse']
+    assert [r['source_identifier'] for r in actual]==['GERS-HOSPITAL','GERS-FACTORY','GERS-WAREHOUSE']
