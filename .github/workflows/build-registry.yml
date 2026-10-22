@@ -27,6 +27,30 @@ jobs:
         run: python -m pip install -r requirements.txt 'ijson>=3.3,<4'
       - name: Refresh all available FDA registration/listing partitions
         run: python scripts/build_catalog.py --output web/registry/catalog.json
+      - name: Inspect public drug-address geography patterns without private contacts
+        run: |
+          python - <<'PY'
+          import json
+          from collections import Counter
+          from facilityrisk.registry_catalog import COUNTRY_NAMES,country_from_explicit_address
+          data=json.load(open('web/registry/catalog.json',encoding='utf-8'))
+          keys=data['fields']
+          records=[dict(zip(keys,row)) for row in data['rows']
+                   if row[keys.index('sector')]=='Pharmaceutical']
+          sample=records[::max(1,len(records)//16)][:16]
+          endings=Counter()
+          for row in records:
+              address=row.get('address','').strip()
+              if not address:continue
+              sep=address.split(',')[-1].strip()
+              endings['contains_comma' if ',' in address else 'no_comma']+=1
+              endings['ends_explicit_iso_country' if country_from_explicit_address(address) else 'unresolved_suffix']+=1
+              endings['ends_numeral' if address[-1].isdigit() else 'ends_non_numeral']+=1
+          print('Published FDA DECRS address shape counts:',dict(endings))
+          for row in sample:
+              # Published establishment address only; source contact fields never exported.
+              print('FDA DECRS PUBLIC ADDRESS SAMPLE:',repr(row.get('address','')[:180]))
+          PY
       - name: Refresh official Ireland EPA licence profiles
         run: python scripts/build_ireland_leap.py --output web/registry/ireland-leap.json
       - name: Validate published facility catalog
