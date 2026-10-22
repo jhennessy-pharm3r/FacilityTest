@@ -214,6 +214,26 @@ def render_assessment_html(report,*,private_backend=False):
     hazards=rows(report['hazards'],lambda x:'<tr><td>'+e(x['peril'])+'</td><td>'+
                  e(x['status'])+'</td><td>'+e(x['description'] or '')+'</td><td>'+
                  link(x['source_url'])+'</td></tr>')
+    policy_rows=[]
+    for p in report.get('insurance_policy_review',{}).get('policies',[]):
+        for t in p['terms']:
+            policy_rows.append('<tr><td>'+e(p['insurer'])+' / '+e(p['policy_reference'])+
+             '<small> ('+e(p['start_date'])+' to '+e(p['end_date'])+')</small></td><td>'+
+             e(t['coverage_id'])+'</td><td>'+e(t['effective_review_status'])+'</td><td>'+
+             'Limit '+e(t['limits'] if t['limits'] is not None else 'unknown')+
+             '; deductible '+e(t['deductible'] if t['deductible'] is not None else 'unknown')+
+             '; waiting hours '+e(t['waiting_hours'] if t['waiting_hours'] is not None else 'unknown')+
+             '; evidence '+e(t['source_document_reference'] or 'not independently reviewed')+'</td></tr>')
+    policy_table=''.join(policy_rows) or '<tr><td colspan="4">No reviewed policy term records — insurance status unknown</td></tr>'
+    crosswalk_rows=[]
+    for h in report.get('hazard_coverage_crosswalk',{}).get('current_screened_perils',[]):
+        for cover in h['related_coverage']:
+            crosswalk_rows.append('<tr><td>'+e(h['peril'])+' / '+e(h['hazard_status'])+
+             '</td><td>'+e(cover['coverage_id'])+'</td><td>'+
+             e(cover['verification_status'])+'</td><td>'+
+             str(len(cover['terms']))+' matching current term entries; source '+
+             link(h['hazard_source_url'])+'</td></tr>')
+    crosswalk_table=''.join(crosswalk_rows) or '<tr><td colspan="4">No verified current-property hazard and policy crosswalk</td></tr>'
     actions=''.join('<li>'+e(a)+'</li>' for a in report['recommended_actions']) or '<li>No additional actions listed</li>'
     cautions=''.join('<li>'+e(x)+'</li>' for x in report['interpretation'])
     return ('''<!doctype html><html lang="en"><head><meta charset="utf-8">
@@ -234,6 +254,11 @@ a{color:#245c61}section{break-inside:avoid}ul{line-height:1.65}
 '<h2>Evidence coverage</h2><table><thead><tr><th>Dimension</th><th>Status</th><th colspan="2">Basis</th></tr></thead><tbody>'+coverage+'</tbody></table>'+
 '<div class="columns">'+sections+'</div>'+
 '<h2>Physical hazard screening</h2><table><tr><th>Peril</th><th>Status</th><th>Description</th><th>Reference</th></tr>'+hazards+'</table>'+
+'<h2>Insurance contracts and coverage review</h2>'+
+'<p class="muted">Independent wording review is not proof of payout or a coverage guarantee. Excluded terms do not count as available insurance protection. Review the scheduled insured location, exclusions and endorsements.</p>'+
+'<table><tr><th>Policy</th><th>Coverage type</th><th>Review state</th><th>Contract details / evidence reference</th></tr>'+policy_table+'</table>'+
+'<h2>Property hazard and documented coverage crosswalk</h2>'+
+'<table><tr><th>Screened hazard</th><th>Potential coverage</th><th>Evidence status</th><th>Reference / scope</th></tr>'+crosswalk_table+'</table>'+
 '<h2>Source-linked findings ('+e(report['evidence_total'])+')</h2>'+
 ('<p><a href="/api/facilities/'+quote(str(site['id']),safe='')+
  '/evidence.csv">Download complete private evidence CSV</a></p>'
