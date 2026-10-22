@@ -203,6 +203,19 @@ def make_catalog(records,source_status,*,generated_at=None):
     data=sorted(distinct.values(),key=lambda x:(x.get('name','').casefold(),x['id']))
     country_counts=Counter(x['country'] for x in data if x['country'])
     sector_counts=Counter(x['sector'] for x in data)
+    # Measure source-record completeness; do not infer country/city from an
+    # opaque DECRS free-text address or claim a verified property coordinate.
+    field_coverage={}
+    for sector in sorted(sector_counts):
+        group=[x for x in data if x['sector']==sector]
+        field_coverage[sector]={
+            'source_identities':len(group),
+            'with_fei':sum(bool(x['fei']) for x in group),
+            'with_secondary_id':sum(bool(x['registration_number']) for x in group),
+            'with_reported_address':sum(bool(x['address']) for x in group),
+            'with_structured_city':sum(bool(x['city']) for x in group),
+            'with_structured_country':sum(bool(x['country']) for x in group),
+            'with_operations':sum(bool(x['activities']) for x in group)}
     conflicts=[{'id':r['id'],'source':r['source'],'fei':r.get('fei',''),
                 'requires_site_review':True,'conflicting_fields':r['_source_conflicts']}
                for r in data if r.get('_source_conflicts')]
@@ -211,6 +224,7 @@ def make_catalog(records,source_status,*,generated_at=None):
         'summary':{'distinct_source_entities':len(data),'source_rows':sum(int(x['source_records']) for x in data),
                    'countries':len(country_counts),'by_sector':dict(sector_counts),
                     'identity_conflict_count':len(conflicts),
+                    'field_coverage_by_sector':field_coverage,
                     'country_counts':dict(country_counts.most_common(300))},
         'identity_conflicts':conflicts,
         'sources':source_status,
