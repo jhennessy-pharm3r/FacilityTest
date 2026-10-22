@@ -93,9 +93,6 @@ def _iso_countries():
         'taiwan':'TW','vietnam':'VN','turkey':'TR',
         'czech republic':'CZ','ivory coast':'CI'
     })
-    # Identical to place/region names in common U.S. postal addresses.
-    for ambiguous in ('georgia','congo','guinea','niger','dominica'):
-        mapping.pop(ambiguous,None)
     return mapping
 
 
@@ -112,7 +109,7 @@ def country_from_explicit_address(address):
     parts=[x.strip(' .\\t') for x in re.split(r'[,;]',clean(address,500))]
     if len(parts)<2:return ''
     last=parts[-1].casefold()
-    if last in ('us','ca','in','ga'):return ''  # country vs state/postal ambiguity
+    if last in ('ca','in','ga','georgia','congo'):return ''  # ambiguous state/region names
     return COUNTRY_NAMES.get(last,'')
 
 
@@ -190,7 +187,7 @@ def merge(target, record):
     old['activities']='; '.join(roles)[:300]
     for k in ('name','company','city','state','country','address','fei','registration_number','expiry_year'):
         if not old[k] and record[k]: old[k]=record[k]
-    if record.get('country') and old.get('country')==record['country'] and not old.get('_country_origin'):
+    if record.get('country') and not old.get('country'):
         old['_country_origin']=record.get('_country_origin','unresolved')
     if record['address'] and old['address'] and normal_key(record['address'])!=normal_key(old['address']):
         old['identity_warning']='Same reported identifier occurs with different street addresses; site review required'
