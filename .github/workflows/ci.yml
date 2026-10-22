@@ -30,6 +30,7 @@ jobs:
       - name: JavaScript syntax for private and public viewers
         run: |
           node --check web/app.js
+          node --check web/universal-ui.js
           node --check web/registry-ui.js
           node --check web/intelligence-ui.js
           node --check web/public-api.js
