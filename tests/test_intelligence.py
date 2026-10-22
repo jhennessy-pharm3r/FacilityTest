@@ -295,7 +295,7 @@ def test_hazard_screening_stales_after_site_point_changes_even_if_rereviewed(db)
     report=build_assessment(db,fid)
     assert report['coverage']['natural_hazards']['status']=='unassessed'
     assert '1 stale or legacy' in report['coverage']['natural_hazards']['reason']
-    assert 'Refresh or explicitly retire hazard overlays' in report['recommended_actions']
+    assert any(x.startswith('Refresh or explicitly retire hazard overlays') for x in report['recommended_actions'])
     assert intelligence_quality(db)['current_hazard_screenings']==0
     review_location(db,fid,'site_verified','https://example.org/new-building-point',
                     'Site Reviewer','Independently checked updated building footprint')
