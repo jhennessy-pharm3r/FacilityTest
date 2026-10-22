@@ -7,7 +7,7 @@ const DRAWER = $('#detail-drawer');
 const CONTENT = $('#drawer-content');
 const state = {
   overview:null, facilities:[], sources:null, finance:null, quality:null,
-  page:'registry', facility:null, detail:null, evidence:null, risk:null, reportAvailable:false, tab:'summary',
+  page:'registry', facility:null, detail:null, evidence:null, risk:null, reportAvailable:false, reviewQueue:null, tab:'summary',
   facilityQuery:'', country:'', source:'', disclosureQuery:'',
   evQuery:'', evSource:'', evDomain:'', evOffset:0, evLimit:25,
   globalQuery:'',globalSource:'',globalDomain:'',globalOffset:0,globalRecords:null,requestToken:0
@@ -83,16 +83,77 @@ function renderQuality(){const q=state.quality;let cards=[['Facilities geocoded'
 function renderMethodology(){const cards=[['01','Identify physical site','Normalize source names, addresses, FEI and independent identifiers. Similar text is only a candidate match; FEI auto-link requires exact verified ID.'],['02','Retain provenance','Preserve publisher URL, original raw date, evidence scope, matching confidence, limitations and retrieval metadata.'],['03','Separate exposure and incident','A flood-zone intersection, chemical release or nearby earthquake is not a demonstrated insured-property loss.'],['04','Link verified outcomes','Organize SEC findings by event group and reporting period, then verify site attribution and separate gross costs from recoveries.'],['05','Respect time direction','Backtesting requires publication-availability dates preceding the outcome. Never backdate a record merely because it describes an older event.'],['06','Do not calculate a score yet','Coverage count, compliance frequency and environmental releases require exposure denominators, severity definitions and historical loss validation before weighting.']];return heading('Model governance','Assessment methodology','Current prototype is an evidence explorer, not an automated insurance-rating model.')+
   `<div class="method-grid">${cards.map(x=>`<div class="method-card"><span class="step">${x[0]} / PROCESS</span><h3>${escapeHTML(x[1])}</h3><p>${escapeHTML(x[2])}</p></div>`).join('')}</div>`+
   note('Do not make coverage or acceptance decisions using this research prototype. Supplement it with insured asset values, construction, flood/fire protection, production redundancy, historical claims and engineering reports.');}
-function renderPage(){const views={registry:()=>window.RegistryUI.render(),overview:renderOverview,facilities:renderFacilities,evidence:renderGlobalPage,disclosures:renderDisclosures,sources:renderSources,quality:renderQuality,methodology:renderMethodology,
+
+function renderApprovalQueue(){
+  const queue=state.reviewQueue;
+  let body='';
+  if(!queue)body='<div class="loading-card">Loading independent review proposals…</div>';
+  else if(queue.error)body='<div class="empty">'+escapeHTML(queue.error)+'</div>';
+  else if(!(queue.items||[]).length)body='<div class="empty">No pending independent identity or coordinate approvals in this private workspace.</div>';
+  else body=queue.items.map(r=>{
+    let payload={};try{payload=JSON.parse(r.payload_json||'{}');}catch{}
+    const source=link(payload.evidence_url,'Corroboration source');
+    const requestLabel=r.action==='match_candidate'?'Regulatory crosswalk':r.action==='fei'?'FDA FEI review':'Physical-site location';
+    const oldValue=payload.fei||payload.identifier||payload.precision||'Source observation';
+    return '<article class="compact-item"><div class="label-row"><b>'+escapeHTML(requestLabel)+'</b>'+pill('Pending second reviewer')+
+      '</div><p><strong>Facility:</strong> '+escapeHTML(r.facility_id)+
+      ' · <strong>Proposed by:</strong> '+escapeHTML(r.requested_by)+
+      ' · <strong>Observed value:</strong> '+escapeHTML(oldValue)+'</p>'+
+      '<p class="detail">'+escapeHTML(payload.note||'')+'</p>'+
+      '<p class="evidence-meta">'+source+' · '+escapeHTML(r.requested_at)+'</p>'+
+      '<label class="small-muted" for="review-note-'+attr(r.id)+'">Independent approval rationale</label>'+
+      '<textarea class="field" rows="2" id="review-note-'+attr(r.id)+
+      '" data-review-note="'+attr(r.id)+'" placeholder="Document independent validation; minimum 12 characters"></textarea>'+
+      '<div class="label-row" style="justify-content:flex-end;gap:8px;padding:10px 0">'+
+      '<button class="btn tiny" data-review-action="reject" data-review-id="'+attr(r.id)+'">Reject</button>'+
+      '<button class="btn primary tiny" data-review-action="approve" data-review-id="'+attr(r.id)+'">Approve after verification</button></div>'+
+      '</article>';
+  }).join('');
+  return heading('Source governance','Independent approvals',
+    'Pending site-identity and coordinate proposals. A separate authenticated approver must corroborate original sources.')+
+    note('This is private source-identity governance, not an insurance coverage or risk acceptance approval. Shared service tokens cannot approve.',true)+
+    panel('Review queue', 'Approver access required to record a decision',
+      '<div class="panel-body"><button class="btn tiny" id="review-refresh">Refresh queue</button></div><div id="approval-results">'+body+'</div>');
+}
+async function loadApprovalQueue(){
+  try{state.reviewQueue=await api('review-approvals?status=pending&limit=100');}
+  catch(error){state.reviewQueue={error:error.message,items:[]};}
+  if(state.page==='reviews'){const el=$('#approval-results');if(el){
+    const next=renderApprovalQueue();
+    const doc=document.createElement('div');doc.innerHTML=next;
+    const result=doc.querySelector('#approval-results');
+    if(result)el.innerHTML=result.innerHTML;
+  }}
+}
+async function decideReview(id,decision){
+  const el=$('textarea[data-review-note]').find(x=>x.dataset.reviewNote===id);
+  const reason=(el?.value||'').trim();
+  if(reason.length<12){showToast('Enter an independent review rationale of at least 12 characters');return;}
+  try{
+    const response=await fetch('/api/review-approvals/'+encodeURIComponent(id)+'/decide',{
+      method:'POST',headers:{'Accept':'application/json','Content-Type':'application/json'},
+      body:JSON.stringify({decision,note:reason}),credentials:'same-origin'});
+    if(!response.ok){
+      const err=await response.json().catch(()=>({}));
+      throw Error(String(err.detail||'Approval request rejected')+' (HTTP '+response.status+')');
+    }
+    const result=await response.json();
+    showToast(result.status==='approved'?'Identity evidence approved':'Review decision: '+result.status);
+    await loadApprovalQueue();
+  }catch(err){showToast(err.message);}
+}
+
+function renderPage(){const views={registry:()=>window.RegistryUI.render(),overview:renderOverview,facilities:renderFacilities,evidence:renderGlobalPage,disclosures:renderDisclosures,reviews:renderApprovalQueue,sources:renderSources,quality:renderQuality,methodology:renderMethodology,
     cases:()=>window.IntelligenceUI.render('cases'),map:()=>window.IntelligenceUI.render('map'),
     identity:()=>window.IntelligenceUI.render('identity'),underwriting:()=>window.IntelligenceUI.render('underwriting'),
     feeds:()=>window.IntelligenceUI.render('feeds')};
   state.page=views[state.page]?state.page:'overview';
   ROOT.innerHTML=views[state.page]();
   $$('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.page===state.page));
-  $('#breadcrumb-page').textContent=({registry:'ALL FACILITIES',overview:'OVERVIEW',facilities:'RESEARCH CASES',evidence:'EVIDENCE SEARCH',disclosures:'SEC DISCLOSURES',sources:'DATA SOURCES',quality:'DATA QUALITY',methodology:'METHODOLOGY',cases:'CASE STUDIES',map:'HAZARD MAP',identity:'IDENTITY REVIEW',underwriting:'EXPOSURE PROFILES',feeds:'SOURCE STATUS'})[state.page];
+  $('#breadcrumb-page').textContent=({registry:'ALL FACILITIES',overview:'OVERVIEW',facilities:'RESEARCH CASES',evidence:'EVIDENCE SEARCH',disclosures:'SEC DISCLOSURES',sources:'DATA SOURCES',quality:'DATA QUALITY',reviews:'APPROVAL QUEUE',methodology:'METHODOLOGY',cases:'CASE STUDIES',map:'HAZARD MAP',identity:'IDENTITY REVIEW',underwriting:'EXPOSURE PROFILES',feeds:'SOURCE STATUS'})[state.page];
   $('#side-facility-count').textContent=state.facilities.length;
   if(state.page==='evidence'&&!state.globalRecords)loadGlobalEvidence();
+  if(state.page==='reviews')loadApprovalQueue();
   if(state.page==='registry'&&window.RegistryUI)window.RegistryUI.mount();
   if(window.IntelligenceUI?.pages?.[state.page])window.IntelligenceUI.mount(state.page,{state,api});
 }
@@ -149,6 +210,11 @@ function setupEvents(){document.addEventListener('click',async e=>{
   if(e.target.closest('#drawer-close')||e.target.id==='drawer-backdrop'){closeDrawer();return;}
   if(e.target.closest('#ev-prev')){state.evOffset=Math.max(0,state.evOffset-state.evLimit);await refreshEvidence();return;}
   if(e.target.closest('#ev-next')){state.evOffset+=state.evLimit;await refreshEvidence();return;}
+  if(e.target.closest('#review-refresh')){await loadApprovalQueue();return;}
+  if(e.target.closest('[data-review-action]')){
+    const btn=e.target.closest('[data-review-action]');
+    await decideReview(btn.dataset.reviewId,btn.dataset.reviewAction);return;
+  }
   if(e.target.closest('#export-evidence')){await exportEvidence();return;}
   if(e.target.closest('#global-prev')){state.globalOffset=Math.max(0,state.globalOffset-50);await loadGlobalEvidence();return;}
   if(e.target.closest('#global-next')){state.globalOffset+=50;await loadGlobalEvidence();return;}

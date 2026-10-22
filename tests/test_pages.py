@@ -73,3 +73,14 @@ def test_public_website_never_includes_private_workbook():
         assert 'private_local_browser_import' not in text
     assert (ROOT/'.github/workflows/ci.yml').exists()
     assert (ROOT/'.github/workflows/source-probe.yml').exists()
+
+
+def test_private_review_queue_is_not_exposed_in_public_navigation():
+    private=(ROOT/'web'/'index.html').read_text()
+    public=(ROOT/'index.html').read_text()
+    appjs=(ROOT/'web'/'app.js').read_text()
+    assert 'data-page="reviews"' in private
+    assert 'data-page="reviews"' not in public
+    assert 'data-review-action' in appjs
+    assert '/api/review-approvals/' in appjs
+    assert 'Shared service tokens cannot approve' in appjs
