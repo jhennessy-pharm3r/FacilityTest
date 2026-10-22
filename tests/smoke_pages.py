@@ -88,6 +88,15 @@ with sync_playwright() as pw:
     expect(page.locator('#registry-results')).to_contain_text('Acme Devices Galway',timeout=15000)
     page.locator('[data-reg-id]').first.click()
     expect(page.locator('#registry-detail-container')).to_contain_text('Not assessed')
+    page.locator('#registry-assess').click()
+    expect(page.locator('#view-root h1')).to_contain_text('Facility exposure & coverage workbench')
+    expect(page.locator('[data-wb-field="facility"]')).to_have_value('Acme Devices Galway')
+    source_observation=page.evaluate('window.WorkbenchUI.assessment().source_observation')
+    assert source_observation['physical_property_verified'] is False
+    assert source_observation['source']
+    assert page.evaluate('window.WorkbenchUI.assessment().scenarios.length')==0
+    page.locator('[data-page="registry"]').first.click()
+    page.locator('[data-reg-id]').first.click()
     page.locator('#registry-track').click()
     page.locator('[data-page="facilities"]').first.click()
     expect(page.locator('#facility-cards')).to_contain_text('Acme Devices Galway',timeout=15000)
