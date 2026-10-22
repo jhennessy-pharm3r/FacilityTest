@@ -1,0 +1,101 @@
+name: Validate full EPA FRS indexed database
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/validate-frs-index.yml'
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: full-frs-index-build
+  cancel-in-progress: false
+jobs:
+  index:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      FACILITY_RISK_DB: data/full-frs-index.sqlite
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download completed full official EPA FRS source artifact
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 39809865315
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          name: epa-frs-national-source-import
+          path: data
+      - name: Verify original source manifest
+        run: |
+          python - <<'PY'
+          import json
+          m=json.load(open('data/epa-frs-national-manifest.json'))
+          assert m['complete_source'] and m['valid_records']==5354716
+          assert m['rejected_rows']==7158
+          print('Source cohort verified:',m['valid_records'])
+          PY
+      - name: Load all source identities into indexed SQLite
+        run: |
+          python -u - <<'PY'
+          import json,sqlite3,time
+          from facilityrisk.db import connect,initialize
+          from facilityrisk.universal_registry import import_records,search,statistics
+          from scripts.import_universal import csv_rows
+          from facilityrisk.registry_catalog import FIELDS
+          started=time.monotonic()
+          c=connect()
+          initialize(c)
+          # This database is a disposable, rebuildable source-only validation
+          # artifact, NOT a production database with insured/client information.
+          c.execute('PRAGMA journal_mode=OFF')
+          c.execute('PRAGMA synchronous=OFF')
+          c.execute('PRAGMA cache_size=-131072')
+          columns=('source_identifier','name','company','address','city','state',
+                    'country','industry','category','activities','latitude',
+                    'longitude','source_confidence')
+          mapping={k:k for k in columns}
+          source='https://www.epa.gov/frs/epa-frs-facilities-state-single-file-csv-download'
+          result=import_records(c,'EPA_FRS',
+             csv_rows('data/epa-frs-national.csv.gz',mapping),
+             source,vintage='2026-10-01',
+             notes='Complete EPA national source identity import; not verified properties')
+          stats=statistics(c)
+          assert result['read']==5354716, result
+          assert result['rejected']==0, result
+          assert stats['source_identities']>=5000000, stats
+          assert stats['site_candidates']>=5000000, stats
+          first=search(c,q='warehouse',limit=2)
+          assert first['total']>=1,'FTS index did not find warehouses'
+          index_ok=c.execute('PRAGMA quick_check').fetchone()[0]
+          assert index_ok=='ok',index_ok
+          c.execute('PRAGMA wal_checkpoint(TRUNCATE)') if c.execute('PRAGMA journal_mode').fetchone()[0]=='wal' else None
+          import os
+          report={'source_record_count':result['read'],
+                  'unique_source_identifiers':stats['source_identities'],
+                  'site_candidates':stats['site_candidates'],
+                  'warehouse_search_matches':first['total'],
+                  'sqlite_quick_check':index_ok,
+                  'database_bytes':os.stat('data/full-frs-index.sqlite').st_size,
+                  'elapsed_seconds':round(time.monotonic()-started,2),
+                  'property_verified_count':0,
+                  'insurance_coverage_verified_count':0,
+                  'source':'EPA FRS public reporting identities'}
+          with open('data/full-frs-index-qa.json','w') as f:
+              json.dump(report,f,indent=2)
+          print(json.dumps(report,indent=2),flush=True)
+          c.close()
+          PY
+      - name: Publish validated source-only SQLite for private-host import
+        uses: actions/upload-artifact@v4
+        with:
+          name: epa-frs-indexed-registry
+          path: |
+            data/full-frs-index.sqlite
+            data/full-frs-index-qa.json
+          compression-level: 3
+          retention-days: 7
+          if-no-files-found: error
