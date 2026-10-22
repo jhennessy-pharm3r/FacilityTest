@@ -194,7 +194,7 @@
    ].map(([k,v])=>`<div><small>${esc(k)}</small><b>${esc(v||'Not recorded')}</b></div>`).join('')}</div>
      ${conflictWarning}
      <div class="registry-risk-warning">Registration or licensing does not verify the property boundary, active manufacturing status, environmental compliance, hazard exposure, or insurance loss likelihood. These require independent source matching and location review.</div>
-     <div class="registry-actions"><a class="btn" target="_blank" rel="noopener noreferrer" href="${esc(sourceLink(r))}">View official source ↗</a><button class="btn primary" id="registry-track" data-reg-track="${esc(r.id)}">Add to research workspace</button></div>
+     <div class="registry-actions"><button class="btn primary" id="registry-assess">Assess insurance exposure →</button><a class="btn" target="_blank" rel="noopener noreferrer" href="${esc(sourceLink(r))}">View official source ↗</a><button class="btn primary" id="registry-track" data-reg-track="${esc(r.id)}">Add to research workspace</button></div>
     </div></section>`;}
  function showDetail(id){selected=result.find(r=>r.id===id)||null;const root=document.getElementById('registry-detail-container');if(!root)return;
    root.innerHTML=selected?detailHTML(selected):'';if(selected)root.scrollIntoView({block:'nearest',behavior:'smooth'});
@@ -243,6 +243,9 @@
      if(e.target.closest('#registry-prev')){page=Math.max(0,page-1);document.getElementById('registry-results').innerHTML=resultsHTML();return;}
      if(e.target.closest('#registry-next')){page=Math.min(Math.ceil(result.length/perPage)-1,page+1);document.getElementById('registry-results').innerHTML=resultsHTML();return;}
      if(e.target.closest('#registry-close-detail')){selected=null;document.getElementById('registry-detail-container').innerHTML='';return;}
+     if(e.target.closest('#registry-assess')&&selected){
+       window.dispatchEvent(new CustomEvent('facilityrisk:assess-site',{detail:{...selected,source_url:sourceLink(selected)}}));return;
+     }
      if(e.target.closest('#registry-track')&&selected){try{await track(selected);}catch(e){alert(e.message);}return;}
      if(e.target.closest('#registry-manual-toggle')){manualVisible=!manualVisible;const x=document.getElementById('registry-manual-form');x.hidden=!manualVisible;e.target.textContent=manualVisible?'Hide':'Create research entry';return;}
      if(e.target.closest('#registry-add-manual')){await addManual();return;}

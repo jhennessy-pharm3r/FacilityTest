@@ -30,6 +30,43 @@ with sync_playwright() as pw:
     page.route('**/registry/catalog.json',lambda route:route.fulfill(status=200,content_type='application/json',body=json.dumps(sample)))
     page.on('dialog',lambda dialog:dialog.accept())
     page.goto(BASE,wait_until='domcontentloaded',timeout=45000)
+    # Insurance-first entry point works for ANY manually named facility without
+    # claiming registered-site, geohazard or confirmed policy coverage.
+    expect(page.locator('#view-root h1')).to_contain_text('Facility exposure & coverage workbench',timeout=15000)
+    page.locator('[data-wb-field="facility"]').fill('Example Public Logistics Hub')
+    page.locator('[data-wb-field="industry"]').fill('Transport and warehousing')
+    page.locator('[data-wb-field="location"]').fill('New Brunswick, Canada')
+    page.locator('[data-wb-kind="perils"][value="flood"]').check()
+    page.locator('[data-wb-kind="deps"][value="power"]').check()
+    page.locator('[data-wb-kind="deps"][value="supplier"]').check()
+    expect(page.locator('#wb-coverage-review')).to_contain_text('Parametric flood')
+    expect(page.locator('#wb-coverage-review')).to_contain_text('Contingent BI')
+    expect(page.locator('#wb-coverage-review')).to_contain_text('Utility service interruption')
+    page.locator('#wb-coverage-flood').select_option('excluded')
+    expect(page.locator('#wb-summary')).to_contain_text('1',timeout=15000)
+    page.locator('[data-wb-field="days"]').fill('5')
+    page.locator('[data-wb-field="daily"]').fill('15000')
+    expect(page.locator('#wb-summary')).to_contain_text('$75,000',timeout=15000)
+    assessment=page.evaluate('window.WorkbenchUI.assessment()')
+    assert assessment['facility']['name']=='Example Public Logistics Hub'
+    assert assessment['financial_illustration']['gross_downtime_illustration_usd']==75000
+    assert len(assessment['potential_coverages'])>=5
+    assert all(x['verified_coverage']=='unknown' for x in assessment['potential_coverages'])
+    with page.expect_download() as transfer:
+        page.locator('#wb-export').click()
+    download=transfer.value
+    path=download.path()
+    report=json.loads(Path(path).read_text(encoding='utf-8'))
+    assert report['facility']['industry']=='Transport and warehousing'
+    assert report['financial_illustration']['gross_downtime_illustration_usd']==75000
+    assert any(x['id']=='flood' and x['user_reported_status']=='excluded' and x['verified_coverage']=='unknown'
+               for x in report['potential_coverages'])
+    page.locator('[data-page="insurance"]').first.click()
+    expect(page.locator('#view-root')).to_contain_text('Parametric flood',timeout=15000)
+    page.locator('[data-page="workbench"]').first.click()
+    expect(page.locator('[data-wb-field="facility"]')).to_have_value('Example Public Logistics Hub')
+    page.locator('#wb-reset').click()
+    expect(page.locator('[data-wb-field="facility"]')).to_have_value('')
     page.locator('[data-page="universal"]').first.click()
     expect(page.locator('#view-root')).to_contain_text('Universal facility discovery')
     expect(page.locator('#view-root')).to_contain_text('private backend')
@@ -51,6 +88,15 @@ with sync_playwright() as pw:
     expect(page.locator('#registry-results')).to_contain_text('Acme Devices Galway',timeout=15000)
     page.locator('[data-reg-id]').first.click()
     expect(page.locator('#registry-detail-container')).to_contain_text('Not assessed')
+    page.locator('#registry-assess').click()
+    expect(page.locator('#view-root h1')).to_contain_text('Facility exposure & coverage workbench')
+    expect(page.locator('[data-wb-field="facility"]')).to_have_value('Acme Devices Galway')
+    source_observation=page.evaluate('window.WorkbenchUI.assessment().source_observation')
+    assert source_observation['physical_property_verified'] is False
+    assert source_observation['source']
+    assert page.evaluate('window.WorkbenchUI.assessment().scenarios.length')==0
+    page.locator('[data-page="registry"]').first.click()
+    page.locator('[data-reg-id]').first.click()
     page.locator('#registry-track').click()
     page.locator('[data-page="facilities"]').first.click()
     expect(page.locator('#facility-cards')).to_contain_text('Acme Devices Galway',timeout=15000)

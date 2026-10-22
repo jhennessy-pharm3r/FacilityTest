@@ -1,0 +1,32 @@
+name: Live GitHub Pages UX and insurance review audit
+on:
+  workflow_run:
+    workflows: ["pages build and deployment"]
+    types: [completed]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install live site browser
+        run: |
+          python -m pip install 'playwright>=1.54,<2'
+          python -m playwright install --with-deps chromium
+      - name: Verify actual deployed GitHub Pages workbench and source search
+        run: python tests/smoke_live_pages.py
+      - name: Upload actual live-site screenshots and audit
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: facility-live-pages-audit
+          path: /tmp/facility-live-audit/
+          if-no-files-found: ignore
+          retention-days: 14

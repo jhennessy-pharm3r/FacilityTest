@@ -36,6 +36,7 @@ function renderCards(){
 }
 function render(){
  return '<div class="page-heading"><div><div class="eyebrow">ALL FACILITIES · INSURANCE REFERENCE</div><h1>Insurance coverage & alternative options</h1><p class="subhead">Property, natural catastrophe, business interruption, utility service, contingent BI, and parametric structures for all industries. Availability does not prove a facility holds the coverage.</p></div></div>'+
+ '<div class="wb-coverage-cta"><div><strong>Turn these options into an assessment</strong><p>Pick real scenarios to review for any facility. Coverage remains unverified until policy documents are examined.</p></div><button class="btn primary" data-page="workbench">Open assessment workbench →</button></div>'+ 
  '<section class="panel"><div class="panel-body"><strong>Policy verification is required.</strong><p>These are potential coverage types, not policy findings. A payout requires satisfaction of each contract’s terms. Standard BI often depends on qualifying covered property damage; parametric payout terms and basis risk are separate.</p></div>'+
  '<div class="registry-controls"><input id="insurance-search" class="field registry-search" placeholder="Search insurance types..." value="'+esc(query)+'">'+
  '<select class="select" id="insurance-category"><option value="">All categories</option>'+

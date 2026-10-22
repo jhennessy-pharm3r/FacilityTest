@@ -51,7 +51,7 @@ def test_api_routes_and_pagination(database):
         assert client.get('/').status_code == 200
         assert client.get('/assets/app.js').status_code == 200
         h=client.get('/api/health').json()
-        assert h['status']=='ok' and h['version']=='0.7.0'
+        assert h['status']=='ok' and h['version']=='0.8.0'
         summary=client.get('/api/overview').json()
         assert summary['stats']['facilities']==2
         assert summary['stats']['evidence']==1
