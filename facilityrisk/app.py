@@ -17,6 +17,8 @@ from .source_extensions import catalog as extension_catalog, review_event_candid
 from .fei_api import lookup_fei
 from .assessment import build_assessment, render_assessment_html, iter_evidence_csv
 from .research import start_research,research_history,run_source,SourceNotEligible
+from .universal_registry import (search as universal_search, detail as universal_detail,
+    statistics as universal_stats, track_for_research as universal_track)
 from .site_workspace import (SOURCES as REGULATOR_SOURCES, intake_site, search_external_registry,
                              track_external_registry_site, stage_identity_candidate,
                              suggest_regulatory_matches)
@@ -44,6 +46,34 @@ def index():
 @app.get('/api/health')
 def health(c=Depends(conn_dependency)):
     return {'status':'ok','version':'0.6.0'}
+
+
+@app.get('/api/universal-facilities/stats')
+def universal_facility_stats(c=Depends(conn_dependency)):
+    return universal_stats(c)
+
+
+@app.get('/api/universal-facilities')
+def universal_facilities(q:str='',country:str='',industry:str='',source:str='',
+                         limit:int=Query(50,ge=1,le=100),offset:int=Query(0,ge=0),
+                         c=Depends(conn_dependency)):
+    return universal_search(c,q=q[:120],country=country[:8],industry=industry[:120],
+                            source=source[:80],limit=limit,offset=offset)
+
+
+@app.get('/api/universal-facilities/{site_id}')
+def universal_facility_detail(site_id:str,c=Depends(conn_dependency)):
+    result=universal_detail(c,site_id)
+    if result is None:raise HTTPException(404,'Facility source identity not found')
+    return result
+
+
+@app.post('/api/universal-facilities/{site_id}/track')
+def universal_facility_track(site_id:str,request:Request,c=Depends(conn_dependency)):
+    if __import__('os').environ.get('FACILITY_RISK_ENABLE_WRITES')!='1':
+        raise HTTPException(403,'Research workspace writes are disabled')
+    try:return universal_track(c,site_id,request.state.actor)
+    except ValueError as e:raise HTTPException(404,str(e)) from e
 
 
 @app.get('/api/overview')
