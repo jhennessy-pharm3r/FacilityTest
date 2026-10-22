@@ -125,7 +125,7 @@ def is_reviewed_site_coordinate(site, review):
             and lat==checked_lat and lon==checked_lon)
 
 
-def review_location(conn,facility_id,precision,evidence_url,reviewer,note='',method='document-and-map-review'):
+def review_location(conn,facility_id,precision,evidence_url,reviewer,note='',method='document-and-map-review',*,commit=True):
     if precision not in ('city','approximate','site_verified','property_polygon'):
         raise ValueError('Unsupported location precision')
     approved=precision in ('site_verified','property_polygon')
@@ -157,13 +157,13 @@ def review_location(conn,facility_id,precision,evidence_url,reviewer,note='',met
     audit(conn,'location_review',facility_id,reviewer or 'anonymous',
           {'precision':precision,'source':evidence_url,
            'reviewed_latitude':checked_lat,'reviewed_longitude':checked_lon})
-    conn.commit()
+    if commit:conn.commit()
     return {'facility_id':facility_id,'precision':precision,'reviewed_at':when,
             'point_locked_to_review':approved}
 
 
 
-def verify_fei(conn,facility_id,reviewer,evidence_url,note):
+def verify_fei(conn,facility_id,reviewer,evidence_url,note,*,commit=True):
     """Review analyst-recorded FDA FEI against a corroborating official source."""
     if not reviewer.strip() or not evidence_url.startswith('https://') or not note.strip():
         raise ValueError('Named reviewer, HTTPS source and rationale required for FEI verification')
@@ -179,7 +179,7 @@ def verify_fei(conn,facility_id,reviewer,evidence_url,note):
         VALUES(?,?,?,?,?,?,?,?,?,?)''',
         (stable_id('verified_fda_fei',facility_id,f['fei']),facility_id,'FDA_FEI',f['fei'],'verified',evidence_url,note,reviewer,when,when))
     audit(conn,'fei_verified',facility_id,reviewer,{'fei':f['fei'],'evidence_url':evidence_url,'note':note})
-    conn.commit()
+    if commit:conn.commit()
     return {'facility_id':facility_id,'fei':f['fei'],'status':'verified','reviewed_at':when}
 
 
@@ -221,7 +221,7 @@ def register_frs_candidates(conn,facility_id,records,source_url,when=None):
     return count
 
 
-def decide_candidate(conn,candidate_id,decision,reviewer,evidence_url,note=''):
+def decide_candidate(conn,candidate_id,decision,reviewer,evidence_url,note='',*,commit=True):
     if decision not in ('accepted','rejected'):raise ValueError('Decision must be accepted/rejected')
     if not reviewer.strip() or not evidence_url.startswith('https://') or not note.strip():
         raise ValueError('Reviewer, HTTPS corroborating source, and review rationale required')
@@ -243,7 +243,7 @@ def decide_candidate(conn,candidate_id,decision,reviewer,evidence_url,note=''):
           (key,row['facility_id'],row['namespace'],row['identifier'],'verified',evidence_url,note,reviewer,when,when))
     audit(conn,'candidate_'+decision,row['facility_id'],reviewer,
           {'candidate_id':candidate_id,'identifier':row['identifier'],'evidence_url':evidence_url,'note':note})
-    conn.commit()
+    if commit:conn.commit()
     return {'candidate':candidate_id,'decision':decision,'reviewed_at':when}
 
 
