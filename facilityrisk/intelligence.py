@@ -247,7 +247,7 @@ def decide_candidate(conn,candidate_id,decision,reviewer,evidence_url,note=''):
     return {'candidate':candidate_id,'decision':decision,'reviewed_at':when}
 
 
-def store_hazard(conn,facility_id,peril,status,source,description,source_url='',zone='',precision='',effective_date='',limitations=''):
+def store_hazard(conn,facility_id,peril,status,source,description,source_url='',zone='',precision='',effective_date='',limitations='',*,expected_latitude=None,expected_longitude=None,expected_reviewed_at=None):
     """Pin a hazard screening to a reviewed physical point and review revision.
 
     This is modeled exposure, never an insured property loss. A move or later
@@ -258,6 +258,10 @@ def store_hazard(conn,facility_id,peril,status,source,description,source_url='',
     review=conn.execute('SELECT * FROM location_reviews WHERE facility_id=?',(facility_id,)).fetchone()
     if not is_reviewed_site_coordinate(site,review):
         raise ValueError('Hazard screening requires reviewed coordinates for the current site')
+    if (expected_latitude is not None and
+         (site['latitude']!=expected_latitude or site['longitude']!=expected_longitude
+          or review['verified_at']!=expected_reviewed_at)):
+        raise ValueError('Site point or reviewer approval changed during hazard source request')
     hid=stable_id('hazard',facility_id,peril,source)
     conn.execute('''INSERT INTO hazard_assessments
        (id,facility_id,peril,status,source,source_url,hazard_zone,description,
