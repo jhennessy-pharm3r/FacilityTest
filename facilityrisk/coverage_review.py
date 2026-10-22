@@ -280,9 +280,15 @@ def facility_policy_snapshot(conn,facility_id):
             t['effective_review_status']=(t['status'] if p['policy_period_status']=='current'
                 else 'historical_or_future_'+t['status'])
     return {'facility_id':facility_id,'policies':policies,
-       'verified_current_coverage_count':sum(1 for p in policies
+       'document_reviewed_current_terms_count':sum(1 for p in policies
            if p['policy_period_status']=='current' for t in p['terms']
            if t['status'] in VERIFIED),
+       'verified_current_coverage_count':sum(1 for p in policies
+           if p['policy_period_status']=='current' for t in p['terms']
+           if t['status'] in ('verified_covered','verified_conditional')),
+       'verified_excluded_current_terms_count':sum(1 for p in policies
+           if p['policy_period_status']=='current' for t in p['terms']
+           if t['status']=='verified_excluded'),
        'interpretation':'Reviewed wording is conditional on the insured location and exact contract; no claim or payout is inferred'}
 
 
