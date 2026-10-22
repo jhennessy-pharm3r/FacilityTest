@@ -40,6 +40,8 @@ CREATE TABLE IF NOT EXISTS universal_sites (
 CREATE INDEX IF NOT EXISTS idx_universal_geo ON universal_sites(country,state,city);
 CREATE INDEX IF NOT EXISTS idx_universal_industry ON universal_sites(industry);
 CREATE INDEX IF NOT EXISTS idx_universal_operator ON universal_sites(company);
+CREATE INDEX IF NOT EXISTS idx_universal_name_sort ON universal_sites(name COLLATE NOCASE,id);
+CREATE INDEX IF NOT EXISTS idx_universal_country_name_sort ON universal_sites(country,name COLLATE NOCASE,id);
 CREATE TABLE IF NOT EXISTS universal_source_records (
  source_key TEXT NOT NULL,
  source_identifier TEXT NOT NULL,
@@ -60,6 +62,7 @@ CREATE TABLE IF NOT EXISTS universal_source_records (
 );
 CREATE INDEX IF NOT EXISTS idx_universal_source_site ON universal_source_records(site_id);
 CREATE INDEX IF NOT EXISTS idx_universal_source_key ON universal_source_records(source_key);
+CREATE INDEX IF NOT EXISTS idx_universal_source_identifier_lookup ON universal_source_records(source_identifier COLLATE NOCASE);
 CREATE TABLE IF NOT EXISTS universal_import_runs (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  source_key TEXT NOT NULL, source_url TEXT NOT NULL,
@@ -260,17 +263,25 @@ def search(conn, q='', *, country='', industry='', source='', limit=50, offset=0
     limit=max(1,min(int(limit),100))
     offset=max(0,int(offset))
     conditions=[];params=[]
-    tokens=re.findall(r'\w+',str(q).casefold(),re.UNICODE)[:8]
+    query_text=str(q).strip()[:120]
+    tokens=re.findall(r'\w+',query_text.casefold(),re.UNICODE)[:8]
     if tokens:
-        # Only safe token terms are accepted in FTS syntax; source IDs can
-        # additionally match without requiring exact tokenization.
+        # FTS5 handles names, geography, operator, industry and activities.
+        # The old '%term%' identifier fallback scanned every source identity
+        # at national scale. Use an indexed case-insensitive prefix instead;
+        # this also prevents user wildcard patterns from expanding a search.
         expression=' AND '.join('"' + x.replace('"','') + '"*' for x in tokens)
-        conditions.append("""s.rowid IN (
-          SELECT rowid FROM universal_site_fts WHERE universal_site_fts MATCH ?
-          UNION SELECT t.rowid FROM universal_sites t
-          JOIN universal_source_records ir ON ir.site_id=t.id
-          WHERE ir.source_identifier LIKE ?)""")
-        params += [expression,'%'+str(q).strip()[:120]+'%']
+        if re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9-]{1,79}',query_text):
+            conditions.append("""s.rowid IN (
+              SELECT rowid FROM universal_site_fts WHERE universal_site_fts MATCH ?
+              UNION SELECT t.rowid FROM universal_sites t
+              JOIN universal_source_records ir ON ir.site_id=t.id
+              WHERE ir.source_identifier LIKE ?)""")
+            params += [expression,query_text+'%']
+        else:
+            conditions.append("""s.rowid IN (
+              SELECT rowid FROM universal_site_fts WHERE universal_site_fts MATCH ?)""")
+            params.append(expression)
     if country:
         conditions.append('s.country=?');params.append(_text(country,8).upper())
     if industry:
