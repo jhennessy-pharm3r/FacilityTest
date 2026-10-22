@@ -143,19 +143,20 @@ async function decideReview(id,decision){
   }catch(err){showToast(err.message);}
 }
 
-function renderPage(){const views={universal:()=>window.UniversalUI.render(),registry:()=>window.RegistryUI.render(),overview:renderOverview,facilities:renderFacilities,evidence:renderGlobalPage,disclosures:renderDisclosures,reviews:renderApprovalQueue,sources:renderSources,quality:renderQuality,methodology:renderMethodology,
+function renderPage(){const views={insurance:()=>window.InsuranceUI.render(),universal:()=>window.UniversalUI.render(),registry:()=>window.RegistryUI.render(),overview:renderOverview,facilities:renderFacilities,evidence:renderGlobalPage,disclosures:renderDisclosures,reviews:renderApprovalQueue,sources:renderSources,quality:renderQuality,methodology:renderMethodology,
     cases:()=>window.IntelligenceUI.render('cases'),map:()=>window.IntelligenceUI.render('map'),
     identity:()=>window.IntelligenceUI.render('identity'),underwriting:()=>window.IntelligenceUI.render('underwriting'),
     feeds:()=>window.IntelligenceUI.render('feeds')};
   state.page=views[state.page]?state.page:'overview';
   ROOT.innerHTML=views[state.page]();
   $$('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.page===state.page));
-  $('#breadcrumb-page').textContent=({universal:'UNIVERSAL FACILITIES',registry:'ALL FACILITIES',overview:'OVERVIEW',facilities:'RESEARCH CASES',evidence:'EVIDENCE SEARCH',disclosures:'SEC DISCLOSURES',sources:'DATA SOURCES',quality:'DATA QUALITY',reviews:'APPROVAL QUEUE',methodology:'METHODOLOGY',cases:'CASE STUDIES',map:'HAZARD MAP',identity:'IDENTITY REVIEW',underwriting:'EXPOSURE PROFILES',feeds:'SOURCE STATUS'})[state.page];
+  $('#breadcrumb-page').textContent=({insurance:'INSURANCE OPTIONS',universal:'UNIVERSAL FACILITIES',registry:'ALL FACILITIES',overview:'OVERVIEW',facilities:'RESEARCH CASES',evidence:'EVIDENCE SEARCH',disclosures:'SEC DISCLOSURES',sources:'DATA SOURCES',quality:'DATA QUALITY',reviews:'APPROVAL QUEUE',methodology:'METHODOLOGY',cases:'CASE STUDIES',map:'HAZARD MAP',identity:'IDENTITY REVIEW',underwriting:'EXPOSURE PROFILES',feeds:'SOURCE STATUS'})[state.page];
   $('#side-facility-count').textContent=state.facilities.length;
   if(state.page==='evidence'&&!state.globalRecords)loadGlobalEvidence();
   if(state.page==='reviews')loadApprovalQueue();
   if(state.page==='registry'&&window.RegistryUI)window.RegistryUI.mount();
   if(state.page==='universal'&&window.UniversalUI)window.UniversalUI.mount();
+  if(state.page==='insurance'&&window.InsuranceUI)window.InsuranceUI.mount();
   if(window.IntelligenceUI?.pages?.[state.page])window.IntelligenceUI.mount(state.page,{state,api});
 }
 function siteTab(t){state.tab=t;renderDrawer();DRAWER.scrollTop=0;}
