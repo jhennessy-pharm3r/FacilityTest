@@ -27,6 +27,10 @@ def test_public_entry_uses_relative_urls_and_banner():
     assert 'href="./web/styles.css"' in html
     assert 'src="./web/public-api.js"' in html
     assert 'src="./web/app.js"' in html
+    assert 'src="./web/workbench-ui.js"' in html
+    assert html.index('src="./web/workbench-ui.js"') < html.index('src="./web/app.js"')
+    assert 'data-page="workbench"' in html
+    assert 'data-page="workbench"' in (ROOT/'web'/'index.html').read_text()
     assert 'src="./web/intelligence-ui.js"' in html
     assert 'src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"' in html
     assert html.index('src="./web/intelligence-ui.js"') < html.index('src="./web/app.js"')
