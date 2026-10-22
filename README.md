@@ -23,7 +23,7 @@ python -m facilityrisk export-browser data\my-private-facility-snapshot.json
 Open the Pages site, select **Load private snapshot**, and choose the local JSON file.
 The snapshot is read into browser memory only; there is no upload endpoint, storage persistence, or sharing link. The file itself contains the complete research corpus and must remain private. It is excluded by `.gitignore` under `data/`.
 
-See [hosting and security notes](docs/GITHUB_PAGES.md).
+See [hosting and security notes](docs/GITHUB_PAGES.md). The actual published Pages URL was checked in an independent Playwright browser audit on October 22, 2026: [live-site evidence and screenshots](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39827130663/artifacts/12446193954).
 
 ## Public regulatory identities versus universal private facility registry
 
@@ -119,7 +119,7 @@ Offline tests use synthetic fixtures for the public-source adapters. If the orig
 ### Data governance and safety
 
 - **Public GitHub repository:** Code, tests and documentation only. `.gitignore` excludes research workbook, downloaded source files, live snapshots and database. Do not publish source exports or client data without authorization.
-- **Local-only:** The prototype has no login, permissions, rate limiting, or production security. The server defaults to `127.0.0.1`. Do not expose it publicly or bind to `0.0.0.0` without authentication and authorization.
+- **Private prototype only:** The FastAPI server has opt-in bearer/basic token guards, gated writes and selected reviewer controls, but it is not a production multi-tenant insurance platform with insurer SSO, centralized RBAC, disaster-recovery testing and established rate controls. It defaults to `127.0.0.1`; do not expose it publicly without a hardened reverse proxy and approved access management.
 - **Evidence quality:** A link existing in an analyst workbook is not live API verification. Publication/availability date is unverified on imported evidence rows. Historical backtesting needs the *information availability date* to be earlier than any target outcome.
 - **Facility matching:** Name similarity produces review candidates only; never silently merge facilities, or treat EPA FRS IDs as FDA FEIs.
 - **No unwarranted conclusions:** Nearby weather/earthquakes, environmental compliance, and regulatory citations are not proof of insured loss, negligence or a site shutdown.
