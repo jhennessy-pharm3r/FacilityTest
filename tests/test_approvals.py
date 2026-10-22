@@ -136,3 +136,23 @@ def test_fei_and_regulatory_crosswalk_promotions_require_two_distinct_accounts(p
         with connect(private_db) as db:
             assert db.execute("""SELECT status FROM identity_links
                 WHERE namespace='EPA_FRS'""").fetchone()[0]=='rejected'
+
+
+def test_old_verified_fei_is_stale_after_establishment_identifier_change(private_db):
+    from facilityrisk.assessment import build_assessment
+    from facilityrisk.intelligence import verify_fei,intelligence_quality
+    with connect(private_db) as db:
+        verify_fei(db,'site-1','Source reviewer','https://www.fda.gov/',
+                   'Initially verified original FDA site identifier')
+        assert build_assessment(db,'site-1')['coverage']['regulatory_identity']['status']=='verified'
+        db.execute("UPDATE facilities SET fei='2999999999' WHERE id='site-1'")
+        db.commit()
+        links=get_intelligence(db,'site-1')['identifiers']
+        assert any(r['status']=='review_stale' and r['original_status']=='verified' for r in links)
+        assert intelligence_quality(db)['stale_verified_fei_links']==1
+        assert build_assessment(db,'site-1')['coverage']['regulatory_identity']['status']=='unassessed'
+        verify_fei(db,'site-1','Source reviewer','https://www.fda.gov/',
+                   'Independently reviewed the replacement FDA FEI and address')
+        assert intelligence_quality(db)['verified_current_fei_links']==1
+        assert intelligence_quality(db)['stale_verified_fei_links']==0
+        assert db.execute("SELECT COUNT(*) FROM identity_links WHERE namespace='FDA_FEI' AND status='verified'").fetchone()[0]==1
