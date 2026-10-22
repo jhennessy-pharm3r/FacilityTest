@@ -147,7 +147,10 @@ def main(argv=None):
     if args.official_zip:
         archive=Path(args.official_zip)
         if not archive.is_file():p.error('Official ZIP not found')
-        digest=hashlib.sha256(archive.read_bytes()).hexdigest()
+        sha=hashlib.sha256()
+        with open(archive,'rb') as f:
+            for block in iter(lambda:f.read(1024*1024),b''):sha.update(block)
+        digest=sha.hexdigest()
         source={'sha256':digest,'bytes':archive.stat().st_size,'download_url':'operator_supplied_official_zip'}
     else:
         temp=tempfile.NamedTemporaryFile(suffix='.zip',delete=False)
