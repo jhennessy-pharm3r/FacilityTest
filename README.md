@@ -162,3 +162,8 @@ Private facility reports show at most 250 evidence records and now disclose when
 ### Second-person source identity approval (private server only)
 
 Optional `FACILITY_RISK_DUAL_REVIEW=1` with per-user PBKDF2 credential mapping stages location, FEI and regulatory crosswalk reviews as pending. A **different authenticated approver** is required before any protected source identity is promoted. Site moves or source candidate revisions invalidate outstanding proposals; a rejected crosswalk also revokes a previously verified identity. This is not SSO, client tenancy or actuarial approval. Consult [secure deployment notes](docs/SECURE_DEPLOYMENT.md). Shared service tokens remain read/integration credentials and are not human approvers.
+
+
+### Complete authenticated evidence export
+
+Private facility reports show a deliberate 250-row preview limit so large records do not overwhelm printable assessments. The private HTML report now offers `GET /api/facilities/{id}/evidence.csv`, which streams **all linked source evidence** for the selected facility, including evidence source, raw date, original text, match confidence, source URL, limitations, ingestion and independently verified availability timestamps. Excel-formula-like strings are prefixed for spreadsheet safety without changing the stored database values. Exports remain authenticated and uncached, and are not published to GitHub Pages or workflow artifacts. A file opened from a local `.html` export has no backend API; export full evidence from the authenticated running service when needed.

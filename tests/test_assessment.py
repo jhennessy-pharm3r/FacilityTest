@@ -109,3 +109,47 @@ def test_report_explicitly_discloses_truncation_and_correct_full_date_denominato
     html=render_assessment_html(report)
     assert 'Only 250 of 301 findings' in html
     assert 'complete evidence table' in html
+
+
+def test_complete_csv_api_exports_more_than_print_preview_safely(conn,monkeypatch):
+    import csv
+    import io
+    from facilityrisk.assessment import render_assessment_html
+    for i in range(275):
+        conn.execute("""INSERT INTO evidence
+         (id,facility_id,source,record_type,finding,risk_domain,origin,last_imported)
+         VALUES (?,?,?,?,?,?,?,?)""",
+         (f'csv-{i}','site-a','FDA','Regulatory source',
+          '=HYPERLINK("https://malicious.invalid","Click")' if i==0 else 'Source observation',
+          'Manufacturing regulation','fixture','2026-10-22'))
+    conn.commit()
+    printable=render_assessment_html(build_assessment(conn,'site-a'),private_backend=True)
+    assert '/api/facilities/site-a/evidence.csv' in printable
+    assert 'Only 250 of 276 findings' in printable
+    assert '/api/facilities/site-a/evidence.csv' not in render_assessment_html(build_assessment(conn,'site-a'))
+    with TestClient(app) as client:
+        response=client.get('/api/facilities/site-a/evidence.csv')
+        assert response.status_code==200,response.text[:500]
+        assert 'text/csv' in response.headers['content-type']
+        assert 'attachment;' in response.headers['content-disposition']
+        data=list(csv.DictReader(io.StringIO(response.content.decode('utf-8-sig'))))
+        assert len(data)==276
+        original=next(item for item in data if item['id']=='csv-0')
+        assert original['finding'].startswith("'=HYPERLINK")
+        assert client.get('/api/facilities/nonexistent/evidence.csv').status_code==404
+    monkeypatch.setenv('FACILITY_RISK_AUTH_TOKEN','test-only-secure-long-bearer-not-to-share')
+    with TestClient(app) as client:
+        assert client.get('/api/facilities/site-a/evidence.csv').status_code==401
+        response=client.get('/api/facilities/site-a/evidence.csv',
+           headers={'Authorization':'Bearer test-only-secure-long-bearer-not-to-share'})
+        assert response.status_code==200
+
+
+def test_csv_cell_escape_including_whitespace_formula():
+    from facilityrisk.assessment import safe_csv_cell
+    assert safe_csv_cell(' =2+2')=="' =2+2"
+    assert safe_csv_cell('+SUM(A1:A2)')=="'+SUM(A1:A2)"
+    assert safe_csv_cell('-2')=="'-2"
+    assert safe_csv_cell('@cmd')=="'@cmd"
+    assert safe_csv_cell('ordinary string')=='ordinary string'
+    assert safe_csv_cell(None)==''

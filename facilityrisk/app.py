@@ -15,7 +15,7 @@ from .advanced_sources import SOURCE_META
 from .registry_catalog import init_registry, registry_search
 from .source_extensions import catalog as extension_catalog, review_event_candidate
 from .fei_api import lookup_fei
-from .assessment import build_assessment, render_assessment_html
+from .assessment import build_assessment, render_assessment_html, iter_evidence_csv
 from .research import start_research,research_history,run_source,SourceNotEligible
 from .site_workspace import (SOURCES as REGULATOR_SOURCES, intake_site, search_external_registry,
                              track_external_registry_site, stage_identity_candidate,
@@ -268,8 +268,21 @@ def facility_assessment(facility_id:str,c=Depends(conn_dependency)):
 @app.get('/api/facilities/{facility_id}/assessment.html',include_in_schema=False)
 def facility_assessment_print(facility_id:str,c=Depends(conn_dependency)):
     from fastapi.responses import HTMLResponse
-    try:return HTMLResponse(render_assessment_html(build_assessment(c,facility_id)))
+    try:return HTMLResponse(render_assessment_html(build_assessment(c,facility_id),private_backend=True))
     except ValueError as e:raise HTTPException(404,str(e)) from e
+
+
+@app.get('/api/facilities/{facility_id}/evidence.csv',include_in_schema=False)
+def complete_site_evidence_csv(facility_id:str,c=Depends(conn_dependency)):
+    """Authenticated private source evidence export with no 250-row preview cap."""
+    import re
+    from fastapi.responses import StreamingResponse
+    if not one(c,'SELECT id FROM facilities WHERE id=?',(facility_id,)):
+        raise HTTPException(404,'Facility not found')
+    filename=re.sub(r'[^a-zA-Z0-9_-]','_',facility_id)[:80] or 'facility'
+    return StreamingResponse(iter_evidence_csv(facility_id),media_type='text/csv; charset=utf-8',
+         headers={'Content-Disposition':'attachment; filename="facility-evidence-'+filename+'.csv"',
+                  'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'})
 
 
 @app.get('/api/facilities/{facility_id}/evidence')

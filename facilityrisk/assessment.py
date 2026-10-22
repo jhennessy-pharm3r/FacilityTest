@@ -6,6 +6,10 @@ It is safe to render a useful assessment when evidence is missing.
 """
 from __future__ import annotations
 
+import csv
+import io
+import re
+from urllib.parse import quote
 from datetime import datetime, timezone
 from html import escape
 from pathlib import Path
@@ -136,7 +140,51 @@ def build_assessment(conn,facility_id):
       ]
     }
 
-def render_assessment_html(report):
+EVIDENCE_EXPORT_COLUMNS=(
+    'id','facility_id','source','program','date_raw','record_type','finding',
+    'value_text','record_ref','evidence_scope','match_quality','risk_domain',
+    'source_url','limitations','origin','last_imported','availability_date',
+    'spatial_distance_km'
+)
+
+def safe_csv_cell(value):
+    """Neutralize spreadsheet formula injection while preserving raw text."""
+    string=str(value if value is not None else '')
+    if string.lstrip(' \t\r\n\ufeff').startswith(('=','+','-','@')):
+        return "'"+string
+    return string
+
+def iter_evidence_csv(facility_id):
+    """Read the complete private facility evidence in bounded database batches.
+
+    Opens its own connection: response-stream generators outlive the request's
+    dependency connection in some FastAPI versions. No temporary CSV is
+    written to GitHub Pages, a public disk or an Actions artifact.
+    """
+    from .db import connect
+    from .db import initialize
+    connection=connect()
+    try:
+        # Schema has been initialized by the corresponding validated API call.
+        buffer=io.StringIO()
+        writer=csv.writer(buffer,lineterminator='\r\n')
+        writer.writerow(EVIDENCE_EXPORT_COLUMNS)
+        yield '\ufeff'+buffer.getvalue()
+        cursor=connection.execute(
+            'SELECT '+','.join(EVIDENCE_EXPORT_COLUMNS)+
+            ' FROM evidence WHERE facility_id=? ORDER BY source,id',(facility_id,))
+        while True:
+            rows=cursor.fetchmany(250)
+            if not rows:break
+            buffer=io.StringIO();writer=csv.writer(buffer,lineterminator='\r\n')
+            for row in rows:
+                writer.writerow([safe_csv_cell(value) for value in row])
+            yield buffer.getvalue()
+    finally:
+        connection.close()
+
+
+def render_assessment_html(report,*,private_backend=False):
     """Escaped, printable, source-linked private HTML; no remote assets."""
     e=lambda v:escape(str(v if v is not None else ''),quote=True)
     site=report['facility']
@@ -179,6 +227,9 @@ a{color:#245c61}section{break-inside:avoid}ul{line-height:1.65}
 '<div class="columns">'+sections+'</div>'+
 '<h2>Physical hazard screening</h2><table><tr><th>Peril</th><th>Status</th><th>Description</th><th>Reference</th></tr>'+hazards+'</table>'+
 '<h2>Source-linked findings ('+e(report['evidence_total'])+')</h2>'+
+('<p><a href="/api/facilities/'+quote(str(site['id']),safe='')+
+ '/evidence.csv">Download complete private evidence CSV</a></p>'
+ if private_backend else '')+
 ('<p class="muted">Only '+e(report['evidence_displayed'])+' of '+e(report['evidence_total'])+
 ' findings appear in this report preview. Export the complete evidence table for full review.</p>'
  if report['evidence_export_limited'] else '')+
