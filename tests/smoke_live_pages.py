@@ -75,6 +75,7 @@ def audit():
             assert len(content.strip())>=30,'Blank published page '+name
             assert 'Cannot read properties of undefined' not in content
             report['checks']['page_'+name]='passed'
+            report.setdefault('page_content_characters',{})[name]=len(content.strip())
         page.locator('.nav-item[data-page="workbench"]').click()
         page.screenshot(path=str(TARGET/'navigation-check-desktop.png'),full_page=False)
         context.close()
