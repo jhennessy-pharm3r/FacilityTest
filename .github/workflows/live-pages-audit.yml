@@ -1,5 +1,10 @@
 name: Live GitHub Pages UX and insurance review audit
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'tests/smoke_live_pages.py'
+      - '.github/workflows/live-pages-audit.yml'
   workflow_run:
     workflows: ["pages build and deployment"]
     types: [completed]
