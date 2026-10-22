@@ -5,7 +5,7 @@ The project separates **data download verified**, **official source identity lin
 | Source | Confirmed implementation | Not yet established |
 | --- | --- | --- |
 | FDA device registration and listing (openFDA bulk) | 25,890 reported device source identities in last successfully inspected publication; 108 countries | Deduplicated physical sites, regulated role accuracy, inactive/historical site status, parent-company reconciliation |
-| FDA Drug Establishments Current Registration Site | Official published download URL and parser with synthetic ZIP/TSV tests; credentialed per-FEI API optional | Current successful DECRS bulk ingestion. Previous hosted job returned HTTP 404 for the ZIP. The header-only probe is not an import. |
+| FDA Drug Establishments Current Registration Site | October 22, 2026 GitHub-hosted official DECRS ZIP successfully ingested: 10,422 source rows into 10,068 unique drug source identities; credentialed per-FEI API optional | Physical site deduplication, source free-text geographic completeness, current activity and site match review |
 | Ireland EPA LEAP | 6,694 published official licence-profile identities, source GUID collisions guarded | Manufacturing classification for each record, verified physical property correspondence, emissions/enforcement detail |
 | Canada NPRI | 7,715 source records from 2024 official ArcGIS reporting layer | Facility-specific releases as validated exposures; nonreporter meaning, active 2026 manufacturing confirmation, physical coordinates |
 | EPA FRS and ECHO | Source candidate and verified-identifier gate; authenticated private ECHO DFR JSON archiving, official endpoint connectivity probes | Production-validated normalized violations, penalty/enforcement severity, facility-source crosswalk for full population |
@@ -15,6 +15,9 @@ The project separates **data download verified**, **official source identity lin
 | SEC | 19 earlier analyst-identified filing findings, with 11 lacking verified site attribution | 25-site complete outcome cohort, verified pre-event public availability, insured exposure/loss denominator |
 
 ## Automated live probes
+
+**Update (October 22, 2026):** The official FDA archive data-client HTTP 404 was resolved; the browser-compatible request to the same official host downloaded a valid ZIP, parsed the Windows-1252 tab-separated text and passed schema/source-row validation. See the GitHub `FDA facility registry update` workflow. The older failure description below is historical and must not be interpreted as current source status.
+
 
 `FDA DECRS official download diagnostic` runs limited HEAD and four-byte GET checks against the FDA-published URL and saves a JSON diagnostic artifact. Passing the probe **does not** mean the archive was fully downloaded or the pharmacy population loaded. Review the `state`, HTTP codes, content type, final URL, and ZIP magic. If blocked, contact eDRLS@fda.hhs.gov for current supported download access. See the [official FDA DECRS page](https://www.fda.gov/drugs/drug-approvals-and-databases/drug-establishments-current-registration-site-decrs).
 
