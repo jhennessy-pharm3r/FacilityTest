@@ -58,7 +58,9 @@ def build_assessment(conn,facility_id):
     point_verified=bool(loc and loc.get('review_valid_for_current_coordinates'))
     profile=detail['profile']
     source_evidence_total=one(conn,'SELECT COUNT(*) AS n FROM evidence WHERE facility_id=?',(facility_id,))['n']
-    available_date_count=sum(bool(r['availability_date']) for r in source_evidence)
+    available_date_count=one(conn,'''SELECT COUNT(*) AS n FROM evidence
+                                  WHERE facility_id=? AND availability_date IS NOT NULL
+                                  AND trim(availability_date)<>'' ''',(facility_id,))['n']
     pending_crosswalks=sum(x['decision']=='pending' for x in detail['candidates'])
     has_fei=bool(facility['fei'])
     coverage={
@@ -77,7 +79,7 @@ def build_assessment(conn,facility_id):
        'historical_outcomes':{'status':'retrospective_events' if events else 'unassessed',
           'reason':'Known cases are retrospective, not predictive validation; absence of cases is not absence of losses'},
        'pre_event_visibility':{'status':'partially_documented' if available_date_count else 'unassessed',
-          'reason':str(available_date_count)+' of '+str(len(source_evidence))+' evidence rows have separately verified public availability dates'}
+          'reason':str(available_date_count)+' of '+str(source_evidence_total)+' evidence rows have separately verified public availability dates'}
     }
     sections=[]
     for key,title in DOMAINS.items():
@@ -93,7 +95,7 @@ def build_assessment(conn,facility_id):
     if observations:action_items.append('Review regulatory observations with unconfirmed FEI-to-site attribution')
     if not profile:action_items.append('Collect construction, fire protection, water, power, BI values and recovery plans')
     if not events:action_items.append('Research documented disruptions and comparable non-event periods')
-    if available_date_count<len(source_evidence):action_items.append('Verify source publication dates before any historical prediction tests')
+    if available_date_count<source_evidence_total:action_items.append('Verify source publication dates before any historical prediction tests')
     return {
       'report_type':'facility_source_evidence_assessment',
       'generated_at':_report_time(),
