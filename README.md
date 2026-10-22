@@ -1,6 +1,6 @@
-# Pharm3r Facility Risk Intelligence — Build 4 / v0.6
+# Pharm3r Facility Risk Intelligence — Universal Facility Discovery / v0.7 development
 
-An evidence-first **global-intake** pharmaceutical and medical-device facility risk research app for insurance underwriting. The 12 analyst facilities are case studies, not a limit on facility discovery. The app deliberately **does not calculate a facility risk score**: the current inputs are public-source research, not a calibrated sample of insured losses.
+An evidence-first **all-industry facility discovery and risk research** application for insurance use. Every facility type is eligible for investigation; the initial FDA, Canada NPRI and Ireland EPA source populations are not the coverage universe. The 12 analyst facilities are case studies, not a limit on facility discovery. The all-industry backend registry is a separate source identity layer and is not yet a complete global inventory. The app deliberately **does not calculate a facility risk score**: the current inputs are public-source research, not a calibrated sample of insured losses.
 
 ## GitHub Pages public preview
 
@@ -167,3 +167,10 @@ Optional `FACILITY_RISK_DUAL_REVIEW=1` with per-user PBKDF2 credential mapping s
 ### Complete authenticated evidence export
 
 Private facility reports show a deliberate 250-row preview limit so large records do not overwhelm printable assessments. The private HTML report now offers `GET /api/facilities/{id}/evidence.csv`, which streams **all linked source evidence** for the selected facility, including evidence source, raw date, original text, match confidence, source URL, limitations, ingestion and independently verified availability timestamps. Excel-formula-like strings are prefixed for spreadsheet safety without changing the stored database values. Exports remain authenticated and uncached, and are not published to GitHub Pages or workflow artifacts. A file opened from a local `.html` export has no backend API; export full evidence from the authenticated running service when needed.
+
+
+## Universal facility expansion
+
+The private v0.7 registry provides indexed cross-industry source searches, audited manual identity linkage, authorized CSV/GeoJSONSeq imports, and a separate insurance coverage reference taxonomy (including property, business interruption, utility disruption and parametric options). The public Pages preview does not execute this backend and must not imply all commercial or industrial facilities are already loaded. See [universal facility documentation](docs/UNIVERSAL_FACILITIES.md).
+
+An official **EPA FRS National** staging pipeline now downloads the published national ZIP and, only after schema/row checks, creates a temporary GitHub Actions artifact with the normalized, source-only data and checksum manifest. It does not automatically publish millions of facility records to Pages or a production service. Use the artifact with the private importer and verify the resulting registry counts and source vintage. See [EPA import workflow](.github/workflows/build-epa-frs.yml).
