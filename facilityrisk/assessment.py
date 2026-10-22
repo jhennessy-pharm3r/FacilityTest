@@ -60,7 +60,7 @@ def build_assessment(conn,facility_id):
     source_evidence_total=one(conn,'SELECT COUNT(*) AS n FROM evidence WHERE facility_id=?',(facility_id,))['n']
     available_date_count=one(conn,'''SELECT COUNT(*) AS n FROM evidence
                                   WHERE facility_id=? AND availability_date IS NOT NULL
-                                  AND trim(availability_date)<>'' ''',(facility_id,))['n']
+                                  AND trim(availability_date)<>?''',(facility_id,''))['n']
     pending_crosswalks=sum(x['decision']=='pending' for x in detail['candidates'])
     has_fei=bool(facility['fei'])
     coverage={
