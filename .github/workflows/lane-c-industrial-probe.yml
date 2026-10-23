@@ -1,34 +1,28 @@
-name: Lane C official incident source probe
+name: Lane C official industrial incident validation
 on:
   push:
     branches:
       - 'ingest/industrial-events-nrc-csb-phmsa-*'
-  pull_request:
-    branches:
-      - main
   workflow_dispatch:
 jobs:
-  live-official-source-probe:
+  lane-c-source-validation:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install -r requirements.txt openpyxl requests
-      - name: Check official NRC workbook + CSB release file + PHMSA pipeline ZIP
-        shell: bash
-        run: |
-          mkdir -p output
-          python scripts/probe_lane_c_sources.py --output output
-      - name: Test importer fixture QA
-        run: |
-          pip install -r requirements-dev.txt
-          pytest -q tests/test_industrial_incidents.py
-      - uses: actions/upload-artifact@v4
+      - name: Install source and test dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt openpyxl requests
+      - name: Validate all Lane C tests and importer failure gates
+        run: pytest -q tests/test_industrial_incidents.py tests/test_nrc_enriched.py tests/test_lane_c_index.py tests/test_csb_release.py
+      - name: Acquire REAL NRC and CSB, repeat transforms, index temporarily, inspect authorized PHMSA distribution
+        run: python scripts/run_lane_c_verified.py --output output
+      - name: Save aggregate-only source and ephemeral index audit (no raw incident rows or SQLite)
+        uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: lane-c-source-probe
-          path: output/
+          name: lane-c-verified-source-audit
+          path: output/*.json
           retention-days: 14
