@@ -1,0 +1,87 @@
+name: Coordinator Lane D sync latest main without overwriting Lanes A and B
+
+on:
+  push:
+    branches:
+      - integrate/lane-d-private-serving-20261023
+    paths:
+      - .github/workflows/lane-e-lane-d-main-sync.yml
+
+permissions:
+  contents: write
+
+jobs:
+  main-review-merge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Fetch current main without modifying it
+        run: |
+          git fetch --no-tags origin main
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git show -s --format='%h %s' origin/main
+      - name: Merge main into stacked integration branch and preserve both main and Lane D source
+        shell: bash
+        run: |
+          set +e
+          git merge --no-commit --no-ff origin/main
+          result=$?
+          set -e
+          if [ "$result" -ne 0 ]; then
+            echo "Checking only the three expected shared configuration conflicts..."
+            python - <<'PY'
+          from pathlib import Path
+          import subprocess
+          pending=subprocess.check_output(["git","diff","--name-only","--diff-filter=U"],text=True).splitlines()
+          accepted={"facilityrisk/app.py","compose.yaml",".env.example"}
+          if not pending or not set(pending).issubset(accepted):
+              raise SystemExit("Unexpected merge conflicts, refusing automatic resolution: "+str(pending))
+          for name in pending:
+              data=subprocess.check_output(["git","show","origin/main:"+name])
+              Path(name).write_bytes(data)
+              subprocess.run(["git","add",name],check=True)
+          print("Selected exact latest-main contents for conflict resolution:",pending)
+          PY
+          fi
+          python scripts/reconcile_lane_d_with_main.py
+          git add facilityrisk/app.py compose.yaml .env.example
+          if git diff --name-only --diff-filter=U | grep -q .; then
+            echo 'Unresolved merge files; refusing to publish'; exit 1
+          fi
+          git diff --cached --check
+      - name: Execute complete combined main plus Lane D and other merged lane regressions BEFORE commit
+        run: |
+          python -m pip install -r requirements-dev.txt
+          python -m pytest -q
+          python - <<'PY'
+          from facilityrisk.app import app
+          paths={x.path for x in app.routes}
+          required={
+              "/api/lane-a/status",
+              "/api/source-context/lane-d/status",
+              "/api/source-context/utility-candidates",
+              "/api/source-context/historical-outages",
+              "/api/source-context/annual-electric-disturbances",
+              "/api/source-context/current-outages",
+              "/api/source-context/issuer-bi",
+              "/api/source-indices/status",
+          }
+          assert required.issubset(paths),sorted(required-paths)
+          assert any("/api/epa/" in x for x in paths), "Lane B EPA private routes missing"
+          print("Combined lane A + B + D private API routes validated",len(paths))
+          PY
+      - name: Commit reviewed exact merge into integration branch only (not main, not PR merge)
+        shell: bash
+        run: |
+          git status --short
+          git commit -m "Coordinator: sync latest main Lane A/B private integration with Lane D routes"
+          git push origin HEAD:integrate/lane-d-private-serving-20261023
+          echo "Pushed a two-parent upstream main synchronization into INTEGRATION FEATURE BRANCH ONLY"
