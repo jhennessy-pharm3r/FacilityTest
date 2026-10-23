@@ -1,0 +1,133 @@
+name: Lane B actual EPA private authenticated HTTP source API smoke
+on:
+  push:
+    branches: ['ingest/epa-echo-tri-rcra-rmp-lane-b-20261023']
+    paths: ['.github/workflows/lane-b-real-api-smoke.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  actual_source_http_smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Install production private app HTTP dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: 39980692415
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          name: lane-b-tri-2024-source-index-staging
+          path: ${{ runner.temp }}/sources/tri
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: 39980692415
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          name: lane-b-tri-2024-qa
+          path: ${{ runner.temp }}/sources/tri_meta
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: 39981171808
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          name: lane-b-public-frs-rmp-source-only-index
+          path: ${{ runner.temp }}/sources/rmp
+      - name: Restore and install publisher SHA-verified source bundles into private read-only mount
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/private_source_indexes/tri"
+          find "$RUNNER_TEMP/sources" -type f -name '*.manifest.json'
+          tri_csv=$(find "$RUNNER_TEMP/sources/tri" -type f -name 'tri_2024_US.csv' -print -quit)
+          tri_gz=$(find "$RUNNER_TEMP/sources/tri" -type f -name 'tri.sqlite.gz' -print -quit)
+          tri_meta=$(find "$RUNNER_TEMP/sources/tri_meta" -type f -name 'tri.manifest.json' -print -quit)
+          rmp_raw=$(find "$RUNNER_TEMP/sources/rmp" -type f -name 'rmp_frs_public.raw.jsonl' -print -quit)
+          rmp_db=$(find "$RUNNER_TEMP/sources/rmp" -type f -name 'rmp_frs_public.sqlite' -print -quit)
+          rmp_meta=$(find "$RUNNER_TEMP/sources/rmp" -type f -name 'rmp_frs_public.manifest.json' -print -quit)
+          test -s "$tri_csv" && test -s "$tri_gz" && test -s "$tri_meta"
+          test -s "$rmp_raw" && test -s "$rmp_db" && test -s "$rmp_meta"
+          python -m scripts.lane_b_epa.install_auxiliary tri --year 2024 --official-csv "$tri_csv" --index-gz "$tri_gz" --manifest "$tri_meta" --destination "$RUNNER_TEMP/private_source_indexes/tri/tri_2024"
+          python -m scripts.lane_b_epa.install_auxiliary rmp-public --original-jsonl "$rmp_raw" --index "$rmp_db" --manifest "$rmp_meta" --destination "$RUNNER_TEMP/private_source_indexes/rmp_public"
+      - name: Exercise actual published source IDs in authenticated private FastAPI route
+        run: |
+          python - <<'PY'
+          import json,os,pathlib,sqlite3
+          from fastapi import FastAPI
+          from fastapi.testclient import TestClient
+          from facilityrisk.security import add_security
+          from scripts.lane_b_epa.integration_api import build_router
+          root=pathlib.Path(os.environ["RUNNER_TEMP"])
+          tri=root/"private_source_indexes"/"tri"/"tri_2024"
+          rmp=root/"private_source_indexes"/"rmp_public"
+          os.environ.update({
+            "FACILITY_RISK_LANE_B_TRI_ROOT":str(tri.parent),
+            "FACILITY_RISK_LANE_B_TRI_YEARS":"2024",
+            "FACILITY_RISK_LANE_B_RMP_DIRECTORY":str(rmp),
+            "FACILITY_RISK_LANE_B_ROUTES_ENABLED":"1",
+            "FACILITY_RISK_AUTH_TOKEN":"source-only-ci-service-credential-32characters",
+            "FACILITY_RISK_REQUIRE_AUTH":"1",
+          })
+          for k in ("FACILITY_RISK_LANE_B_ECHO_DIRECTORY","FACILITY_RISK_LANE_B_RCRA_DIRECTORY"):
+              os.environ.pop(k,None)
+          app=FastAPI()
+          app.include_router(build_router())
+          add_security(app)
+          auth={"Authorization":"Bearer "+os.environ["FACILITY_RISK_AUTH_TOKEN"]}
+          with sqlite3.connect((tri/"tri.sqlite").as_uri()+"?mode=ro&immutable=1",uri=True) as db:
+              tid=db.execute("SELECT source_id FROM observation LIMIT 1").fetchone()[0]
+          with sqlite3.connect((rmp/"rmp_frs_public.sqlite").as_uri()+"?mode=ro&immutable=1",uri=True) as db:
+              rid=db.execute("SELECT program_id FROM rmp_frs_public LIMIT 1").fetchone()[0]
+          with TestClient(app) as client:
+              assert client.get("/api/epa/lane-b/status").status_code==401
+              health=client.get("/api/epa/lane-b/status",headers=auth)
+              assert health.status_code==200,health.text
+              data=health.json()["sources"]
+              assert data["tri"]["state"]==data["rmp_public"]["state"]=="mounted_source_only"
+              assert data["tri"]["indexed_source_rows"]==77295
+              assert data["rmp_public"]["indexed_source_rows"]==21853
+              assert data["echo"]["state"]==data["rcra"]["state"]=="not_configured"
+              tri_resp=client.get("/api/epa/lane-b/tri/identity",headers=auth,params={"native_id":tid,"year":2024})
+              assert tri_resp.status_code==200,tri_resp.text
+              assert tri_resp.json()["observations_available"]>0
+              assert tri_resp.json()["site_and_insured_loss_status"]=="UNASSESSED"
+              assert "raw_attributes" not in tri_resp.json()["rows"][0]
+              rmp_resp=client.get("/api/epa/lane-b/rmp_public/identity",headers=auth,params={"native_id":rid})
+              assert rmp_resp.status_code==200,rmp_resp.text
+              assert rmp_resp.json()["observations_available"]>0
+              assert "reported_attributes" not in rmp_resp.json()["records"][0]
+              assert client.get("/api/epa/lane-b/tri/identity",headers=auth,
+                  params={"native_id":tid,"year":2024,"include_raw":True}).status_code==403
+              assert client.get("/api/epa/lane-b/echo/identity",headers=auth,
+                  params={"native_id":"example"}).status_code==503
+              assert client.get("/api/epa/lane-b/tri/identity",headers=auth,
+                  params={"native_id":tid,"year":2025}).status_code==422
+              report={"source_bundles":"Official TRI 2024 + public FRS-RMP source",
+                "source_year":2024,"tri_source_rows":77295,"rmp_public_source_rows":21853,
+                "source_only_http_authenticated":True,"anonymous_http_401":True,
+                "raw_source_http_403":True,"unmounted_source_http_503":True,
+                "invalid_year_http_422":True,"actual_native_query_tri_rows":tri_resp.json()["observations_available"],
+                "actual_native_query_rmp_rows":rmp_resp.json()["observations_available"],
+                "source_manifest_sha256":{"tri":data["tri"]["annual_source_partitions"][0]["source_sha256"],
+                   "rmp":data["rmp_public"]["source_sha256"]},
+                "installed_private_temporary_index_rows":77295+21853,
+                "production_deployed_records":0,"verified_physical_site_matches":0}
+          (root/"actual_private_http_qa.json").write_text(json.dumps(report,indent=2)+"\n")
+          print("REAL_SOURCE_AUTHENTICATED_HTTP_SMOKE_PASS",json.dumps(report,sort_keys=True))
+          PY
+      - name: Delete temporary publisher files and SQLite source snapshots
+        if: always()
+        run: |
+          set -euo pipefail
+          rm -rf "$RUNNER_TEMP/private_source_indexes" "$RUNNER_TEMP/sources"
+          test ! -e "$RUNNER_TEMP/private_source_indexes"
+          test ! -e "$RUNNER_TEMP/sources"
+          echo "TEMPORARY_SOURCE_BYTES_CLEANED"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lane-b-official-private-http-qa-only
+          path: ${{ runner.temp }}/actual_private_http_qa.json
+          if-no-files-found: warn
+          retention-days: 14
