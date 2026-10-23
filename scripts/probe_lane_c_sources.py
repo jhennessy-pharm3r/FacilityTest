@@ -89,6 +89,10 @@ def main():
                 json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({key: {"state": value["state"],
                             "bytes": value.get("downloaded_bytes"),
+                            "tables": [{"table": t.get("sheet") or t.get("name"),
+                                         "observed_rows": t.get("actual_nonempty_data_rows"),
+                                         "headers": t.get("header", [])[:25]}
+                                        for t in value.get("content", [])],
                             "sha256": value.get("raw_sha256"),
                             "error": value.get("error")} for key, value
                       in manifest["sources"].items()}, indent=2))
