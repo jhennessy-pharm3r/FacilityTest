@@ -196,6 +196,60 @@ def search_source(db_path, *, source, state=None, since=None, page=1, page_size=
         rows = conn.execute(f"SELECT source,source_id,source_vintage,incident_date,city,state,evidence_status FROM source_incidents WHERE {clause} ORDER BY incident_date DESC,source_id LIMIT ? OFFSET ?", [*params,page_size,(page-1)*page_size]).fetchall()
     return {"total":count,"page":page,"page_size":page_size,"items":[dict(zip(("source","source_id","source_vintage","incident_date","city","state","evidence_status"),r)) for r in rows]}
 
+def audit_multiyear_source_coverage(db_path):
+    """Quantify reporting-vintage versus event-year and source-reported geography.
+
+    Annual NRC files contain calls received in a year; the incident may have
+    occurred in a previous year. Observations are not deduped across years.
+    """
+    with sqlite3.connect(db_path) as conn:
+        vintages=conn.execute("""SELECT source,COUNT(*) AS rows,
+             MIN(incident_date),MAX(incident_date),
+             COUNT(latitude),MIN(latitude),MAX(latitude),
+             MIN(longitude),MAX(longitude),COUNT(DISTINCT state)
+          FROM source_incidents
+          GROUP BY source ORDER BY source""").fetchall()
+        source_stats={name:{
+            "accepted_rows":n,"earliest_incident_date":min_date,
+            "latest_incident_date":max_date,"coordinate_rows":geo,
+            "reported_latitude_bounds":[lat_min,lat_max],
+            "reported_longitude_bounds":[lon_min,lon_max],
+            "distinct_reported_state_values":distinct_state
+        } for name,n,min_date,max_date,geo,lat_min,lat_max,lon_min,lon_max,distinct_state in vintages}
+        year_buckets=conn.execute("""SELECT source,substr(incident_date,1,4),COUNT(*)
+           FROM source_incidents WHERE source LIKE 'nrc_%'
+           GROUP BY source,substr(incident_date,1,4)
+           ORDER BY source,substr(incident_date,1,4)""").fetchall()
+        # This quantifies record identity overlap, NOT confirmed same accidents.
+        cross_year=conn.execute("""SELECT COUNT(*) FROM(
+             SELECT source_id FROM source_incidents
+             WHERE source LIKE 'nrc_%' GROUP BY source_id
+             HAVING COUNT(DISTINCT source)>1
+           )""").fetchone()[0]
+        state_missing=conn.execute("""SELECT source,COUNT(*)
+            FROM source_incidents WHERE state='' OR state IS NULL
+            GROUP BY source""").fetchall()
+        # Reviewer must not infer coordinates from city/state or guess country
+        # from abbreviations such as CN, XX or offshore location strings.
+        cross_year_pairs=conn.execute("""SELECT COALESCE(SUM(n*(n-1)/2),0) FROM(
+            SELECT COUNT(DISTINCT source) AS n FROM source_incidents
+            WHERE source LIKE 'nrc_%' GROUP BY source_id HAVING n>1
+        )""").fetchone()[0]
+        if sum(x["accepted_rows"] for x in source_stats.values())!=conn.execute("SELECT COUNT(*) FROM source_incidents").fetchone()[0]:
+            raise ValueError("Source geography/date audit disagrees with index")
+        return {
+          "vintage_event_date_and_reported_geography":source_stats,
+          "nrc_event_year_distribution_by_receipt_cohort":[
+             {"received_workbook_namespace":source,"incident_calendar_year":year,
+              "reported_notifications":n} for source,year,n in year_buckets],
+          "native_source_id_values_present_in_multiple_yearly_workbooks":cross_year,
+          "same_native_id_cross_year_pairs":int(cross_year_pairs),
+          "missing_reported_state_by_source":dict(state_missing),
+          "warnings":["NRC annual workbook is reporting/receipt cohort, not necessarily occurrence year",
+                      "Source-reported locations are NOT insured-site geometries",
+                      "Cross-year repeated native IDs remain separate source observations pending evidence review"]
+        }
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--db",type=Path,required=True)
