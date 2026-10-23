@@ -156,6 +156,7 @@ def normalize(archive,output,years=EXPECTED_YEARS):
     accepted_total,rejected_total=0,0
     kind_counts,reason_counts=Counter(),Counter()
     exact_source_duplicate_rows=0
+    accepted_exact_duplicates=0
     fips,states=set(),set()
     published_start_min,published_start_max=None,None
     null_counts,native_event_ids=Counter(),set()
@@ -182,6 +183,8 @@ def normalize(archive,output,years=EXPECTED_YEARS):
            source_member TEXT NOT NULL,
            source_line_number INTEGER NOT NULL,
            source_row_sha256 TEXT NOT NULL,
+           is_exact_duplicate_source_row INTEGER NOT NULL,
+           duplicate_of_source_line INTEGER,
            raw_json TEXT NOT NULL
         )""")
         with zipfile.ZipFile(archive) as z, normalized_path.open("w",encoding="utf-8") as accepted_out, rejected_path.open("w",encoding="utf-8") as rejected_out:
@@ -201,6 +204,7 @@ def normalize(archive,output,years=EXPECTED_YEARS):
                 member_sha=sha(raw)
                 head_row_count,member_good,member_bad=0,0,0
                 member_null,member_exact=Counter(),Counter()
+                member_first_line_by_hash={}
                 min_ts,max_ts=None,None
                 reader=csv.DictReader(io.StringIO(raw.decode("utf-8-sig")))
                 if tuple(reader.fieldnames or ())!=COLUMNS[kind]:
@@ -211,6 +215,10 @@ def normalize(archive,output,years=EXPECTED_YEARS):
                     row_payload=json.dumps(actual,sort_keys=True,separators=(",",":"),ensure_ascii=False)
                     fingerprint=sha(row_payload.encode("utf-8"))
                     member_exact[fingerprint]+=1
+                    duplicate_of_source_line=member_first_line_by_hash.get(fingerprint)
+                    is_exact_duplicate_source_row=duplicate_of_source_line is not None
+                    if duplicate_of_source_line is None:
+                        member_first_line_by_hash[fingerprint]=line
                     try:
                         if any(k is None or v is None for k,v in actual.items()):
                             raise ValueError("ragged_source_csv_row")
@@ -224,6 +232,8 @@ def normalize(archive,output,years=EXPECTED_YEARS):
                             "reason":reason,"raw":actual},sort_keys=True,ensure_ascii=False)+"\n")
                         continue
                     source_key=sha(json.dumps([member,line,fingerprint],separators=(",",":")).encode("utf-8"))
+                    if is_exact_duplicate_source_row:
+                        accepted_exact_duplicates+=1
                     name=row.get("state","").strip()
                     cnty=row.get("county","").strip() if county_fips else None
                     fips.add(county_fips) if county_fips else None
@@ -254,6 +264,8 @@ def normalize(archive,output,years=EXPECTED_YEARS):
                         "source_member":member,"source_kind":kind,
                         "source_year":year,"source_line_number":line,
                         "source_row_key":source_key,"source_row_sha256":fingerprint,
+                        "is_exact_duplicate_source_row":is_exact_duplicate_source_row,
+                        "duplicate_of_source_line":duplicate_of_source_line,
                         "source_county_fips":county_fips,
                         "source_state":name,"source_county":cnty,
                         "source_start_time":dt,
@@ -266,9 +278,10 @@ def normalize(archive,output,years=EXPECTED_YEARS):
                         "raw":actual,
                     }
                     accepted_out.write(json.dumps(row_record,sort_keys=True,ensure_ascii=False)+"\n")
-                    db.execute("INSERT INTO source_observations VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    db.execute("INSERT INTO source_observations VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                         (source_key,kind,year,county_fips,name,cnty,dt,typed.get("duration"),
-                         typed.get("mean_customers"),native,member,line,fingerprint,row_payload))
+                         typed.get("mean_customers"),native,member,line,fingerprint,
+                         int(is_exact_duplicate_source_row),duplicate_of_source_line,row_payload))
                     accepted_total+=1
                     member_good+=1
                     kind_counts[kind]+=1
@@ -290,6 +303,7 @@ def normalize(archive,output,years=EXPECTED_YEARS):
         db.commit()
         db.execute("CREATE INDEX idx_county_year_kind ON source_observations(county_fips,dataset_year,source_kind)")
         db.execute("CREATE INDEX idx_event_native_id ON source_observations(native_event_id,source_kind)")
+        db.execute("CREATE INDEX idx_pnnl_duplicate_lineage ON source_observations(source_kind,is_exact_duplicate_source_row,county_fips)")
         db.execute("CREATE INDEX idx_time_kind ON source_observations(reported_start,source_kind)")
         db.commit()
         if db.execute("PRAGMA integrity_check").fetchone()[0]!="ok":
@@ -323,6 +337,8 @@ def normalize(archive,output,years=EXPECTED_YEARS):
         "unique_native_correlated_event_id_year_pairs":len(native_event_ids),
         "candidate_repeated_county_time_event_keys":sum(v-1 for v in natural_keys.values() if v>1),
         "exact_duplicate_source_rows_within_same_table":exact_source_duplicate_rows,
+        "accepted_exact_duplicate_rows":accepted_exact_duplicates,
+        "distinct_source_table_row_contents":accepted_total-accepted_exact_duplicates,
         "cross_publication_year_episode_starts":dict(cross_year_starts),
         "durable_backend_indexed":0,"verified_insured_facility_outages":0,
         "verified_financial_claims":0,"deployed":0,
@@ -335,6 +351,7 @@ def normalize(archive,output,years=EXPECTED_YEARS):
             "Source is historical study dataset, 2014-2023; not a real-time monitoring feed",
             "Published source years are dataset vintages; timezone of raw start_time not provided",
             "Raw observations and rejected records are staged in transient runner SQLite",
+            "Same-table byte-equivalent source rows are kept but individually flagged as repeats, preserving all source row positions",
         ],
     }
     if accepted_total !=sum(s["accepted"] for s in stats):
