@@ -28,12 +28,56 @@
   }
   function casePage(cs,sites){return `<div class="intel-case-grid">${cs.map(c=>caseCard(c,sites)).join('')}</div>`;}
   function sitePrecise(s){return (s.location?.precision==='site_verified'||s.location?.precision==='property_polygon');}
+  function laneAFloodPanel(sites){
+    if(window.PublicRiskAPI)return '';
+    const options=sites.slice(0,250).map(s=>'<option value="'+esc(s.id)+'">'+esc(s.name||s.id)+'</option>').join('');
+    return card(title('FEMA flood source evidence','Authenticated source-index check · site coordinates require independent review')+
+      '<div class="intel-card-body"><p>Run a read-only FEMA NFHL polygon check for a private research site. Only the server-stored, independently reviewed CURRENT property coordinate can be evaluated. Outside the six QA windows, missing evidence remains UNKNOWN; no insured loss or effective FIRM determination is inferred.</p>'+
+      '<div class="intel-map-source-query"><label for="lane-a-site">Private research site</label><select id="lane-a-site">'+options+'</select> '+
+      '<button class="btn tiny" id="lane-a-check-fema" type="button"'+(options?'':' disabled')+'>Check FEMA source polygons</button></div>'+
+      '<div id="lane-a-fema-result" class="small-muted" role="status" aria-live="polite">Verifying mounted source index…</div></div>');
+  }
+  async function initLaneAFloodPanel(api){
+    const button=$('#lane-a-check-fema'),output=$('#lane-a-fema-result'),picker=$('#lane-a-site');
+    if(!button||!output)return;
+    let mounted=false;
+    try{
+      const s=await api('lane-a/status');
+      mounted=s?.state==='ready_partial';
+      output.textContent=mounted?
+        ('Bounded FEMA source index ready: '+Number(s.fema_source_polygons).toLocaleString()+
+         ' polygons in six test windows. This is not national flood coverage.') :
+        'Verified Lane A index not mounted here; no flood conclusion is available.';
+    }catch{
+      output.textContent='FEMA source index unavailable; no flood conclusion is available.';
+    }
+    if(!output.isConnected)return;
+    button.disabled=!mounted||!picker?.value;
+    button.addEventListener('click',async()=>{
+      if(!picker?.value)return;
+      button.disabled=true;
+      output.textContent='Checking original FEMA polygons with stored location-review evidence…';
+      try{
+        const result=await api('facilities/'+encodeURIComponent(picker.value)+'/fema-nfhl');
+        const state=String(result.coverage_state||'UNKNOWN');
+        const hits=Array.isArray(result.source_features)?result.source_features:[];
+        output.textContent=(state==='SOURCE_POLYGON_INTERSECTION_AT_CORROBORATED_POINT'?
+          'Source polygons intersect the reviewed point: '+hits.map(x=>x.flood_zone||'unlabeled').join(', ')+'. ':
+          state==='BOUNDARY_OR_SIMPLIFICATION_REVIEW_REQUIRED'?
+          'Boundary or simplified geometry: qualified map review required. ':
+          'No verified FEMA polygon conclusion: '+state.replaceAll('_',' ').toLowerCase()+'. ')+
+          'No legal NFIP/FIRM effective-date, property damage, policy or insured loss determination.';
+      }catch{
+        output.textContent='FEMA source or reviewed-site evidence unavailable; exposure remains UNKNOWN.';
+      }finally{button.disabled=!mounted;}
+    });
+  }
   function mapPage(sites){
     const plotted=sites.filter(s=>s.latitude!=null&&s.longitude!=null),verified=sites.filter(sitePrecise).length;
     const sidebar=plotted.map(s=>`<button class="intel-map-row" data-focus-lat="${Number(s.latitude)}" data-focus-lon="${Number(s.longitude)}"><span class="intel-location-dot ${sitePrecise(s)?'verified':'approx'}"></span><span><strong>${esc(s.name)}</strong><small>${sitePrecise(s)?'Reviewed site point':'Unverified / reference point'} · ${esc(s.country||'')}</small></span></button>`).join('');
     return `${info('Map pins are navigational. A city point or unreviewed analyst coordinate does not establish parcel-specific flood, wildfire or property exposure. FEMA zone checks require a separately verified site point.')}
     <div class="intel-map-grid">${card(`<div class="intel-map-canvas" id="intel-map-canvas"><div class="intel-map-fallback">Loading interactive basemap…</div></div><div class="intel-map-foot"><span>● ${plotted.length} mapped reference points</span><span>${verified} site point(s) independently reviewed</span></div>`)}${card(`${title('Facilities','Click a site to focus its location')}<div class="intel-map-site-list">${sidebar||'<p class="small-muted">No coordinate points available</p>'}</div>`)}</div>
-    <div class="intel-perils">${[['Flood','FEMA NFHL','Requires site-verified coordinates'],['Tornado / storm','NOAA Storm Events','Point and county event limitations'],['Seismic','USGS ComCat','Epicenter proximity is not shaking intensity'],['Water stress','WRI Aqueduct','Basin-scale modeled exposure'],['Wildfire','USFS / local hazard layers','Not yet integrated']].map(a=>`<div class="intel-peril"><b>${esc(a[0])}</b><span>${esc(a[1])}</span><small>${esc(a[2])}</small></div>`).join('')}</div>`;
+    <div class="intel-perils">${[['Flood','FEMA NFHL','Requires site-verified coordinates'],['Tornado / storm','NOAA Storm Events','Point and county event limitations'],['Seismic','USGS ComCat','Epicenter proximity is not shaking intensity'],['Water stress','WRI Aqueduct','Basin-scale modeled exposure'],['Wildfire','USFS WHP2023','Verified QA raster pixels / geographic aggregates only; property-level raster still missing']].map(a=>`<div class="intel-peril"><b>${esc(a[0])}</b><span>${esc(a[1])}</span><small>${esc(a[2])}</small></div>`).join('')}</div>${laneAFloodPanel(sites)}`;
   }
   async function initMap(sites){
     const root=$('#intel-map-canvas');if(!root)return;
@@ -186,7 +230,9 @@
         const status=new Map((intel.sites||[]).map(x=>[x.id,x]));
         const sites=state.facilities.map(f=>({...f,...(status.get(f.id)||{}),
           latitude:f.latitude,longitude:f.longitude}));
-        root.innerHTML=mapPage(sites);await initMap(sites);return;
+        root.innerHTML=mapPage(sites);await initMap(sites);
+        if(!window.PublicRiskAPI)await initLaneAFloodPanel(api);
+        return;
       }
       const intel=await api('intelligence');if(!root.isConnected)return;
       const status=new Map((intel.sites||[]).map(x=>[x.id,x]));
