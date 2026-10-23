@@ -30,6 +30,16 @@ def test_readonly_index_benchmark_preserves_identifiers_and_data(tmp_path):
     assert result['parallel']['requests']>=2
     assert all(row['p50_ms']>=0 and row['p95_ms']>=0 for row in result['query_cases'])
     assert next(x for x in result['query_cases'] if x['case']=='identifier_prefix')['matching_source_site_candidates']>=1
+    # Reproduce the GitHub Actions invocation from outside the repository cwd:
+    # direct script calls must be able to find the local facilityrisk package.
+    import subprocess,sys,json
+    from pathlib import Path
+    script=Path(__file__).resolve().parents[1]/'scripts'/'benchmark_frs_search.py'
+    output=tmp_path/'cli-benchmark.json'
+    cli=subprocess.run([sys.executable,str(script),str(path),'--out',str(output),
+        '--repeats','1','--concurrency','1'],cwd=tmp_path,capture_output=True,text=True,timeout=30)
+    assert cli.returncode==0,cli.stderr
+    assert json.loads(output.read_text())['source_identities']==4
     assert path.stat().st_size==original_size, 'Benchmark cannot rewrite indexed database'
     c=sqlite3.connect(path)
     assert c.execute('SELECT COUNT(*) FROM universal_sites').fetchone()[0]==4
