@@ -62,13 +62,35 @@ def _configured_root():
 
 
 def _fingerprint(root, source_root):
+    """Invalidate cached official-source QA on *any* input change or symlink."""
     proof = source_root.parents[1] / "release-verification.json"
-    paths = [root / "current.json", proof]
-    paths.extend(source_root / INDEX_PATHS[name] for name in sorted(REQUIRED))
     try:
-        return tuple((str(p.resolve()), p.stat().st_size, p.stat().st_mtime_ns)
-                     for p in paths if not p.is_symlink())
-    except OSError as exc:
+        evidence = json.loads(proof.read_text(encoding="utf-8"))
+        receipts = evidence.get("retained_source_file_sha256")
+        if not isinstance(receipts, dict) or not receipts:
+            raise LaneASourceUnavailable("Original source-file receipt list missing")
+        paths = [root / "current.json", proof]
+        for relative in sorted(receipts):
+            if not isinstance(relative, str):
+                raise LaneASourceUnavailable("Invalid original source receipt path")
+            components = PurePosixPath(relative)
+            if (components.is_absolute() or
+                    ".." in components.parts or
+                    len(components.parts) < 2):
+                raise LaneASourceUnavailable("Unsafe source receipt path")
+            paths.append(source_root.joinpath(*components.parts))
+        signature = []
+        for path in paths:
+            if path.is_symlink() or not path.is_file():
+                raise LaneASourceUnavailable("Missing or symlinked original source file")
+            resolved = path.resolve()
+            if path not in (root / "current.json", proof) and not resolved.is_relative_to(source_root):
+                raise LaneASourceUnavailable("Publisher source file escapes verified release")
+            st = path.stat()
+            signature.append((str(resolved), st.st_size, st.st_mtime_ns,
+                              st.st_ctime_ns, st.st_dev, st.st_ino))
+        return tuple(signature)
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
         raise LaneASourceUnavailable("Missing or unreadable source validation files") from exc
 
 
