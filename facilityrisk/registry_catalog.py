@@ -100,17 +100,27 @@ COUNTRY_NAMES=_iso_countries()
 
 
 def country_from_explicit_address(address):
-    """Recognize only an *explicit final country segment* in source address text.
+    """Extract a publisher-explicit final country label and verify its ISO code.
 
-    E.g., `Factory Road, Cork, Ireland` -> IE.
-    No postal-state inference and no substring matching ("Canadian Street").
-    Ambiguous country/state place names remain unresolved.
+    Current FDA DECRS addresses end with an authoritative label like
+    '..., United States (USA)' or '..., India (IND)'. Both the literal label
+    and ISO alpha-3 code must agree. Do not infer from city/state/postal data.
+    Legacy plain country suffixes are accepted only as exact ISO names.
     """
-    parts=[x.strip(' .\\t') for x in re.split(r'[,;]',clean(address,500))]
+    parts=[x.strip() for x in re.split(r'[,;]',clean(address,500)) if x.strip()]
     if len(parts)<2:return ''
+    # Commas sometimes occur within the ISO country's official name.
+    for count in range(1,min(len(parts),4)):
+        last=', '.join(parts[-count:])
+        match=re.fullmatch(r'(.+?)\s*\(([A-Za-z]{3})\)',last)
+        if not match:continue
+        country=pycountry.countries.get(alpha_3=match.group(2).upper())
+        label=COUNTRY_NAMES.get(match.group(1).strip().casefold())
+        if country and label==country.alpha_2:return country.alpha_2
     last=parts[-1].casefold()
-    if last in ('ca','in','ga','georgia','congo'):return ''  # ambiguous state/region names
+    if last in ('ca','in','ga','georgia','congo'):return ''
     return COUNTRY_NAMES.get(last,'')
+
 
 
 def exact_country_field(value):
