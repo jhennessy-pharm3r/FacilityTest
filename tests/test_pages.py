@@ -110,8 +110,8 @@ def test_pages_and_records_have_shareable_history_routes_without_exposing_forms(
     assert 'routeableFacility(id)' in app
     assert 'routeableFacility(state.facility)' in app
     assert 'openSite(route.facility,{fromRoute:true,tab:route.tab})' in app
-    assert 'window.RegistryUI={render:' in registry and 'mount,restoreRoute,pages' in registry
-    assert 'window.UniversalUI={render,mount,restoreRoute}' in universal
+    assert 'window.RegistryUI={render:' in registry and 'mount,restoreRoute,routeParams,pages' in registry
+    assert 'window.UniversalUI={render,mount,restoreRoute,routeParams}' in universal
     # Private assessment/policy values are never placed in browser URL parameters.
     route_keys=app.split('const ROUTE_KEYS=new Set(',1)[1].split(');',1)[0]
     assert 'coverage' not in route_keys and 'daily' not in route_keys
