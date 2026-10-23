@@ -128,6 +128,20 @@ with sync_playwright() as pw:
             'NOAA Storm Events Details',timeout=15000)
         expect(page.locator('#intel-content')).to_contain_text(
             'staged source artifact',timeout=15000)
+    # Dynamic current official NOAA selected spill-response source count.
+    selected_path=Path(__file__).resolve().parents[1]/'web/ingestion/noaa-incidentnews.json'
+    if selected_path.exists():
+        selected=json.loads(selected_path.read_text(encoding='utf-8'))
+        assert selected['source']=='NOAA IncidentNews Selected Spills'
+        assert selected['state']=='staged_source_artifact'
+        assert selected['records']>0 and selected['coordinate_records']<=selected['records']
+        assert sum(selected['threat_counts'].values())==selected['records']
+        expect(page.locator('#intel-content')).to_contain_text(
+            'NOAA IncidentNews Selected Spills',timeout=15000)
+        expect(page.locator('#intel-content')).to_contain_text(
+            f"{selected['records']:,}",timeout=15000)
+        expect(page.locator('#intel-content')).to_contain_text(
+            'not all reported spills',timeout=15000)
     page.locator('[data-page="facilities"]').first.click()
     page.locator('.facility-card').first.click()
     expect(page.locator('#detail-drawer')).to_have_class('detail-drawer open',timeout=15000)
