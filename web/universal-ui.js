@@ -4,6 +4,29 @@
 const esc=v=>String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const https=u=>typeof u==='string'&&/^https:\/\/[^\s/]+/i.test(u)?u:'';
 let q='',country='',industry='',source='',page=0,selected=null,wired=false,sourceInitialized=false;
+
+ function saveRoute(method='push'){
+   window.FacilityRiskRouter?.patch({page:'universal',q,country,industry,source,
+     p:page>0?String(page+1):null,record:selected?.site?.id||null},method);
+ }
+ async function restoreRoute(){
+   if(window.PublicRiskAPI||!document.getElementById('uf-form'))return;
+   const p=new URL(window.location.href).searchParams;
+   q=(p.get('q')||'').slice(0,200);
+   country=(p.get('country')||'').slice(0,8);
+   industry=(p.get('industry')||'').slice(0,120);
+   source=(p.get('source')||'').slice(0,100);
+   const n=Number(p.get('p')||'1');
+   page=Number.isSafeInteger(n)&&n>=1&&n<=100000?n-1:0;
+   const selectedId=(p.get('record')||'').slice(0,200);
+   sourceInitialized=false;
+   for(const [id,value] of [['uf-q',q],['uf-country',country],['uf-industry',industry]]){
+     const input=document.getElementById(id);if(input)input.value=value;
+   }
+   await load();
+   if(selectedId&&document.getElementById('uf-detail'))await inspect(selectedId,false);
+ }
+
 function render(){
 return '<div class="page-heading"><div><div class="eyebrow">ALL INDUSTRIES / SOURCE-REPORTED FACILITIES</div><h1>Universal facility discovery</h1>'+
  '<p class="subhead">Search cross-industry source identities before investigating insurance exposure. An EPA, FDA, NPRI or place record is not automatically a verified building or insured property.</p></div></div>'+
@@ -74,12 +97,12 @@ async function load(){
    results.innerHTML='<div class="empty">'+esc(error.message)+'. Check your authenticated backend, import provenance and current source cohort.</div>';
  }
 }
-async function inspect(id){
+async function inspect(id,updateURL=true){
  const el=document.getElementById('uf-detail');if(!el)return;
  try{
  const res=await fetch('/api/universal-facilities/'+encodeURIComponent(id),{cache:'no-store'});
  if(!res.ok)throw Error('Selected source-site identity is not accessible');
- const data=await res.json();selected=data;
+ const data=await res.json();selected=data;if(updateURL)saveRoute();
  const provenance=(data.source_identities||[]).map(x=>{
    const safe=https(x.source_url);
    return '<li><strong>'+esc(x.source_key)+'</strong> / '+esc(x.source_identifier)+
@@ -111,7 +134,7 @@ function mount(){
      country=document.getElementById('uf-country').value.trim().toUpperCase();
      industry=document.getElementById('uf-industry').value.trim();
      source=document.getElementById('uf-source').value.trim();
-     page=0;await load();
+     page=0;selected=null;saveRoute();await load();
    });
    root.addEventListener('click',async e=>{
      const t=e.target;if(!t)return;
@@ -119,10 +142,10 @@ function mount(){
        q=country=industry=source='';page=0;
        for(const id of ['uf-q','uf-country','uf-industry']){const inp=document.getElementById(id);if(inp)inp.value='';}
        const dropdown=document.getElementById('uf-source');if(dropdown)dropdown.value='';
-       await load();return;
+       selected=null;saveRoute();await load();return;
      }
-     if(t.id==='uf-prev'){page=Math.max(0,page-1);await load();return;}
-     if(t.id==='uf-next'){page+=1;await load();return;}
+     if(t.id==='uf-prev'){page=Math.max(0,page-1);selected=null;saveRoute();await load();return;}
+     if(t.id==='uf-next'){page+=1;selected=null;saveRoute();await load();return;}
      if(t.dataset.ufId){await inspect(t.dataset.ufId);return;}
      if(t.id==='uf-assess'&&selected){
        window.dispatchEvent(new CustomEvent('facilityrisk:assess-site',{detail:{
@@ -145,7 +168,7 @@ function mount(){
      }
    });
  }
- load();
+ restoreRoute();
 }
-window.UniversalUI={render,mount};
+window.UniversalUI={render,mount,restoreRoute};
 })();
