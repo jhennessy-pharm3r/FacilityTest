@@ -152,7 +152,11 @@ def normalize(source, output, *, minimum_rows=100):
             reader = csv.DictReader(inp)
             if not RAW_REQUIRED.issubset(reader.fieldnames or ()) or \
                     not set(MEASURES).issubset(reader.fieldnames or ()):
-                raise ValueError("Official IncidentNews CSV columns changed")
+                observed=list(reader.fieldnames or [])
+                missing=sorted((RAW_REQUIRED | set(MEASURES))-set(observed))
+                raise ValueError("Official IncidentNews CSV columns changed; "+
+                    "missing="+repr(missing)+"; "+
+                    "observed_header="+repr(observed[:45]))
             writer = csv.DictWriter(out, fieldnames=COLUMNS)
             writer.writeheader()
             for raw in reader:
