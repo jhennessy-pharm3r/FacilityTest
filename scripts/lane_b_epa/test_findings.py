@@ -40,6 +40,8 @@ class EnvironmentalReportedMeasureTests(unittest.TestCase):
         self.assertTrue(m["reported_total_penalties"]["is_aggregate_facility_summary"])
     def test_unrealistic_regulator_year_not_silently_assigned(self):
         self.assertEqual(_date("10/01/1016")[1],"out_of_plausible_range")
+        self.assertEqual(_date("1900-01-01")[1],"legacy_date_requires_manual_review")
+        self.assertEqual(_date("1973-01-01")[0],"1973-01-01")
         self.assertEqual(_date("2024")[0],"2024")
     def test_real_source_shape_query_contains_typed_measure(self):
         with tempfile.TemporaryDirectory() as d:
