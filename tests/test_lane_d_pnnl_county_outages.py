@@ -71,6 +71,7 @@ class PNNLTests(unittest.TestCase):
             self.assertEqual((m["source_rows_scanned"],m["accepted"],m["rejected"],m["locally_indexed"]), (7,7,0,7))
             self.assertEqual(m["unique_county_fips"],2)
             self.assertEqual(m["exact_duplicate_source_rows_within_same_table"],0)
+            self.assertEqual(m["distinct_source_table_row_contents"],m["accepted"])
             self.assertEqual(m["unique_native_correlated_event_id_year_pairs"],1)
             self.assertEqual(m["durable_backend_indexed"],0)
             self.assertEqual(m["verified_insured_facility_outages"],0)
@@ -110,6 +111,16 @@ class PNNLTests(unittest.TestCase):
             self.assertEqual(result["accepted"],8)
             self.assertEqual(result["locally_indexed"],8)
             self.assertEqual(result["exact_duplicate_source_rows_within_same_table"],1)
+            self.assertEqual(result["accepted_exact_duplicate_rows"],1)
+            self.assertEqual(result["distinct_source_table_row_contents"],7)
+            records=[json.loads(x) for x in (root/"out"/"accepted.jsonl").read_text().splitlines()]
+            duplicates=[r for r in records if r["is_exact_duplicate_source_row"]]
+            self.assertEqual(len(duplicates),1)
+            self.assertEqual(duplicates[0]["duplicate_of_source_line"],2)
+            self.assertNotEqual(duplicates[0]["source_line_number"],duplicates[0]["duplicate_of_source_line"])
+            with sqlite3.connect(root/"out"/"pnnl_county_outage_staging.sqlite") as db:
+                self.assertEqual(db.execute("select count(*) from source_observations where is_exact_duplicate_source_row=1").fetchone()[0],1)
+                self.assertEqual(db.execute("select duplicate_of_source_line from source_observations where is_exact_duplicate_source_row=1").fetchone()[0],2)
             self.assertEqual(result["rejected"],0)
             self.assertEqual(sum(s["exact_duplicate_source_rows_in_member"] for s in result["source_members"]),1)
 
