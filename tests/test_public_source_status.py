@@ -78,7 +78,8 @@ def test_status_rejects_incomplete_probe_results(tmp_path):
 
 def test_unpublished_catalog_is_not_counted_as_ingested(tmp_path):
     primary, extended = _reports(tmp_path)
-    report = build(primary, extended, tmp_path / "none", "2026-10-23", "")
+    report = build(primary, extended, tmp_path / "none", "2026-10-23", "",
+                   ingestion_dir=tmp_path / "unpublished-ingestion")
     assert all(row["state"] == "not_published" and row["records"] is None
                for row in report["ingestions"] if row["source"] != "EPA FRS national indexed registry")
 
