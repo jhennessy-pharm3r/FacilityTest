@@ -135,7 +135,7 @@ def audit(archive, folder):
         if db.execute("PRAGMA integrity_check").fetchone()[0]!="ok":
             raise ValueError("SQLite index integrity check failed")
         indexed=db.execute("SELECT source_kind,COUNT(*) FROM source_observations GROUP BY source_kind").fetchall()
-        indexed_by_kind=dict(indexed)
+        indexed_by_kind={kind: dict(indexed).get(kind, 0) for kind in DATASETS}
         if indexed_by_kind != count_by_kind:
             raise ValueError("SQLite count differs from normalized JSONL")
         indexed_ids={r[0] for r in db.execute("SELECT ingestion_row_key FROM source_observations")}
