@@ -5,6 +5,8 @@ on:
     branches:
       - ingest/eia861-utility-bi-lane-d-20261023
     paths:
+      - facilityrisk/lane_d/install_source_index.py
+      - tests/test_lane_d_install_source_index.py
       - facilityrisk/lane_d/ingest_pnnl_county_outages.py
       - tests/test_lane_d_pnnl_county_outages.py
       - facilityrisk/lane_d/query_staging.py
@@ -18,7 +20,7 @@ permissions:
 jobs:
   official-pnnl-full-archive:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 65
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -157,6 +159,22 @@ jobs:
             /tmp/lane-d/pnnl/staged/pnnl_county_outage_staging.sqlite
             /tmp/lane-d/pnnl/staged/coordinator_handoff.json
             /tmp/lane-d/pnnl/staged/manifest.json
+      - name: Recover 2.1-million-row PNNL SQLite source artifact independently
+        uses: actions/download-artifact@v4
+        with:
+          name: lane-d-pnnl-2014-2023-readonly-staging-index
+          path: /tmp/lane-d-pnnl-transferred
+      - name: Verify original DOE publisher archive, install and query read-only index
+        run: |
+          python -m facilityrisk.lane_d.install_source_index install --bundle /tmp/lane-d-pnnl-transferred --dest /tmp/lane-d-pnnl-installed --dataset pnnl_2014_2023 --source-sha256 44557bae7a5c8e02c611a14f75fe9e123d81d286f700b9fd88ac538edd910fe7
+          python -m facilityrisk.lane_d.install_source_index verify --dest /tmp/lane-d-pnnl-installed --dataset pnnl_2014_2023
+          python -m facilityrisk.lane_d.install_source_index query --dest /tmp/lane-d-pnnl-installed --dataset pnnl_2014_2023 --fips 01001 --year 2023 --limit 4
+      - name: Publish source-only PNNL installed-pointer acceptance, never source rows
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-d-pnnl-install-smoke
+          retention-days: 7
+          path: /tmp/lane-d-pnnl-installed/pnnl_2014_2023/current.json
       - name: Publish provenance and source QA ledger only; source CSV data remain in isolated runner
         if: always()
         uses: actions/upload-artifact@v4
