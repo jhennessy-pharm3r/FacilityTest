@@ -34,6 +34,7 @@ jobs:
       - name: Request actual FEMA flood polygons and USFS 2023 raster pixels
         run: python scripts/validate_lane_a_sources.py --output-dir data/lane_a/live_validation
       - name: Fully enumerate FEMA polygons within bounded geographic test windows
+        if: always()
         run: python -m scripts.lane_a_nfhl_paged --out-dir data/lane_a/paged_windows --max-per-window 250 --batch-size 4
       - name: Probe optional Massachusetts FEMA 2025 derivative without substituting for national NFHL
         if: always()
