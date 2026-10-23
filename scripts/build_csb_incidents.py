@@ -35,6 +35,18 @@ def _marker(value):
     # Publisher markers are not counts. Never map Yes/N/A/blank to zero or one.
     return str(value).strip()[:120] if value is not None else ""
 
+def _marker_bucket(value):
+    text = _marker(value).lower()
+    if not text:
+        return "missing"
+    if text in ("yes","y","true","1","x"):
+        return "yes_as_reported"
+    if text in ("no","n","false","0"):
+        return "no_as_reported"
+    if text in ("n/a","na","unknown","none"):
+        return "other_or_unknown_as_reported"
+    return "other_present_not_interpreted"
+
 def stage_csb(raw, output, manifest, *, release, source_url=SOURCE, minimum_rows=50):
     if not release or len(release) != 10:
         raise ValueError("Explicit CSB source publication vintage YYYY-MM-DD required")
@@ -83,7 +95,7 @@ def stage_csb(raw, output, manifest, *, release, source_url=SOURCE, minimum_rows
                 blank_city += not bool(location)
                 states[state or "<missing>"] += 1
                 for key in markers:
-                    markers[key][_marker(row[key]) or "<missing>"] += 1
+                    markers[key][_marker_bucket(row[key])] += 1
                 writer.writerow(dict(zip(COLUMNS, (
                     "csb_release_events", f"csb:{release}:{original_id}",
                     release, rowno, original_id, when, date_precision,
