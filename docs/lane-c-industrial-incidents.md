@@ -1,80 +1,88 @@
-# Lane C — Industrial incident source intake (2026-10-23)
+# Lane C — USCG NRC, CSB and PHMSA industrial incident source evidence
 
-## Source boundaries
+**Last real validation:** 2026-10-23. **Current state:** NRC CY2020–CY2025 and CSB 2026-09 release downloaded, normalized, content validated and **indexed in a temporary source-only SQLite database**. PHMSA source incident files remain inaccessible from the GitHub Actions runner. **Nothing has been deployed in a durable private service or in the app.** PR #79 stays DRAFT / UNMERGED; Lane E alone owns cross-lane UI, common registry, production serving and merge approval.
 
-- **USCG NRC** — annual publisher FOIA workbook `https://nrc.uscg.mil/FOIAFiles/CY25.xlsx`. NRC reports are **initial notifications, unverified**, may be updated or duplicated across linked sheets. The pre-existing `scripts/probe_uscg_nrc.py` probes workbook layout only; a distinct report ID and correct master sheet must be confirmed in a real workbook before normalization. We do not substitute NOAA IncidentNews for NRC.
-- **CSB** — quarterly Accidental Release Reporting Rule dataset, currently [official 2026-09-01 XLSX](https://www.csb.gov/assets/1/6/Copy_of_Accidental_Release_Events_2026-09-01.xlsx), covering reports under 40 CFR 1604 since 2020-03-23. Do not equate this with the selected investigated-accident portfolio or with the unverified CSB news feed. Confirm original row identifier in export; if no publisher-unique ID, do **not** synthesize a false regulator ID.
-- **PHMSA pipeline** — official operator incident ZIP/TXT files, distinct report types and reporting vintages, [official source](https://www.phmsa.dot.gov/data-and-statistics/pipeline/source-data). Preserve report number + **dataset/report-type namespace** to prevent collision across pipeline subtypes. Separate operator submissions from flagged trend files.
-- **PHMSA hazmat** — separate DOT Form 5800.1 transportation incident system; [official incident statistics](https://www.phmsa.dot.gov/hazmat-program-management-data-and-statistics/data-operations/incident-statistics). PHMSA advises multiple commodities/package types can produce multiple rows per report: group/report on source report ID, never count commodity rows as incidents.
+- Real official-source + combined SQLite + review-candidate verification: [GitHub Actions run 39979735899](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39979735899), **SUCCESS**; aggregate-only QA artifact **12512054497**. 
+- Repo-wide CI: [run 39979745165](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39979745165), **SUCCESS**.
+- Earlier verified annual source check: [run 39979162538](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39979162538), **SUCCESS**. Counts below are regulator **source observations**, not independently corroborated accidents, properties, insured losses or claims.
 
-All sectors and physical facility types can be candidates, but the above systems have *regulatory reporting scope*, not a full industry census. Transport incident location is not the address of the involved shipper or insured property.
+## Real source ingestion ledger
 
-## Reproducible local commands
+| Source and vintage | Official raw bytes | Raw source rows | Accepted | Rejected | Distinct native IDs within vintage | Reported DMS coordinates | Missing coordinates |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| NRC 2020 | 13,998,110 | 22,503 | 22,503 | 0 | 22,503 | 2,864 | 19,639 |
+| NRC 2021 | 14,979,248 | 24,540 | 24,540 | 0 | 24,540 | 3,523 | 21,017 |
+| NRC 2022 | 14,738,356 | 23,510 | 23,510 | 0 | 23,510 | 3,269 | 20,241 |
+| NRC 2023 | 14,703,606 | 23,143 | 23,143 | 0 | 23,143 | 3,527 | 19,616 |
+| NRC 2024 | 15,151,431 | 22,966 | 22,966 | 0 | 22,966 | 3,865 | 19,101 |
+| NRC 2025 | 18,026,065 | 21,533 | 21,533 | 0 | 21,533 | 3,999 | 17,534 |
+| CSB 2026-09-01 | 62,290 | 675 | 674 | 1 | 674 release-scoped IDs | 0 | 674 |
+| **Combined** | — | **138,870** | **138,869** | **1** | 138,869 source-vintage IDs | **21,047** | **117,822** |
 
-Keep original agency downloads unchanged on restricted/private storage, and select source-native master sheet. Example (adjust verified column mapping as necessary):
+The CSB rejection is **1 missing/invalid incident date**. Each NRC annual workbook's CALLS / INCIDENT_COMMONS / INCIDENT_DETAILS sheets joined completely by `SEQNOS`; no missing cross-table keys or invalid/missing incident dates were reported. All NRC annual normalizations passed repeat-byte SHA validation and had zero duplicate `SEQNOS` in their respective master sheets. NRC coordinates derived from the official degree/minute/second/hemisphere fields are **approximate source-reported locations**, not insured-property points or known impact footprints. Missing does not mean no incident or no site risk.
+
+### Official provenance: original and normalized SHA-256
+
+| Agency/vintage | Original XLSX SHA-256 | Deterministic normalized gzip SHA-256 |
+| --- | --- | --- |
+| NRC CY2020 | `bde99b7eb6f2accf03e003af71396ecb9057dcf167b4065b2ded6da04b402de4` | `3603df6d00ab2e01022b2d70b6d27f86d8f1c268de0e7aaa303342947d4569c7` |
+| NRC CY2021 | `248e61b6335aa3e3411ebd5680fb48a6aa98a7aab6e21427a80430fc70d688c1` | `a1c672bb23986bbedc8b76308f2132fe108420d00037719d08c2f798366e984f` |
+| NRC CY2022 | `38736e0010cdb43c0fe4dd5d161b167d3c40f0767f4515d41c2145e5c95d759f` | `7939a4924b96d2293fb572a0af68e9a713f88911c6335906fa77ddc74f150260` |
+| NRC CY2023 | `c177d1b7352360c69a7c316ec2b1237e5af9e75b2e63caaa78bd3878e5687a82` | `4848087ef72cd9f9b0dfd8e8873a4b27ab6a4c54de1863385d0f96c76f881d2c` |
+| NRC CY2024 | `3ec11e1c44a1a5c39fda9560018cacfd5a0dd8b9234056b896fb4d4ff97a26e1` | `86e490333ce9479a3fee9dd1eeb53a0ea3de223146fb019930a1a2c7a48efcee` |
+| NRC CY2025 | `086da221569b5bbccb0f8170c54fd83c11cf8b7894258bfdea2c60a218407bda` | `f7421c83699933b1970eb777aae680ba3165b4bdf453ffd2c8004ae3e5042dde` |
+| CSB 2026-09 | `dbea875040e7ddfebfbe295c1731faab5f4c3829784c0c93dbb8d054c10b9dc1` | `63affa5d7fcf06adc6805f39673f1a4891e8f57f0406244b031c9745c102da12` |
+
+Upstream NRC: `https://nrc.uscg.mil/FOIAFiles/CYYY.xlsx` (2020–2025 correspond to CY20–CY25). CSB: `https://www.csb.gov/assets/1/6/Copy_of_Accidental_Release_Events_2026-09-01.xlsx`. Both original unmodified source bytes and row-level transforms are **kept on the disposable Actions runner only**; public GitHub artifacts contain **aggregate JSON manifests**, not report rows, personal names or database contents. Repeated transformations of the same official byte stream generate identical normalized hashes, verified in CI. The deterministic gzip intentionally changes the SHA relative to earlier non-deterministic staging; those older SHA claims are superseded by the table above.
+
+## Indexed, served and deployed counts: separate gates
+
+| Stage | NRC CY2020–2025 | CSB | PHMSA |
+| --- | ---: | ---: | --- |
+| Official source downloaded (rows) | 138,195 | 675 | **NOT DOWNLOADED** |
+| Normalized/accepted | **138,195** | **674** | **NOT TESTED** |
+| Indexed in **disposable CI source-only SQLite** | **138,195** | **674** | **NOT TESTED** |
+| Persistently indexed and authenticated in production | **0** | **0** | **0 deployed/available (coverage unverified)** |
+| Verified live app deployment | **0** | **0** | **0** |
+| Independently corroborated source-to-insured-site links | **0** | **0** | **0** |
+
+One consolidated temporary SQLite contains **138,869 source observations** split into seven namespaces (six NRC annual cohorts plus CSB). Validated SQL indexes on source/native ID, dates, state and coordinates; `PRAGMA quick_check=ok`, all source row counts reconcile, query paging/count checks **PASS**. The ephemeral source database has **no tenant/client data, no automatic canonical physical-site mapping** and is **not uploaded to a publicly accessible artifact**. Runtime hosting/private authentication/integration on real assets is coordinator Lane E's task.
+
+### Cross-agency source candidates, not automatic matches
+
+The strict `scripts/lane_c_review_candidates.py` checks independently reported **exact calendar day, normalized US state, city, and non-generic company name**, never geocoding unknown properties or equating organizations automatically. Live run found **119 NRC–CSB candidate pairs referencing 74 distinct CSB release rows**. These may be multiple NRC notifications for one reported event, unrelated observations, shared corporate names, or bad source text: **0 pairs were manually confirmed**, **0 physical sites verified**, **0 loss or injury outcomes corroborated**. Review-table status is `review_candidate_not_corrob`; an index row is not a confirmed facility, insured claim or coverage decision.
+
+## PHMSA: real official distribution diagnostics and hard blocker
+
+Official pipeline reporting: [PHMSA source data](https://www.phmsa.dot.gov/data-and-statistics/pipeline/source-data) / [operator submissions and publication ZIPs](https://www.phmsa.dot.gov/data-and-statistics/pipeline/distribution-transmission-gathering-lng-and-liquid-accident-and-incident-data). These operator-submitted incidents have different report types and reporting-vintage semantics from NRC notifications or CSB 40 CFR Part 1604 reports.
+
+On networked GitHub Actions, tried **four separate PHMSA official ZIP URLs**: hazardous liquid accidents 2010-present, gas distribution incidents 2010-present, gas transmission/gathering incidents 2010-present, and flagged incidents. All responded **HTTP 403 Forbidden** to the automated runner. Tried separate [PHMSA hazmat incident report portal](https://portalpublic.phmsa.dot.gov/analytics/saw.dll?Portal); it redirected to an inaccessible login endpoint with an HTTP (not HTTPS) redirect; no authentication/circumvention was attempted. Official DOT Socrata `data.transportation.gov/api/views/27nc-rsge.json` returned **HTTP 200 metadata only**, **not** individual PHMSA incident rows; likewise the DOT hazmat public catalog points to an interactive export portal, not a verified programmatic source of report rows. All failures and exact official endpoints appear in the [live run QA artifact](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39979735899/artifacts/12512054497).
+
+**PHMSA accepted, rejected, indexed, longitudinal coverage, native incident IDs and loss amounts remain NOT TESTED**; do not represent a 403 as zero reported incidents. Appropriate resolution: obtain ordinary agency-permitted file access from an approved environment or documented redistribution contract; then inspect actual ZIP member schema, choose operator-submission report grain, validate source-native operator/report numbers and dates, handle commodity subrows without double counting, preserve raw source bytes/checksum, and run QA into this lane-owned source index before any coordinator integration. **No bypass of access controls or unverified third-party mirror.** Historical PHMSA archive years, LNG/UNGS and hazmat exports remain uncovered until that approval/access is resolved.
+
+## Reproducibility and integration contract
+
+From the repository root on a network-enabled authorized runner:
 
 ```bash
-python scripts/probe_uscg_nrc.py --year 2025 --output data/raw/nrc/CY25.xlsx --report data/qa/nrc-probe.json
-python scripts/build_industrial_incidents.py --source nrc --raw data/raw/nrc/CY25.xlsx --sheet "VERIFIED_MASTER_SHEET" --source-url https://nrc.uscg.mil/FOIAFiles/CY25.xlsx --normalized data/staged/nrc.csv.gz --manifest data/qa/nrc.json --mapping data/config/nrc_verified_fields.json --min-rows 100
-python scripts/build_industrial_incidents.py --source csb --raw data/raw/csb/Copy_of_Accidental_Release_Events_2026-09-01.xlsx --sheet "VERIFIED_SHEET" --source-url https://www.csb.gov/assets/1/6/Copy_of_Accidental_Release_Events_2026-09-01.xlsx --normalized data/staged/csb.csv.gz --manifest data/qa/csb.json --mapping data/config/csb_verified_fields.json
-python scripts/build_industrial_incidents.py --source phmsa_pipeline --raw data/raw/phmsa/official-download.zip --member "VERIFIED_REPORT_DATA.txt" --source-url https://www.phmsa.dot.gov/data-and-statistics/pipeline/source-data --normalized data/staged/pipeline.csv.gz --manifest data/qa/pipeline.json --mapping data/config/pipeline_verified_fields.json
-pytest -q tests/test_industrial_incidents.py
+pip install -r requirements.txt -r requirements-dev.txt openpyxl requests
+python -m pytest -q tests/test_industrial_incidents.py tests/test_nrc_enriched.py tests/test_csb_release.py tests/test_lane_c_index.py tests/test_lane_c_candidates.py
+python scripts/run_lane_c_verified.py --output output/lane-c-validation
 ```
 
-The source-specific mapping JSON keys are `id,date,name,city,state,lat,lon,fatal,injury,damage`, values are **actual official column labels**. No source is marked downloaded or normalized merely because its landing page responded. Failed ID, date, or schema checks must block ingestion. The `--min-rows` gate guards incomplete or empty downloads.
+- Source download, multi-sheet NRC source-key join, CSB row-2 header parser, DMS precision guards, null/duplicate/date/schema checks, original and normalized SHA-256, repeatability, acceptance ledger, **separate indexed count**, combined query/reconciliation and reviewed-candidate-only rules execute together.
+- `scripts/build_industrial_incidents.py` supports explicit `--source`/`--raw`/`--sheet` or `--member` and verified publisher header mapping for future PHMSA CSV/TXT/ZIP import. **Do not use unverified default mappings as evidence that a PHMSA source was ingested.** The targeted NRC and CSB modules above have actual verified live publisher mappings.
+- Public CI artifact `output/*.json` publishes only aggregate source status/QA fields, no raw NRC free text, incident personnel identifiers, raw incident rows or SQLite. For production, a coordinator-managed authenticated and tenant-isolated read-only source index must persist the stage output and provide an audit-controlled, reversible site-candidate review workflow.
+- All industries/facility types are in downstream candidate scope; no pharma-only filtering, no inference that absence of regulatory report means low risk, no insurance loss or parametric payout inferred from incident reports.
 
-## Evidence rules and publish gate
+## Open acceptance gates (do NOT mark Lane C complete)
 
-Raw bytes and SHA-256, normalised gzip SHA-256, actual source rows, accepted/rejected/duplicate rows, missing coordinate count, field map, input table, fetch timestamp and publisher URL are recorded in a manifest. Source-specific records are not physical-site registry entries; no match is generated automatically. Coordinates are source-reported, not geocoded property footprints. Counts from CSV row-level PHMSA commodities cannot be described as distinct incidents unless the grain is verified.
+1. **PHMSA:** official downloadable or otherwise authorized operator and hazmat report-row access, schemas, IDs, accepted/rejected/included years and hashes, standalone verified indexed runs. Currently external 403/login hard blocker. Reported pipeline severity outcomes are not insured losses.
+2. **CSB:** release `Number` uniqueness only verified **within September 2026 release**. Cross-quarter identifier stability/corrections and actual semantics of categorical Fatality/Injury/Property Damage/Report markers not independently established; no casualty/dollar amounts inferred.
+3. **NRC:** six recent annual cohorts are content validated; earlier history and current 2026 partials are **NOT TESTED**. Raw source records and onshore/offshore coordinate uncertainty must remain visible; no national facility coverage claim.
+4. **Coordinator-owned Lane E:** persistent private source index with auth, scheduled freshness checks, common provenance manifest, review-only physical-site crosswalk, evidence/outcome corroboration, app Source Health status and live backend deployment checks. None performed in Lane C.
+5. **Final release:** verified cross-regulator physical location corroboration and independent safety/outcome evidence. No source-only row can automatically become a risk score or claims-based damage record. PR [#79](https://github.com/jhennessy-pharm3r/FacilityTest/pull/79) remains **DRAFT / DO NOT MERGE** until coordinator confirms gates.
 
-**Observed work in this branch:** source URL/documentation verified, isolated parser/tests committed. **The local execution container could not download files**, but a subsequent GitHub-hosted Actions runner successfully downloaded and inventoried the NRC and CSB publisher files; PHMSA returned HTTP 403 (see the observed live probe below). Consequently, as of this write-up **actual official downloaded/accepted/normalized/indexed/deployed counts are NOT TESTED, not zero**. Fixture rows are only test rows. The existing NRC schema probe is not evidence of an imported incident cohort.
+### Ownership and evidence boundaries
 
-**Hard blockers:** execute the official file acquisition and inspect live NRC/CSB spreadsheet headers and PHMSA ZIP members on a network-capable CI runner; reconcile publisher unique IDs and report-grain; run source import with real counts; provide persistent private indexing and coordinator integration. Do not promote manifest state to VERIFIED or Source Health DEPLOYED until real content-level QA and live backend checks are complete.
-
-**Ownership:** no A/B/D/E importer, global registry, Source Health, frontend or deployment file is modified in this lane. Coordinator owns the shared integration.
-
-## Observed live official-source probe — GitHub Actions 39971177311
-
-Actual publisher downloads on the 2026-10-23 GitHub-hosted runner, **not synthetic fixtures**:
-
-| Publisher asset | Download | Bytes | Original SHA-256 | Content state |
-| --- | --- | ---: | --- | --- |
-| NRC CY25 XLSX | Success | 18,026,065 | `086da221569b5bbccb0f8170c54fd83c11cf8b7894258bfdea2c60a218407bda` | DOWNLOADED/INVENTORIED, not normalized |
-| CSB 2026-09-01 XLSX | Success | 62,290 | `dbea875040e7ddfebfbe295c1731faab5f4c3829784c0c93dbb8d054c10b9dc1` | DOWNLOADED/INVENTORIED, not normalized |
-| PHMSA hazardous liquids 2010+ ZIP | HTTP 403 Forbidden | — | — | BLOCKED by official publisher from this CI environment |
-
-Run and provenance: https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39971177311; source metadata artifact ID `12509755805`. **Raw XLSX files are not published as GitHub artifacts**, to avoid copying source row-level personal information into public build outputs. A later probe version exposes actual worksheet nonempty row counts and headers in job logs, but worksheet counts must not be called distinct incidents without checking native report keys and grain. No verified accepted/rejected *real incident records*, indexed records or production deployments are claimed at this point.
-
-This live evidence supersedes the earlier note that source download was unavailable *locally*: GitHub CI has real internet access for NRC/CSB, but PHMSA currently refuses the runner.
-
-## NRC actual normalized run — GitHub Actions 39971717294
-
-Official `CY25.xlsx`, `INCIDENT_COMMONS` source table, immutable source ID `SEQNOS`, incident datetime `INCIDENT_DATE_TIME`:
-
-- Raw observed source rows **21,533**
-- Normalized and checksum-validated records **21,533**
-- Rejected **0**; duplicate source IDs **0**
-- Missing normalized coordinates **21,533** (publisher uses split degrees/minutes/seconds/hemisphere fields; the first implementation did **not** silently guess geographic points)
-- Normalized gzip SHA-256: `41e85052f2944ce3b54c20510c3ca7547f56a9019f77d651c1829eff4a10c1b9`
-- Stage `STAGED_AND_CONTENT_VALIDATED_NOT_INDEXED`; private searchable index and deployed app **not done**.
-- Verified run: https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39971717294
-
-Rows are **source-reported NRC notifications**, initially unverified. A zero duplicate count applies to that exact workbook master table, not to cross-year or cross-agency real-world event de-duplication.
-
-## Validated real NRC and CSB source cohorts — GitHub Actions 39972783353
-
-**Real 2026-10-23 publisher fetch and deterministic per-source staging** (no fake examples):
-
-| Official cohort | Observed data rows | Accepted | Rejected | Duplicate source IDs | Valid reported coordinates | Normalized SHA-256 |
-| --- | ---: | ---: | ---: | ---: | ---: | --- |
-| NRC CY2025: joined CALLS/INCIDENT_COMMONS/INCIDENT_DETAILS on SEQNOS | 21,533 | **21,533** | **0** | **0** | **3,999**; missing 17,534 | `4fd46177b17751b656b90ff351b8b35962696e71e67db2c249db4d738c3a07b2` |
-| CSB 2026-09-01 quarterly Accidental Release Events, Public sheet row 2 headers | 675 | **674** | **1** (missing incident date) | **0** | **0** in provided source fields | `74819c26dce16997bbca349961cadaa6732be194e4896172242b974f9b246df6` |
-| PHMSA hazardous liquid pipeline | unavailable | **not tested** | **not tested** | **not tested** | **not tested** | No raw bytes — HTTP 403 |
-
-Real validation logs: https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39972783353.
-NRC native 2025 workbook includes exactly 21,533 source SEQNOS keys consistently found in all three joined 21,533-row tabs, **zero missing cross-table linkages**, **zero invalid/missing incident dates**; recovered 3,999 source-reported DMS positions (these are NOT known facility coordinates). NRC reported severity is unverified notification content. CSB 2026-09-01 `Number` is only known to be a unique identifier *within this release*; immutable cross-vintage identity and report status require further review. The CSB field `Substantial Property Damage` is not assumed to be a dollar amount, and any report-status flags require official interpretation. No candidate record has been cross-linked to a confirmed physical site, no verified property losses or insured claims are asserted.
-
-**Important stage distinction:** download and reproducible source-content normalization pass for NRC and CSB; **indexed = not completed; served via private backend = not completed; deployed in app = not completed**. The network-capable runner still reports 403 for the official PHMSA pipeline ZIP. PHMSA hazmat has not yet been downloaded; a reported transport incident is not a physical insured site. All industries remain in scope for later linkage, while each federal source has its own reporting universe.
-
-### Current CI gate
-The repository's standard Python CI was green at commit `61d339e8` ([run 39972790290](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39972790290)). The lane's live-source probe is intentionally a **failed overall gate** because PHMSA's official publisher denies HTTP 403; its source-specific NRC and CSB subtasks both passed and the aggregate QA artifact is uploaded. The coordinator must not merge or label production-ready while external source coverage is incomplete.
+Only Lane C-owned scripts, tests, runbook and standalone GitHub workflow are changed. Lane A FEMA/wildfire, Lane B EPA, Lane D utilities, Lane E common registry/UI/Source Health and the existing NOAA IncidentNews importer remain untouched. Public USCG NRC data and publicly released CSB list are government source records, but their report contents are not automatically verified or safe to re-publish in client/public portals. Each deployment must review license/use/attribution and redact unnecessary personal data.
