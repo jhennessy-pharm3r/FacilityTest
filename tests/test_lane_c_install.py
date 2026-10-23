@@ -129,3 +129,21 @@ def test_world_readable_installer_directory_rejected(tmp_path):
     root.chmod(0o755)
     with pytest.raises(ValueError,match="not be accessible"):
         install(bundle,root,repo_root=repo)
+
+def test_immutable_release_rejects_changed_official_bytes_even_if_sqlite_identical(tmp_path):
+    repo,root,bundle=_bundle(tmp_path)
+    install(bundle,root,release_id="published-v1",repo_root=repo)
+    alternative_raw=tmp_path/"new-official-bytes.xlsx"
+    alternative_raw.write_bytes(b"same accepted case observations but publisher original bytes changed")
+    normalized=tmp_path/"normalized.csv.gz"
+    db=tmp_path/"source.sqlite"
+    original_manifest=json.loads((tmp_path/"source.json").read_text())
+    original_manifest["raw_sha256"]=sha(alternative_raw)
+    second_manifest=tmp_path/"second.json"
+    second_manifest.write_text(json.dumps(original_manifest))
+    alternative_bundle=tmp_path/"alternative-bundle"
+    private_bundle(db,[("nrc_2025",normalized,second_manifest)],
+                   {"nrc_2025":alternative_raw},alternative_bundle,repo_root=repo)
+    with pytest.raises(ValueError,match="changed official source provenance"):
+        install(alternative_bundle,root,release_id="published-v1",repo_root=repo)
+    assert active_status(root,repo_root=repo)["active_release_id"]=="published-v1"
