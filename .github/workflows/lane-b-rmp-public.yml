@@ -1,0 +1,40 @@
+name: Lane B EPA public FRS-RMP full source validation
+on:
+  push:
+    branches: ['ingest/epa-echo-tri-rcra-rmp-lane-b-20261023']
+    paths: ['.github/workflows/lane-b-rmp-public.yml']
+  workflow_dispatch:
+jobs:
+  public-frs-rmp:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Import complete public EPA FRS RMP program interest layer
+        run: |
+          set -euo pipefail
+          python -m scripts.lane_b_epa.rmp_public --output "$RUNNER_TEMP/rmp_frs_public" > "$RUNNER_TEMP/rmp_stdout.json"
+          cat "$RUNNER_TEMP/rmp_stdout.json"
+      - name: Validate actual full-record completeness and source integrity
+        run: |
+          python - <<'PY'
+          import json,os,pathlib
+          out=pathlib.Path(os.environ['RUNNER_TEMP'])/'rmp_frs_public'
+          m=json.loads((out/'rmp_frs_public.manifest.json').read_text())
+          assert m['reported_feature_count']>0
+          assert m['reported_feature_count']==m['indexed_rows']==m['object_id_coverage']
+          assert m['sqlite_integrity']=='ok'
+          assert (out/'rmp_frs_public.raw.jsonl').stat().st_size>0
+          assert m['deployment_state']=='NOT_DEPLOYED'
+          print('Validated official public FRS-RMP source:',m['indexed_rows'],'source observation records')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lane-b-public-frs-rmp-manifest
+          path: ${{ runner.temp }}/rmp_frs_public/*.manifest.json
+          if-no-files-found: warn
+          retention-days: 7
