@@ -55,14 +55,18 @@ def workbook_probe(path):
             # Actual observed nonempty rows, not sheet.max_row.
             observed = sum(any(x is not None for x in row) for row in iterator)
             candidates = []
-            for idx, values in enumerate(sh.iter_rows(max_row=12, values_only=True), 1):
+            first_nonempty_rows = []
+            for idx, values in enumerate(sh.iter_rows(max_row=80, values_only=True), 1):
                 words = [str(x or "").strip() for x in values]
+                if any(x for x in words) and len(first_nonempty_rows) < 30:
+                    first_nonempty_rows.append({"row": idx, "nonempty_columns": sum(bool(x) for x in words), "text_cells": sum(isinstance(x, str) for x in values if x is not None)})
                 matches = sum(bool(re.search(r"(?i)\\b(date|time|incident|release|company|facility|state|address|city|fatal|injur|report|id)\\b", x)) for x in words)
                 if matches >= 3:
                     candidates.append({"row": idx, "candidate_field_names": words[:35]})
             results.append({"sheet": sh.title, "actual_nonempty_data_rows": observed,
                             "header": [str(x or "")[:100] for x in header[:80]],
-                            "header_candidates": candidates})
+                            "header_candidates": candidates,
+                            "initial_row_shapes": first_nonempty_rows})
         return results
     finally:
         book.close()
@@ -120,7 +124,8 @@ def main():
                             "tables": [{"table": t.get("sheet") or t.get("name"),
                                          "observed_rows": t.get("actual_nonempty_data_rows"),
                                          "headers": t.get("header", [])[:25],
-                                         "header_candidates": t.get("header_candidates", [])}
+                                         "header_candidates": t.get("header_candidates", []),
+                                         "initial_row_shapes": t.get("initial_row_shapes", [])}
                                         for t in value.get("content", [])],
                             "sha256": value.get("raw_sha256"),
                             "error": value.get("error"),
