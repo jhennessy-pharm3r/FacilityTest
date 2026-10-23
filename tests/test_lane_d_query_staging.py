@@ -30,6 +30,46 @@ class CountyQueryTests(unittest.TestCase):
                 (1,"123","01001","Alabama","Autauga",None,"2026-10-23T15:00:00Z","fp1"),
                 (2,"456","19155","Iowa","Pottawattamie","2026-10-23T14:00:00Z","2026-10-23T15:00:00Z","fp2"),
             ])
+    def create_direct_odin(self,path):
+        with sqlite3.connect(path) as db:
+            db.execute("""CREATE TABLE source_observations (
+                original_position INTEGER,native_mrid TEXT,native_county_fips TEXT,
+                native_eia_utility_id TEXT,reported_start TEXT,meters_affected INTEGER,
+                snapshot_utc TEXT,original_row_sha256 TEXT,is_exact_duplicate INTEGER)""")
+            db.executemany("INSERT INTO source_observations VALUES (?,?,?,?,?,?,?,?,?)",[
+                (1,"mrid-1","01001","123",None,211,"2026-10-23T16:00:00Z","fp1",0),
+                (2,"mrid-1","01001","123",None,211,"2026-10-23T16:00:00Z","fp1",1),
+                (3,None,"01001","456","2026-10-23T15:00:00Z",26,
+                    "2026-10-23T16:00:00Z","fp2",0),
+                (4,"mrid-3","01003","789","2026-10-23T15:03:00Z",10,
+                    "2026-10-23T16:00:00Z","fp3",0),
+            ])
+
+    def test_direct_firstparty_odin_rows_exclude_exact_duplicates_and_leave_site_unknown(self):
+        with tempfile.TemporaryDirectory() as t:
+            o=Path(t)/"direct.sqlite"
+            self.create_direct_odin(o)
+            out=get_county_context("01001",odin_direct_db=o,limit=30)
+            self.assertEqual(out["candidate_counts"]["odin_firstparty_public_county_snapshot_raw_rows"],3)
+            self.assertEqual(out["candidate_counts"]["odin_firstparty_exact_duplicate_rows_excluded"],1)
+            self.assertEqual(len(out["returned_findings"]),2)
+            self.assertTrue(all(x["category"]=="PUBLIC_COUNTY_OUTAGE_SNAPSHOT"
+                                for x in out["returned_findings"]))
+            self.assertTrue(all(x["publisher"]=="DOE/ORNL ODIN FIRST_PARTY"
+                                for x in out["returned_findings"]))
+            self.assertTrue(all(x["insured_facility_outage_verified"] is False
+                                for x in out["returned_findings"]))
+            self.assertTrue(all(x["site_utility_assignment_verified"] is False
+                                for x in out["returned_findings"]))
+            self.assertEqual(out["verified_business_interruption_claims"],0)
+
+    def test_refuse_mixing_firstparty_odin_with_mirror(self):
+        with tempfile.TemporaryDirectory() as t:
+            o=Path(t)/"odin_direct.sqlite";m=Path(t)/"odin_mirror.sqlite"
+            self.create_direct_odin(o);self.create_odin(m)
+            with self.assertRaisesRegex(ValueError,"overlapping feeds"):
+                get_county_context("01001",odin_db=m,odin_direct_db=o)
+
     def test_candidate_only_and_distinct_time_series(self):
         with tempfile.TemporaryDirectory() as t:
             p=Path(t)/"pnnl.sqlite";o=Path(t)/"odin.sqlite"
