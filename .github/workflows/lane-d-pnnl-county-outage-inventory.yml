@@ -1,0 +1,79 @@
+name: Lane D - PNNL DOE county-outage dataset inventory
+
+on:
+  push:
+    branches:
+      - ingest/eia861-utility-bi-lane-d-20261023
+    paths:
+      - .github/workflows/lane-d-pnnl-county-outage-inventory.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  doe-public-county-outage-archive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Download actual PNNL DOE event-correlated county-outage release
+        shell: bash
+        run: |
+          mkdir -p /tmp/lane-d/pnnl
+          curl --fail --location --retry 2 --retry-delay 5 --connect-timeout 25 --max-time 300 \
+            --user-agent 'FacilityTest Lane D official DOE dataset analysis' \
+            'https://data.openei.org/files/6458/Outage_Dataset_R1.zip' \
+            --output /tmp/lane-d/pnnl/Outage_Dataset_R1.zip
+      - name: Fingerprint and scan official raw archive for member schemas
+        shell: bash
+        run: |
+          python - <<'PY'
+          import csv,hashlib,io,json,os,pathlib,zipfile
+          from datetime import datetime,timezone
+          p=pathlib.Path("/tmp/lane-d/pnnl/Outage_Dataset_R1.zip")
+          if not zipfile.is_zipfile(p):
+              raise ValueError("Downloaded official PNNL file is not ZIP")
+          sha=hashlib.sha256(p.read_bytes()).hexdigest()
+          members=[]
+          with zipfile.ZipFile(p) as z:
+              total=sum(info.file_size for info in z.infolist())
+              if total>2_000_000_000:
+                  raise ValueError("Expansion unexpectedly large; review archive")
+              for info in z.infolist():
+                  if info.is_dir():
+                      continue
+                  if info.file_size>1_000_000_000:
+                      raise ValueError("Single source member unexpectedly huge")
+                  x={"path":info.filename,"bytes":info.file_size,"crc32":info.CRC}
+                  with z.open(info) as handle:
+                      head=handle.read(4096)
+                  if info.filename.lower().endswith(".csv"):
+                      reader=csv.reader(io.StringIO(head.decode("utf-8-sig","replace")))
+                      x["head_rows"]=[row[:30] for _,row in zip(range(3),reader)]
+                  else:
+                      x["first_eight_bytes_hex"]=head[:8].hex()
+                  members.append(x)
+          out={"source":"PNNL_DOE_EVENT_CORRELATED_OUTAGE_DATASET",
+               "doi_catalog":"https://catalog.data.gov/dataset/event-correlated-outage-dataset-in-america",
+               "official_url":"https://data.openei.org/files/6458/Outage_Dataset_R1.zip",
+               "license":"CC BY 4.0, acknowledge DOE/PNNL", 
+               "fetched_utc":datetime.now(timezone.utc).isoformat(),
+               "source_archive_bytes":p.stat().st_size,"source_archive_sha256":sha,
+               "member_count":len(members),"expanded_bytes":total,"members":members,
+               "accepted":0,"normalized":0,"indexed":0,"deployed":0,
+               "state":"DOWNLOADED_AND_INVENTORIED_ONLY"}
+          pathlib.Path("/tmp/lane-d/pnnl/inventory.json").write_text(json.dumps(out,indent=2)+"\n")
+          print(json.dumps(out,indent=2)[:30000])
+          PY
+      - name: Publish only inventory and source checksum, not raw bulk records
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-d-pnnl-doe-county-outage-archive-inventory
+          retention-days: 7
+          if-no-files-found: warn
+          path: /tmp/lane-d/pnnl/inventory.json

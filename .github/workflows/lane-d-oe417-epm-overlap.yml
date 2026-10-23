@@ -1,0 +1,88 @@
+name: Lane D - Real DOE OE417 annual versus EIA EPM event candidate overlap
+
+on:
+  push:
+    branches:
+      - ingest/eia861-utility-bi-lane-d-20261023
+    paths:
+      - facilityrisk/lane_d/audit_oe417_epm_overlap.py
+      - tests/test_lane_d_oe417_epm_overlap.py
+      - .github/workflows/lane-d-oe417-epm-overlap.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  exact-source-review-candidates-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Test date, source area, ambiguity and no-auto-merge source review rules
+        run: python -m unittest discover -s tests -p test_lane_d_oe417_epm_overlap.py -v
+      - name: Download BOTH live official publisher distributions, not unofficial cached copies
+        shell: bash
+        run: |
+          mkdir -p /tmp/lane-d/oe417-overlap
+          curl --fail --location --retry 3 --connect-timeout 30 --max-time 180 \
+            --user-agent 'FacilityRiskLaneD/1.0 official source QA' \
+            'https://www.eia.gov/electricity/monthly/epm_table_grapher.php?t=epmt_b_2' \
+            --output /tmp/lane-d/oe417-overlap/epm_b2_2023.html
+          curl --fail --location --retry 3 --connect-timeout 30 --max-time 180 \
+            --user-agent 'FacilityRiskLaneD/1.0 official source QA' \
+            'https://openenergyhub.ornl.gov/api/explore/v2.1/catalog/datasets/oe-417-annual-summaries/exports/json' \
+            --output /tmp/lane-d/oe417-overlap/annual_2023.json
+          curl --fail --location --retry 3 --connect-timeout 30 --max-time 180 \
+            --user-agent 'FacilityRiskLaneD/1.0 official source QA' \
+            'https://openenergyhub.ornl.gov/api/explore/v2.1/catalog/datasets/oe-417-annual-summaries' \
+            --output /tmp/lane-d/oe417-overlap/annual_metadata.json
+      - name: Compare only original-date/source-area candidate pairs, no event merges
+        run: |
+          python -m facilityrisk.lane_d.audit_oe417_epm_overlap \
+            --eia-b2-html /tmp/lane-d/oe417-overlap/epm_b2_2023.html \
+            --oe417-json /tmp/lane-d/oe417-overlap/annual_2023.json \
+            --oe417-metadata /tmp/lane-d/oe417-overlap/annual_metadata.json \
+            --output /tmp/lane-d/oe417-overlap
+      - name: Verify source original SHA, separate counts, candidate multiplicities and repeat determinism
+        shell: bash
+        run: |
+          python - <<'PY'
+          import hashlib,json,pathlib
+          from facilityrisk.lane_d.audit_oe417_epm_overlap import run
+          root=pathlib.Path("/tmp/lane-d/oe417-overlap")
+          receipt=root/"source_candidate_review.json"
+          m=json.loads(receipt.read_text())
+          assert m["oe417_annual_accepted_source_rows"]==341
+          assert m["epm_b2_accepted_source_rows"]==158
+          assert m["oe417_original_rejected_rows"]==0
+          assert m["epm_original_rejected_rows"]==0
+          assert m["durable_backend_link_rows"]==m["independently_verified_same_incident_links"]==m["deployed"]==0
+          assert m["one_to_one_unverified_candidate_groups"]+m["ambiguous_multiplicity_candidate_groups"]==m["exact_normalized_date_area_candidate_groups"]
+          assert m["distinct_oe417_rows_in_candidate_groups"]<=341
+          assert m["distinct_epm_rows_in_candidate_groups"]<=158
+          assert m["all_candidate_row_pairs_including_ambiguous_cartesian"]>=m["exact_normalized_date_area_candidate_groups"]
+          assert m["oe417_source_rows_skipped_from_candidate_search"].get("date_unknown",0)==32
+          assert m["original_doe_oe417_annual_json_sha256"]==hashlib.sha256((root/"annual_2023.json").read_bytes()).hexdigest()
+          assert m["original_eia_epm_b2_html_sha256"]==hashlib.sha256((root/"epm_b2_2023.html").read_bytes()).hexdigest()
+          assert len(m["candidate_groups"])==m["exact_normalized_date_area_candidate_groups"]
+          assert all(x["independently_verified_same_incident"] is False and
+                     x["independently_verified_same_physical_site"] is False
+                     for x in m["candidate_groups"])
+          replay=run(root/"epm_b2_2023.html",root/"annual_2023.json",root/"annual_metadata.json",root/"second")
+          assert replay==m, "Source review candidate audit not deterministic on same original bytes"
+          safe={k:v for k,v in m.items() if k!="candidate_groups"}
+          (root/"aggregate_source_overlap_provenance.json").write_text(json.dumps(safe,indent=2)+"\n")
+          print("VERIFIED OFFICIAL SOURCE OVERLAP REVIEW ONLY",json.dumps(safe,indent=2))
+          PY
+      - name: Publish original-source SHA and aggregate reviewed candidate counts only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-d-doe417-epm-cross-publisher-candidate-qa
+          retention-days: 7
+          if-no-files-found: warn
+          path: /tmp/lane-d/oe417-overlap/aggregate_source_overlap_provenance.json

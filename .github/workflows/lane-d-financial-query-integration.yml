@@ -1,0 +1,99 @@
+name: Lane D - Real issuer interruption finance query handoff
+
+on:
+  push:
+    branches:
+      - ingest/eia861-utility-bi-lane-d-20261023
+    paths:
+      - facilityrisk/lane_d/query_issuer_bi_context.py
+      - tests/test_lane_d_query_issuer_bi_context.py
+      - .github/workflows/lane-d-financial-query-integration.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  original-issuer-finance-reader-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install original issuer PDF extractor
+        run: python -m pip install pypdf
+      - name: Verify guarded read-only source-financial contract
+        run: python -m unittest discover -s tests -p test_lane_d_query_issuer_bi_context.py -v
+      - name: Reproduce original Crane annual and interim issuer financial source
+        run: |
+          python -m facilityrisk.lane_d.ingest_crane_bi_pdf \
+            --output /tmp/lane-d/finance-integration/crane --min-sources 2
+      - name: Reproduce original Pebblebrook hotel FY issuer results
+        run: |
+          python -m facilityrisk.lane_d.ingest_pebblebrook_bi \
+            --output /tmp/lane-d/finance-integration/pebblebrook --min-sources 2
+      - name: Validate read-only query on BOTH real issuer-native staging indexes
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json,pathlib,sqlite3
+          from facilityrisk.lane_d.query_issuer_bi_context import get_issuer_bi_context
+          root=pathlib.Path("/tmp/lane-d/finance-integration")
+          cranedb=root/"crane"/"crane_issuer_financial_staging.sqlite"
+          pebdb=root/"pebblebrook"/"issuer_bi_income_staging.sqlite"
+          crane=json.loads((root/"crane"/"manifest.json").read_text())
+          peb=json.loads((root/"pebblebrook"/"manifest.json").read_text())
+          assert crane["pdf_documents_downloaded_and_verified"]==2
+          assert crane["local_staging_financial_records_indexed"]==7
+          assert peb["downloaded_publisher_documents"]==2
+          assert peb["financial_statement_records_staged_sqlite"]==5
+          original=get_issuer_bi_context(crane_db=cranedb,pebblebrook_db=pebdb,limit=100)
+          obs=original["returned_financial_source_observations"]
+          assert len(obs)==12
+          assert all(not r["carrier_payment_independently_verified"] for r in obs)
+          assert all(not r["facility_power_outage_independently_verified"] for r in obs)
+          assert all(not r["policy_coverage_independently_verified"] for r in obs)
+          assert original["independently_verified_insurer_payment_records"]==0
+          assert original["deployed"]==0
+          assert len({r["source_document_sha256"] for r in obs})==4
+          crane_lost=[r for r in obs if r["financial_metric_kind"]=="RECEIVED_BI_PROCEEDS_FOR_LOST_PROFITS"]
+          assert len(crane_lost)==1
+          assert crane_lost[0]["issuer_reported_usd"]==4000000
+          assert crane_lost[0]["cash_received_for_lost_profits_reported_by_issuer"]
+          peb_annual=[r for r in obs if r["issuer"]=="Pebblebrook Hotel Trust"
+                      and r["financial_metric_kind"]=="RECOGNIZED_BI_INSURANCE_INCOME"]
+          assert {r["accounting_period"]:r["issuer_reported_usd"] for r in peb_annual}=={
+              "2024_FY":23800000,"2025_FY":12700000}
+          assert len([r for r in obs if "SUBSET_OF" in r["reporting_basis"]])==2
+          for path in (cranedb,pebdb):
+              with sqlite3.connect("file:"+str(path)+"?mode=ro",uri=True) as db:
+                  assert db.execute("PRAGMA integrity_check").fetchone()[0]=="ok"
+          receipt={
+            "source_contract":"LANE_D_READONLY_ISSUER_FINANCIAL_CONTEXT",
+            "real_first_party_documents_downloaded":4,
+            "real_source_issuer_financial_rows_normalized":12,
+            "local_sqlite_financial_evidence_rows":12,
+            "source_issuer_names":["Crane Company","Pebblebrook Hotel Trust"],
+            "original_issuer_document_sha256":sorted({r["source_document_sha256"] for r in obs}),
+            "issuer_reported_crane_2025_q2_received_lost_profits_usd":4000000,
+            "pebblebrook_2024_fy_recognized_bi_income_usd":23800000,
+            "pebblebrook_2025_fy_recognized_bi_income_usd":12700000,
+            "pebblebrook_quarter_amounts_included_in_annual":True,
+            "independently_verified_insurer_payment_records":0,
+            "durable_backend_indexed":0,
+            "deployed":0,
+            "note":"Read-only staging adapter only; financial disclosure amounts are NOT interoperable insured claim amounts or facility-specific outages.",
+          }
+          (root/"source_finance_query_receipt.json").write_text(json.dumps(receipt,indent=2)+"\n")
+          print(json.dumps(receipt,indent=2))
+          PY
+      - name: Publish source-only integration receipt, no original PDF or raw HTML
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-d-real-issuer-finance-readonly-query-qa
+          retention-days: 7
+          if-no-files-found: warn
+          path: /tmp/lane-d/finance-integration/source_finance_query_receipt.json

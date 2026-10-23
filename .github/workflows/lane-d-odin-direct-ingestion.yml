@@ -1,0 +1,168 @@
+name: Lane D - First-party ORNL ODIN public county outage ingestion
+
+on:
+  push:
+    branches:
+      - ingest/eia861-utility-bi-lane-d-20261023
+    paths:
+      - facilityrisk/lane_d/install_source_index.py
+      - tests/test_lane_d_install_source_index.py
+      - facilityrisk/lane_d/ingest_odin_direct.py
+      - facilityrisk/lane_d/query_staging.py
+      - tests/test_lane_d_query_staging.py
+      - tests/test_lane_d_odin_direct.py
+      - .github/workflows/lane-d-odin-direct-ingestion.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  odin-official-direct-county:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Strict source-native identity and duplication tests
+        run: |
+          python -m unittest discover -s tests -p test_lane_d_odin_direct.py -v
+          python -m unittest discover -s tests -p test_lane_d_query_staging.py -v
+      - name: Download official non-authenticated ORNL ODIN current county outages
+        run: |
+          python -m facilityrisk.lane_d.ingest_odin_direct \
+            --output /tmp/lane-d/odin-direct
+      - name: Independently reconcile original first-party CIM JSON and SQLite
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json,pathlib,hashlib,sqlite3,collections
+          root=pathlib.Path("/tmp/lane-d/odin-direct")
+          source=(root/"odin_direct_original.json").read_bytes()
+          manifest=json.loads((root/"manifest.json").read_text())
+          official=json.loads(source)["outage"]
+          assert manifest["original_https_download"] is True
+          assert len(source)==manifest["original_raw_json_bytes"]
+          assert hashlib.sha256(source).hexdigest()==manifest["original_raw_json_sha256"]
+          normalized=[json.loads(s) for s in (root/"odin_direct_accepted.jsonl").read_text().splitlines()]
+          rejected=[json.loads(s) for s in (root/"odin_direct_rejected.jsonl").read_text().splitlines()]
+          assert len(official)==len(normalized)+len(rejected)==manifest["downloaded"]
+          assert len(normalized)==manifest["normalized_accepted"]==manifest["indexed_ephemeral_local_sqlite"]
+          assert len(normalized)>0
+          assert len(rejected)==manifest["rejected"]
+          assert sum(manifest["observations"]["reject_reasons"].values())==len(rejected)
+          for row in normalized:
+              original=official[row["source_row_1based"]-1]
+              assert original==row["original_row"]
+              signature=hashlib.sha256(json.dumps(original,sort_keys=True,ensure_ascii=False,separators=(",",":")).encode()).hexdigest()
+              assert signature==row["source_row_sha256"]
+              assert row["source_native_county_fips"].isdigit() and len(row["source_native_county_fips"])==5
+              assert not row["physical_site_outage_verified"]
+              assert not row["insured_business_interruption_verified"]
+          with sqlite3.connect(root/"odin_direct_county_staging.sqlite") as db:
+              assert db.execute("PRAGMA integrity_check").fetchone()[0]=="ok"
+              assert db.execute("SELECT COUNT(*) FROM source_observations").fetchone()[0]==len(normalized)
+              assert db.execute("SELECT COUNT(*) FROM source_observations WHERE is_exact_duplicate=1").fetchone()[0]==manifest["observations"]["exact_duplicate_source_rows_in_snapshot"]
+              assert {r[0] for r in db.execute("SELECT source_row_key FROM source_observations")}=={r["source_row_key"] for r in normalized}
+          assert manifest["deployed"]==manifest["durable_indexed"]==manifest["insured_facility_outages_verified"]==0
+          print("Verified primary official ORNL feed:",len(official),"raw,",len(normalized),"accepted,",
+                len(rejected),"rejected; county codes",manifest["observations"]["distinct_native_county_fips"],
+                "native EIA utility identifiers",manifest["observations"]["distinct_source_eia_utility_ids"])
+          PY
+      - name: Read-only county lookup on actual first-party ODIN source index, de-duplicated
+        shell: bash
+        run: |
+          python - <<'PY'
+          import pathlib,sqlite3
+          from facilityrisk.lane_d.query_staging import get_county_context
+          db=pathlib.Path("/tmp/lane-d/odin-direct/odin_direct_county_staging.sqlite")
+          with sqlite3.connect(db) as con:
+              fips,total=con.execute(
+                  """SELECT native_county_fips,COUNT(*) FROM source_observations
+                     GROUP BY native_county_fips ORDER BY COUNT(*) DESC LIMIT 1""").fetchone()
+              repeats=con.execute(
+                  """SELECT COUNT(*) FROM source_observations
+                     WHERE native_county_fips=? AND is_exact_duplicate=1""",(fips,)).fetchone()[0]
+          result=get_county_context(fips,odin_direct_db=db,limit=100)
+          counts=result["candidate_counts"]
+          assert counts["odin_firstparty_public_county_snapshot_raw_rows"]==total
+          assert counts["odin_firstparty_exact_duplicate_rows_excluded"]==repeats
+          assert len(result["returned_findings"])==min(total-repeats,100)
+          assert all(x["publisher"]=="DOE/ORNL ODIN FIRST_PARTY" for x in result["returned_findings"])
+          assert all(x["insured_facility_outage_verified"] is False for x in result["returned_findings"])
+          assert all(x["site_utility_assignment_verified"] is False for x in result["returned_findings"])
+          assert result["verified_insured_outages"]==0
+          assert result["verified_business_interruption_claims"]==0
+          print("ACTUAL ORNL county source-only query",fips,"raw",total,
+                "source-duplicate rows withheld",repeats,"returned",len(result["returned_findings"]))
+          PY
+      - name: Build source-pinned private ODIN public-county SQLite handoff receipt
+        shell: bash
+        run: |
+          python - <<'PY'
+          import hashlib,json,pathlib,sqlite3
+          root=pathlib.Path("/tmp/lane-d/odin-direct")
+          source=(root/"odin_direct_original.json").read_bytes()
+          m=json.loads((root/"manifest.json").read_text())
+          dbpath=root/"odin_direct_county_staging.sqlite"
+          dbbytes=dbpath.read_bytes()
+          with sqlite3.connect(dbpath) as db:
+              assert db.execute("PRAGMA integrity_check").fetchone()[0]=="ok"
+              assert db.execute("SELECT COUNT(*) FROM source_observations").fetchone()[0]==m["normalized_accepted"]
+          assert hashlib.sha256(source).hexdigest()==m["original_raw_json_sha256"]
+          assert m["original_https_download"] is True
+          receipt={
+              "source_dataset":"odin_direct_public",
+              "original_json_sha256":hashlib.sha256(source).hexdigest(),
+              "staged_sqlite_sha256":hashlib.sha256(dbbytes).hexdigest(),
+              "staged_sqlite_bytes":len(dbbytes),
+              "indexed_source_rows":m["normalized_accepted"],
+              "deployed":0,
+              "publisher_use_review_required":True,
+          }
+          (root/"coordinator_handoff.json").write_text(json.dumps(receipt,indent=2)+"\n")
+          PY
+      - name: Install actual first-party ODIN snapshot read-only inside isolated runner
+        shell: bash
+        run: |
+          python - <<'PY'
+          import pathlib,json,hashlib,sqlite3
+          from facilityrisk.lane_d.install_source_index import install,verify_install,query_install
+          root=pathlib.Path("/tmp/lane-d/odin-direct")
+          raw=root/"odin_direct_original.json"
+          pinned=hashlib.sha256(raw.read_bytes()).hexdigest()
+          installed=pathlib.Path("/tmp/lane-d-odin-direct-private-install-smoke")
+          r=install(root,installed,"odin_direct_public",pinned)
+          assert r["verified_readonly_sqlite"] and not r["verified_application_deployment"]
+          m=json.loads((root/"manifest.json").read_text())
+          assert r["source_rows_accepted"]==m["normalized_accepted"]
+          assert r["exact_duplicate_rows_flagged"]==m["observations"]["exact_duplicate_source_rows_in_snapshot"]
+          db=root/"odin_direct_county_staging.sqlite"
+          with sqlite3.connect(db) as con:
+              fips=con.execute("SELECT native_county_fips FROM source_observations LIMIT 1").fetchone()[0]
+          q=query_install(installed,"odin_direct_public",fips=fips,limit=10)
+          assert q["data"]["candidate_counts"]["odin_firstparty_public_county_snapshot_raw_rows"]>=1
+          assert q["data"]["verified_insured_outages"]==0
+          assert q["deployed_to_live_facility_app"] is False
+          assert verify_install(installed,"odin_direct_public")["verified_readonly_sqlite"]
+          print("Official ORNL original JSON -> staged SQLite -> atomic read-only install -> indexed FIPS query PASS",
+                "accepted",r["source_rows_accepted"],"fingerprint",pinned)
+          PY
+      - name: Retain safe private-install acceptance pointer only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-d-odin-direct-private-install-smoke
+          retention-days: 7
+          if-no-files-found: warn
+          path: /tmp/lane-d-odin-direct-private-install-smoke/odin_direct_public/current.json
+      - name: Publish first-party source provenance only, no raw external distributor material
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-d-ornl-firstparty-odin-county-manifest
+          retention-days: 7
+          if-no-files-found: warn
+          path: /tmp/lane-d/odin-direct/manifest.json

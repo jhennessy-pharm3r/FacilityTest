@@ -1,0 +1,97 @@
+name: Lane D - Official issuer BI evidence validation
+
+on:
+  push:
+    branches:
+      - ingest/eia861-utility-bi-lane-d-20261023
+    paths:
+      - facilityrisk/lane_d/**
+      - tests/test_lane_d_sec_bi.py
+      - .github/workflows/lane-d-sec-bi-validation.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sec-edgar-issuer-cases:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: SEC accession identity and financial non-attribution regression tests
+        run: python -m unittest discover -s tests -p 'test_lane_d_sec_bi.py' -v
+      - name: Respectfully probe official SEC accessibility
+        id: access
+        shell: bash
+        run: |
+          mkdir -p /tmp/lane-d/sec-primary/results
+          UA='FacilityTest Lane D public-source validation https://github.com/jhennessy-pharm3r/FacilityTest/issues/73'
+          printf '%s\n' 'case_id,http_status' >/tmp/lane-d/sec-primary/results/source_access.csv
+          ACCESS='available'
+          probe() {
+            local id="$1" url="$2" outfile="$3"
+            local code
+            code=$(curl --silent --show-error --location --connect-timeout 30 --max-time 90 \
+              --user-agent "$UA" --write-out '%{http_code}' "$url" --output "$outfile") || code='TRANSPORT_ERROR'
+            printf '%s,%s\n' "$id" "$code" >>/tmp/lane-d/sec-primary/results/source_access.csv
+            if [ "$code" != "200" ]; then
+              rm -f "$outfile"
+              ACCESS='blocked'
+              echo "SEC EDGAR access for $id returned $code; no issuer source rows verified"
+              return 1
+            fi
+            return 0
+          }
+          if probe 'baxter-2024q3' \
+            'https://www.sec.gov/Archives/edgar/data/10456/000162828024047221/bax-20240930.htm' \
+            /tmp/lane-d/sec-primary/baxter-2024-q3.html; then
+            sleep 2
+            probe 'pebblebrook-2025q3' \
+              'https://www.sec.gov/Archives/edgar/data/1474098/000147409825000138/peb-20250930.htm' \
+              /tmp/lane-d/sec-primary/pebblebrook-2025-q3.html || true
+            if [ "$ACCESS" = "available" ]; then
+              sleep 2
+              probe 'crane-2026q1' \
+                'https://www.sec.gov/Archives/edgar/data/1944013/000194401326000161/cr-20260331.htm' \
+                /tmp/lane-d/sec-primary/crane-2026-q1.html || true
+            fi
+          fi
+          echo "access=$ACCESS" >>"$GITHUB_OUTPUT"
+          printf '{ "source": "SEC EDGAR", "status": "%s", "verified_source_documents": 0, "verified_insured_losses": 0, "probe": "source_access.csv", "caveat": "An HTTP 403 restricts this runner; no source content is claimed ingested. General CI success is not SEC source verification." }\n' "$ACCESS" \
+            > /tmp/lane-d/sec-primary/results/validation_status.json
+      - name: Normalize verified-access issuer filings (no automatic amounts)
+        if: steps.access.outputs.access == 'available'
+        shell: bash
+        run: |
+          python -m facilityrisk.lane_d.ingest_sec_bi \
+            --catalog facilityrisk/lane_d/public_sec_filing_cases.toml \
+            --case baxter-helene-north-cove-2024q3 \
+            --html /tmp/lane-d/sec-primary/baxter-2024-q3.html \
+            --output /tmp/lane-d/sec-primary/results/baxter
+          python -m facilityrisk.lane_d.ingest_sec_bi \
+            --catalog facilityrisk/lane_d/public_sec_filing_cases.toml \
+            --case pebblebrook-laplaya-2025q3 \
+            --html /tmp/lane-d/sec-primary/pebblebrook-2025-q3.html \
+            --output /tmp/lane-d/sec-primary/results/pebblebrook
+          python -m facilityrisk.lane_d.ingest_sec_bi \
+            --catalog facilityrisk/lane_d/public_sec_filing_cases.toml \
+            --case crane-marion-2026q1 \
+            --html /tmp/lane-d/sec-primary/crane-2026-q1.html \
+            --output /tmp/lane-d/sec-primary/results/crane
+      - name: Upload access status and safe manifests, never source excerpts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-d-sec-primary-filing-evidence
+          retention-days: 7
+          if-no-files-found: warn
+          path: |
+            /tmp/lane-d/sec-primary/results/source_access.csv
+            /tmp/lane-d/sec-primary/results/validation_status.json
+            /tmp/lane-d/sec-primary/results/baxter/manifest.json
+            /tmp/lane-d/sec-primary/results/pebblebrook/manifest.json
+            /tmp/lane-d/sec-primary/results/crane/manifest.json

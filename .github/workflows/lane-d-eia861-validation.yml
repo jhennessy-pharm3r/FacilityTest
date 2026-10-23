@@ -1,0 +1,240 @@
+name: Lane D - EIA-861 official validation
+
+on:
+  push:
+    branches:
+      - ingest/eia861-utility-bi-lane-d-20261023
+    paths:
+      - facilityrisk/lane_d/install_source_index.py
+      - tests/test_lane_d_install_source_index.py
+      - facilityrisk/lane_d/ingest_eia861.py
+      - facilityrisk/lane_d/audit_eia861.py
+      - facilityrisk/lane_d/query_eia_service_territory.py
+      - facilityrisk/lane_d/ingest_electric_events.py
+      - tests/test_lane_d_eia861.py
+      - tests/test_lane_d_audit_eia861.py
+      - tests/test_lane_d_eia_service_territory.py
+      - tests/test_lane_d_electric_events.py
+      - .github/workflows/lane-d-eia861-validation.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  official-eia861:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install EIA workbook dependency
+        run: python -m pip install openpyxl
+      - name: Lane D source-only regression tests
+        run: |
+          python -m unittest discover -s tests -p 'test_lane_d_eia861.py' -v
+          python -m unittest discover -s tests -p 'test_lane_d_audit_eia861.py' -v
+          python -m unittest discover -s tests -p 'test_lane_d_eia_service_territory.py' -v
+      - name: Download official 2025 final EIA-861 source
+        shell: bash
+        run: |
+          mkdir -p /tmp/facility-lane-d
+          curl --fail --location --retry 3 --retry-delay 5 --connect-timeout 30 --max-time 240 --user-agent 'FacilityRiskLaneD/1.0 (source validation)' \
+            'https://www.eia.gov/electricity/data/eia861/zip/f8612025.zip' \
+            --output /tmp/facility-lane-d/f8612025.zip
+      - name: Inspect source archive and worksheets
+        shell: bash
+        run: |
+          mkdir -p /tmp/facility-lane-d/probe
+          python - <<'PY'
+          import hashlib, io, json, pathlib, zipfile
+          from openpyxl import load_workbook
+          path=pathlib.Path('/tmp/facility-lane-d/f8612025.zip')
+          rows=[]
+          with zipfile.ZipFile(path) as archive:
+              for name in sorted(archive.namelist()):
+                  info=archive.getinfo(name)
+                  rec={'member': name, 'uncompressed_bytes': info.file_size}
+                  if 'reliability' in name.lower() and name.lower().endswith(('.xlsx', '.xlsm')):
+                      data=archive.read(name)
+                      rec['member_sha256']=hashlib.sha256(data).hexdigest()
+                      book=load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+                      try:
+                          sheets=[]
+                          for ws in book:
+                              headers=list(ws.iter_rows(min_row=1, max_row=12, values_only=True))
+                              sheets.append({'name': ws.title, 'max_row': ws.max_row, 'max_column': ws.max_column,
+                                             'first_twelve_rows': [[str(c)[:80] if c is not None else None for c in row[:24]] for row in headers]})
+                          rec['worksheets']=sheets
+                      finally:
+                          book.close()
+                  rows.append(rec)
+          output={'official_url': 'https://www.eia.gov/electricity/data/eia861/zip/f8612025.zip',
+                  'archive_bytes': path.stat().st_size, 'archive_sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
+                  'members': rows}
+          out=pathlib.Path('/tmp/facility-lane-d/probe/archive_inventory.json')
+          out.write_text(json.dumps(output, indent=2), encoding='utf-8')
+          print(json.dumps(output, indent=2)[:20000])
+          PY
+      - name: Normalize live official reliability workbook
+        run: python -m facilityrisk.lane_d.ingest_eia861 --year 2025 --zip /tmp/facility-lane-d/f8612025.zip --output /tmp/facility-lane-d/normalized
+      - name: Independently verify every original workbook row against JSONL and SQLite
+        shell: bash
+        run: |
+          python -m facilityrisk.lane_d.audit_eia861 \
+            --zip /tmp/facility-lane-d/f8612025.zip \
+            --normalized /tmp/facility-lane-d/normalized \
+            --receipt /tmp/facility-lane-d/probe/source_audit_receipt.json
+      - name: Repeat official input transform and compare byte-identical normalized records
+        shell: bash
+        run: |
+          python -m facilityrisk.lane_d.ingest_eia861 \
+            --year 2025 --zip /tmp/facility-lane-d/f8612025.zip \
+            --output /tmp/facility-lane-d/second-run > /dev/null
+          python - <<'PY'
+          import hashlib, pathlib, json
+          left=pathlib.Path("/tmp/facility-lane-d/normalized")
+          right=pathlib.Path("/tmp/facility-lane-d/second-run")
+          names=("eia861_reliability.jsonl","eia861_state_total.jsonl",
+                 "eia861_service_territory.jsonl","eia861_rejected.jsonl")
+          for name in names:
+              before=hashlib.sha256((left/name).read_bytes()).hexdigest()
+              after=hashlib.sha256((right/name).read_bytes()).hexdigest()
+              assert before==after, f"Non-deterministic normalized output: {name}"
+              print(f"REPRODUCIBLE {name}: {before}")
+          PY
+      - name: 'Real 2025 EIA utility candidates: exact county, never inferred property utility'
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, sqlite3
+          from facilityrisk.lane_d.query_eia_service_territory import service_territory_candidates
+          db="/tmp/facility-lane-d/normalized/lane_d_eia861_staging.sqlite"
+          for state,county in (("AK","Aleutians East"),("WA","Pierce")):
+              out=service_territory_candidates(db,state,county,limit=100)
+              with sqlite3.connect(db) as conn:
+                  source_count=conn.execute(
+                      "SELECT COUNT(*) FROM source_observations WHERE source_kind='service_territory' AND state=? AND county=?",
+                      (state,county)).fetchone()[0]
+              assert source_count>1
+              assert out["candidate_records_returned"]==source_count
+              assert out["source_territory_observations"]==source_count
+              assert not out["truncated"]
+              assert len(set(x["original_source_utility_id"] for x in out["returned_candidates"]))==source_count
+              for candidate in out["returned_candidates"]:
+                  assert candidate["source_state"]==state
+                  assert candidate["source_county"]==county
+                  assert candidate["original_reported_cells"][1]==candidate["original_source_utility_id"]
+                  assert candidate["original_reported_cells"][2]==candidate["source_utility_name"]
+                  assert not candidate["site_serving_utility_verified"]
+                  assert not candidate["insured_site_outage_verified"]
+                  for reliability in candidate["same_state_utility_reliability_sources"]:
+                      assert reliability["native_utility_id"]==candidate["original_source_utility_id"]
+                      assert reliability["original_positional_values"][3]==state
+              assert out["verified_serving_facility_utility_connections"]==0
+              print("ACTUAL SOURCE COUNTY",state,county,"utility candidates",source_count,
+                    "physical utility assignments verified",0)
+          PY
+      - name: Create coordinator staging handoff digest after verified 2025 original-source audit
+        shell: bash
+        run: |
+          python - <<'PY'
+          import pathlib,hashlib,json,sqlite3
+          root=pathlib.Path("/tmp/facility-lane-d/normalized")
+          db=root/"lane_d_eia861_staging.sqlite"
+          m=json.loads((root/"manifest.json").read_text())
+          with sqlite3.connect("file:"+str(db)+"?mode=ro",uri=True) as c:
+              assert c.execute("PRAGMA integrity_check").fetchone()[0]=="ok"
+              rows=c.execute("SELECT COUNT(*) FROM source_observations").fetchone()[0]
+              assert rows==m["accepted"]==12923
+          h=hashlib.sha256(db.read_bytes()).hexdigest()
+          receipt={"source":"EIA861_2025","role":"SOURCE_ONLY_EPHEMERAL_STAGING",
+                   "original_zip_sha256":m["archive_sha256"],"original_zip_bytes":m["archive_bytes"],
+                   "local_index_sha256":h,"local_index_bytes":db.stat().st_size,
+                   "local_index_rows":rows,"durable_backend_indexed":0,"deployed":0,
+                   "publisher":"US Energy Information Administration",
+                   "caveat":"Do not infer a property's serving provider or outage; coordinator must verify and install on authenticated server."}
+          (root/"coordinator_handoff.json").write_text(json.dumps(receipt,indent=2)+"\n")
+          print(json.dumps(receipt))
+          PY
+      - name: Upload verified EIA-861 source-only SQLite for coordinator install review
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-d-eia861-2025-readonly-staging-index
+          retention-days: 3
+          compression-level: 3
+          if-no-files-found: error
+          path: |
+            /tmp/facility-lane-d/normalized/lane_d_eia861_staging.sqlite
+            /tmp/facility-lane-d/normalized/coordinator_handoff.json
+            /tmp/facility-lane-d/normalized/manifest.json
+      - name: Download source-index artifact for independent installation
+        uses: actions/download-artifact@v4
+        with:
+          name: lane-d-eia861-2025-readonly-staging-index
+          path: /tmp/lane-d-transfer
+      - name: Verify pinned 2025 EIA source before atomic private read-only install
+        run: |
+          python -m facilityrisk.lane_d.install_source_index install --bundle /tmp/lane-d-transfer --dest /tmp/lane-d-installed --dataset eia861_2025 --source-sha256 f59f6c732bf685fe0a1591b32227f5ce572dc0dfd26bb5caaeed128ac4e3a396
+          python -m facilityrisk.lane_d.install_source_index verify --dest /tmp/lane-d-installed --dataset eia861_2025
+          python -m facilityrisk.lane_d.install_source_index query --dest /tmp/lane-d-installed --dataset eia861_2025 --state WA --county Pierce --limit 25
+      - name: Retain installer acceptance receipt only (not production deployment)
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-d-eia-install-smoke
+          retention-days: 7
+          path: /tmp/lane-d-installed/eia861_2025/current.json
+      - name: Publish safe manifest and schema inventory for peer validation
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-d-eia861-2025-validation
+          retention-days: 7
+          if-no-files-found: warn
+          path: |
+            /tmp/facility-lane-d/probe/archive_inventory.json
+            /tmp/facility-lane-d/probe/source_audit_receipt.json
+            /tmp/facility-lane-d/normalized/manifest.json
+
+  official-eia-disturbances:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Lane D disturbance parser regression tests
+        run: python -m unittest discover -s tests -p 'test_lane_d_electric_events.py' -v
+      - name: Download actual published EIA DOE-417-derived event summaries
+        shell: bash
+        run: |
+          mkdir -p /tmp/facility-lane-d/epm
+          curl --fail --location --retry 3 --connect-timeout 30 --max-time 180 \
+            --user-agent 'FacilityRiskLaneD/1.0 (publisher validation)' \
+            'https://www.eia.gov/electricity/monthly/epm_table_grapher.php?t=epmt_b_1' \
+            --output /tmp/facility-lane-d/epm/b1.html
+          curl --fail --location --retry 3 --connect-timeout 30 --max-time 180 \
+            --user-agent 'FacilityRiskLaneD/1.0 (publisher validation)' \
+            'https://www.eia.gov/electricity/monthly/epm_table_grapher.php?t=epmt_b_2' \
+            --output /tmp/facility-lane-d/epm/b2.html
+      - name: Normalize 2024 partial and 2023 annual event observations
+        run: |
+          python -m facilityrisk.lane_d.ingest_electric_events \
+            --table b1 --html /tmp/facility-lane-d/epm/b1.html \
+            --output /tmp/facility-lane-d/epm/b1-staged
+          python -m facilityrisk.lane_d.ingest_electric_events \
+            --table b2 --html /tmp/facility-lane-d/epm/b2.html \
+            --output /tmp/facility-lane-d/epm/b2-staged
+      - name: Upload only safe source count/provenance manifests
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-d-eia-epm-doe417-event-validation
+          retention-days: 7
+          if-no-files-found: warn
+          path: |
+            /tmp/facility-lane-d/epm/b1-staged/manifest.json
+            /tmp/facility-lane-d/epm/b2-staged/manifest.json

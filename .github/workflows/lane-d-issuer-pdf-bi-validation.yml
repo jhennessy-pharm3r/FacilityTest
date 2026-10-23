@@ -1,0 +1,70 @@
+name: Lane D - Original issuer financial PDF BI proceeds validation
+
+on:
+  push:
+    branches:
+      - ingest/eia861-utility-bi-lane-d-20261023
+    paths:
+      - facilityrisk/lane_d/ingest_crane_bi_pdf.py
+      - tests/test_lane_d_crane_bi_pdf.py
+      - .github/workflows/lane-d-issuer-pdf-bi-validation.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  primary-issuer-pdf-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install PDF text reader for original source financial documents
+        run: python -m pip install pypdf
+      - name: Run non-attribution/accounting-period and blocked-access regression tests
+        run: python -m unittest discover -s tests -p test_lane_d_crane_bi_pdf.py -v
+      - name: Download and parse official issuer-hosted 2024 10-K and 2025 Q2 10-Q PDF
+        run: |
+          python -m facilityrisk.lane_d.ingest_crane_bi_pdf \
+            --output /tmp/lane-d/crane-issuer-pdfs --min-sources 2
+      - name: Independently reconcile typed financial records, issuer receipts and SQLite
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, pathlib, sqlite3
+          root=pathlib.Path("/tmp/lane-d/crane-issuer-pdfs")
+          m=json.loads((root/"manifest.json").read_text())
+          rows=[json.loads(x) for x in (root/"issuer_disclosed_financial_observations.jsonl").read_text().splitlines()]
+          assert m["pdf_documents_downloaded_and_verified"]==2
+          assert m["pdf_documents_failed_or_blocked"]==0
+          assert m["financial_records_extracted"]==m["local_staging_financial_records_indexed"]==len(rows)==7
+          assert m["distinct_underlying_reported_hurricane_events"]==1
+          assert m["issuer_reported_received_lost_profits_bi_usd"]==4000000
+          assert m["durable_backend_indexed"]==m["deployed"]==0
+          assert m["independent_carrier_confirmed_claims"]==m["insurer_policy_contracts_reviewed"]==0
+          assert {x["financial_metric_kind"] for x in rows if x["issuer_reports_received_lost_profit_bi_proceeds"]}=={
+              "RECEIVED_BI_PROCEEDS_FOR_LOST_PROFITS"}
+          assert len([x for x in rows if x["issuer_reports_received_lost_profit_bi_proceeds"]])==1
+          assert all(x["not_sec_edgar_original"] for x in rows)
+          assert all(x["actual_site_power_outage_confirmed"] is False for x in rows)
+          assert len({x["source_document_sha256"] for x in rows})==2
+          with sqlite3.connect(root/"crane_issuer_financial_staging.sqlite") as db:
+              assert db.execute("PRAGMA integrity_check").fetchone()[0]=="ok"
+              assert db.execute("SELECT COUNT(*) FROM source_financial_observations").fetchone()[0]==7
+              assert {r[0] for r in db.execute("SELECT evidence_key FROM source_financial_observations")}=={
+                  x["evidence_key"] for x in rows}
+          print("Official issuer PDF source evidence:",len(m["document_provenance"]),
+                "documents",len(rows),"typed financial statements, received lost-profit proceeds $4m",
+                "independent carrier confirmations zero, deployed zero")
+          PY
+      - name: Publish safe original URL/PDF SHA/section digest/typed-source counts, not PDF contents
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-d-crane-issuer-received-bi-proceeds-evidence
+          retention-days: 7
+          if-no-files-found: warn
+          path: /tmp/lane-d/crane-issuer-pdfs/manifest.json

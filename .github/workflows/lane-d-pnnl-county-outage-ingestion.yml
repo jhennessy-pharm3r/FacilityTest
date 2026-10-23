@@ -1,0 +1,185 @@
+name: Lane D - Official PNNL historical county outage ingestion
+
+on:
+  push:
+    branches:
+      - ingest/eia861-utility-bi-lane-d-20261023
+    paths:
+      - facilityrisk/lane_d/install_source_index.py
+      - tests/test_lane_d_install_source_index.py
+      - facilityrisk/lane_d/ingest_pnnl_county_outages.py
+      - tests/test_lane_d_pnnl_county_outages.py
+      - facilityrisk/lane_d/query_staging.py
+      - tests/test_lane_d_query_staging.py
+      - .github/workflows/lane-d-pnnl-county-outage-ingestion.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  official-pnnl-full-archive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run five source-family, native identifier and malformed-row tests
+        run: python -m unittest discover -s tests -p test_lane_d_pnnl_county_outages.py -v
+      - name: Download official PNNL DOE historical nationwide outage study
+        shell: bash
+        run: |
+          mkdir -p /tmp/lane-d/pnnl
+          curl --fail --location --retry 3 --retry-delay 5 --connect-timeout 30 --max-time 360 \
+            --user-agent 'FacilityTest Lane D official DOE data ingestion' \
+            'https://data.openei.org/files/6458/Outage_Dataset_R1.zip' \
+            --output /tmp/lane-d/pnnl/Outage_Dataset_R1.zip
+      - name: Normalize and index all actual 2014-2023 PNNL source families
+        run: |
+          python -m facilityrisk.lane_d.ingest_pnnl_county_outages \
+            --zip /tmp/lane-d/pnnl/Outage_Dataset_R1.zip \
+            --output /tmp/lane-d/pnnl/staged
+      - name: Independent original member row recount and SQLite query verification
+        shell: bash
+        run: |
+          python - <<'PY'
+          import csv,hashlib,io,json,pathlib,sqlite3,zipfile
+          root=pathlib.Path("/tmp/lane-d/pnnl")
+          archive=root/"Outage_Dataset_R1.zip"
+          m=json.loads((root/"staged"/"manifest.json").read_text())
+          h=hashlib.sha256(archive.read_bytes()).hexdigest()
+          assert m["archive_sha256"]==h
+          assert m["archive_bytes"]==archive.stat().st_size==31260449, "Published archive changed: review before baselining"
+          assert m["published_csv_members"]==50
+          scanned=0
+          with zipfile.ZipFile(archive) as source:
+              for entry in m["source_members"]:
+                  data=source.read(entry["source_member"])
+                  assert hashlib.sha256(data).hexdigest()==entry["member_sha256"]
+                  rows=sum(1 for row in csv.reader(io.StringIO(data.decode("utf-8-sig"))))-1
+                  assert rows==entry["source_rows_scanned"]==entry["accepted"]+entry["rejected"]
+                  scanned+=rows
+          assert scanned==m["source_rows_scanned"]==m["accepted"]+m["rejected"]
+          assert m["accepted"]>0 and m["locally_indexed"]==m["accepted"]
+          assert m["durable_backend_indexed"]==m["deployed"]==m["verified_insured_facility_outages"]==0
+          with sqlite3.connect(root/"staged"/"pnnl_county_outage_staging.sqlite") as db:
+              assert db.execute("PRAGMA integrity_check").fetchone()[0]=="ok"
+              assert db.execute("SELECT COUNT(*) FROM source_observations").fetchone()[0]==m["accepted"]
+              duplicates=db.execute("SELECT count(*) FROM source_observations WHERE is_exact_duplicate_source_row=1").fetchone()[0]
+              assert duplicates==m["accepted_exact_duplicate_rows"]==m["exact_duplicate_source_rows_within_same_table"]
+              assert m["distinct_source_table_row_contents"]+duplicates==m["accepted"]
+              dup_by_kind=dict(db.execute("""SELECT source_kind, COUNT(*) FROM source_observations
+                  WHERE is_exact_duplicate_source_row=1 GROUP BY source_kind"""))
+              expected_dup={}
+              for sm in m["source_members"]:
+                  expected_dup[sm["source_kind"]]=expected_dup.get(sm["source_kind"],0)+sm["exact_duplicate_source_rows_in_member"]
+              assert all(dup_by_kind.get(kind,0)==value for kind,value in expected_dup.items())
+              lineage=db.execute("""SELECT source_member,source_line_number,duplicate_of_source_line
+                    FROM source_observations WHERE is_exact_duplicate_source_row=1 LIMIT 50""").fetchall()
+              for member,rownum,original_line in lineage:
+                  assert original_line is not None and original_line<rownum, "Duplicate row lost original source lineage"
+              print("PNNL exact original same-table duplicate records:",duplicates,
+                    "content-unique within source tables:",m["distinct_source_table_row_contents"])
+              actual=dict(db.execute("SELECT source_kind,COUNT(*) FROM source_observations GROUP BY source_kind"))
+              assert actual==m["accepted_by_source_kind"]
+              example=db.execute("SELECT county_fips,dataset_year,source_kind,COUNT(*) FROM source_observations WHERE county_fips IS NOT NULL GROUP BY county_fips,dataset_year,source_kind LIMIT 10").fetchall()
+              assert example and all(len(e[0])==5 for e in example)
+          print("PNNL independent original CSV scan:",scanned,"accepted:",m["accepted"],
+                "rejected:",m["rejected"],"staged SQLite:",m["locally_indexed"])
+          print("PNNL kinds:",json.dumps(m["accepted_by_source_kind"]))
+          print("PNNL year coverage:",m["source_coverage_years"],"states:",m["distinct_state_names"],
+                "unique county FIPS:",m["unique_county_fips"])
+          PY
+      - name: Verify read-only county-level context query on actual PNNL staging index
+        shell: bash
+        run: |
+          python - <<'PY'
+          import pathlib,sqlite3
+          from facilityrisk.lane_d.query_staging import get_county_context
+          db=pathlib.Path("/tmp/lane-d/pnnl/staged/pnnl_county_outage_staging.sqlite")
+          with sqlite3.connect(db) as con:
+              county=con.execute("""SELECT county_fips,COUNT(*) FROM source_observations
+                WHERE county_fips IS NOT NULL AND source_kind='county_episode'
+                GROUP BY county_fips ORDER BY COUNT(*) DESC LIMIT 1""").fetchone()
+          assert county and len(county[0])==5
+          result=get_county_context(county[0],pnnl_db=db,limit=5)
+          assert result["candidate_counts"]["pnnl_historical_county_episodes"]==county[1]
+          assert 1<=len(result["returned_findings"])<=5
+          assert all(r["category"]=="HISTORICAL_COUNTY_OUTAGE_EPISODE" for r in result["returned_findings"])
+          assert all(r["insured_facility_outage_verified"] is False for r in result["returned_findings"])
+          assert result["verified_business_interruption_claims"]==0
+          print("Read-only FIPS county query passed", county[0], "source rows", county[1],
+                "returned",len(result["returned_findings"]))
+          PY
+      - name: Create independently checkable coordinator handoff for public CC BY 4.0 PNNL index
+        shell: bash
+        run: |
+          python - <<'PY'
+          import hashlib,json,pathlib,sqlite3
+          root=pathlib.Path("/tmp/lane-d/pnnl/staged")
+          path=root/"pnnl_county_outage_staging.sqlite"
+          m=json.loads((root/"manifest.json").read_text())
+          with sqlite3.connect("file:"+str(path)+"?mode=ro",uri=True) as db:
+              assert db.execute("PRAGMA integrity_check").fetchone()[0]=="ok"
+              rows=db.execute("SELECT COUNT(*) FROM source_observations").fetchone()[0]
+              assert rows==m["accepted"]==m["locally_indexed"]
+          h=hashlib.sha256()
+          with path.open("rb") as f:
+              for chunk in iter(lambda:f.read(1024*1024),b""):
+                  h.update(chunk)
+          details={
+            "artifact_role":"SOURCE_ONLY_COORDINATOR_HANDOFF_NOT_PRODUCTION",
+            "primary_publisher":"Pacific Northwest National Laboratory (PNNL)",
+            "authors":"Buxin She, Veronica Adetola, Ji Young Yun (2024)",
+            "source_dataset_url":"https://data.openei.org/submissions/6458",
+            "source_license":"CC BY 4.0, retain original attribution and relevant notices",
+            "source_zip_sha256":m["archive_sha256"],
+            "source_zip_bytes":m["archive_bytes"],
+            "staged_sqlite_sha256":h.hexdigest(),
+            "staged_sqlite_bytes":path.stat().st_size,
+            "sqlite_rows_verified":rows,
+            "stage_only":True,
+            "durable_backend_indexed":0,
+            "deployed":0,
+            "instructions":"Download this short-retention artifact, verify staged_sqlite_sha256, keep source-vintage manifest, install on separately approved authenticated backend read-only; do not modify live Source Health from artifact alone.",
+          }
+          (root/"coordinator_handoff.json").write_text(json.dumps(details,indent=2)+"\n")
+          print(json.dumps(details,indent=2))
+          PY
+      - name: Upload validated source-only PNNL staging SQLite for coordinator retrieval
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-d-pnnl-2014-2023-readonly-staging-index
+          retention-days: 3
+          compression-level: 3
+          if-no-files-found: error
+          path: |
+            /tmp/lane-d/pnnl/staged/pnnl_county_outage_staging.sqlite
+            /tmp/lane-d/pnnl/staged/coordinator_handoff.json
+            /tmp/lane-d/pnnl/staged/manifest.json
+      - name: Recover 2.1-million-row PNNL SQLite source artifact independently
+        uses: actions/download-artifact@v4
+        with:
+          name: lane-d-pnnl-2014-2023-readonly-staging-index
+          path: /tmp/lane-d-pnnl-transferred
+      - name: Verify original DOE publisher archive, install and query read-only index
+        run: |
+          python -m facilityrisk.lane_d.install_source_index install --bundle /tmp/lane-d-pnnl-transferred --dest /tmp/lane-d-pnnl-installed --dataset pnnl_2014_2023 --source-sha256 44557bae7a5c8e02c611a14f75fe9e123d81d286f700b9fd88ac538edd910fe7
+          python -m facilityrisk.lane_d.install_source_index verify --dest /tmp/lane-d-pnnl-installed --dataset pnnl_2014_2023
+          python -m facilityrisk.lane_d.install_source_index query --dest /tmp/lane-d-pnnl-installed --dataset pnnl_2014_2023 --fips 01001 --year 2023 --limit 4
+      - name: Publish source-only PNNL installed-pointer acceptance, never source rows
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-d-pnnl-install-smoke
+          retention-days: 7
+          path: /tmp/lane-d-pnnl-installed/pnnl_2014_2023/current.json
+      - name: Publish provenance and source QA ledger only; source CSV data remain in isolated runner
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-d-doe-pnnl-2014-2023-outages-manifest
+          retention-days: 7
+          if-no-files-found: warn
+          path: /tmp/lane-d/pnnl/staged/manifest.json

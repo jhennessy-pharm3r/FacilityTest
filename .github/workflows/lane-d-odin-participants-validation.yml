@@ -1,0 +1,67 @@
+name: Lane D - ORNL public utility feed status ingestion
+
+on:
+  push:
+    branches:
+      - ingest/eia861-utility-bi-lane-d-20261023
+    paths:
+      - facilityrisk/lane_d/ingest_odin_participants.py
+      - tests/test_lane_d_odin_participants.py
+      - .github/workflows/lane-d-odin-participants-validation.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  official-odin-utility-feeds:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Test source identity, missing IDs, status and failure handling
+        run: python -m unittest discover -s tests -p test_lane_d_odin_participants.py -v
+      - name: Download real official ORNL utility participant status inventory
+        run: |
+          python -m facilityrisk.lane_d.ingest_odin_participants \
+            --output /tmp/lane-d/odin-participants
+      - name: Independently validate every status row against first-party source and staging index
+        shell: bash
+        run: |
+          python - <<'PY'
+          import hashlib,json,sqlite3,pathlib,collections
+          root=pathlib.Path("/tmp/lane-d/odin-participants")
+          raw=(root/"odin_status_original.json").read_bytes()
+          orig=json.loads(raw)
+          m=json.loads((root/"manifest.json").read_text())
+          accepted=[json.loads(x) for x in (root/"accepted.jsonl").read_text().splitlines()]
+          rejected=[json.loads(x) for x in (root/"rejected.jsonl").read_text().splitlines()]
+          assert m["original_publisher_http"]
+          assert m["downloaded_source_sha256"]==hashlib.sha256(raw).hexdigest()
+          assert len(orig)==m["records_downloaded"]==len(accepted)+len(rejected)
+          assert len(accepted)==m["normalized_accepted"]==m["indexed_local_sqlite"]
+          assert m["verified_insured_site_utility_assignments"]==m["durable_backend_indexed"]==m["deployed"]==0
+          for row in accepted:
+              original=orig[row["source_row"]-1]
+              assert original==row["source_original"]
+              signature=hashlib.sha256(json.dumps(original,sort_keys=True,ensure_ascii=False,separators=(",",":")).encode()).hexdigest()
+              assert row["original_sha256"]==signature
+              assert not row["insured_site_utility_assignment_verified"]
+          with sqlite3.connect(root/"odin_utility_status_staging.sqlite") as db:
+              assert db.execute("PRAGMA integrity_check").fetchone()[0]=="ok"
+              assert db.execute("SELECT COUNT(*) FROM utility_feeds").fetchone()[0]==len(accepted)
+          print("OFFICIAL ODIN participant statuses:",len(orig),"downloaded",len(accepted),"accepted",
+                len(rejected),"rejected; distinct native data IDs",m["statistics"]["distinct_native_data_ids"],
+                "distinct EIA utility IDs",m["statistics"]["distinct_native_eia_utility_ids"])
+          PY
+      - name: Upload publisher provenance/freshness metadata only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-d-ornl-utility-feed-participants-manifest
+          retention-days: 7
+          if-no-files-found: warn
+          path: /tmp/lane-d/odin-participants/manifest.json

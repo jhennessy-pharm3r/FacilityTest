@@ -1,0 +1,91 @@
+name: Lane D - Official DOE OE-417 annual electric disturbance source schema probe
+
+on:
+  push:
+    branches:
+      - ingest/eia861-utility-bi-lane-d-20261023
+    paths:
+      - .github/workflows/lane-d-oe417-source-probe.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  official-oe417-annual-publisher-schema:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Probe ONLY publisher documented public DOE OE417 annual summaries and inspect original schema
+        shell: bash
+        run: |
+          mkdir -p /tmp/lane-d/oe417
+          python - <<'PY'
+          import datetime,hashlib,json,pathlib
+          from urllib.request import Request,urlopen
+          from urllib.error import HTTPError,URLError
+          root="https://openenergyhub.ornl.gov/api/explore/v2.1/catalog/datasets/oe-417-annual-summaries"
+          urls=[
+              root,
+              root+"/records?limit=10",
+              root+"/exports/json",
+          ]
+          report={"source":"DOE_CESER_OE417_2023_ANNUAL_PORTAL_PROBE",
+                  "observed_utc":datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                  "publisher_source_page":"https://openenergyhub.ornl.gov/explore/dataset/oe-417-annual-summaries/",
+                  "dataset_id":"oe-417-annual-summaries",
+                  "observations":[],"source_rows_accepted":0,"indexed":0,"deployed":0}
+          for url in urls:
+              item={"url":url}
+              try:
+                  req=Request(url,headers={"User-Agent":"FacilityRiskLaneD/1.0 first-party DOE annual disturbance schema check"})
+                  with urlopen(req,timeout=60) as response:
+                      payload=response.read(5_000_001)
+                      item.update({"http_status":response.status,
+                                   "final_url":response.geturl(),
+                                   "content_type":response.headers.get("Content-Type"),
+                                   "body_bytes_read":len(payload),
+                                   "body_sha256":hashlib.sha256(payload).hexdigest(),
+                                   "probe_byte_ceiling_reached":len(payload)>5_000_000})
+                  if item["probe_byte_ceiling_reached"]:
+                      item["source_schema_parsed"]=False
+                  else:
+                      obj=json.loads(payload)
+                      item["json_type"]=type(obj).__name__
+                      if isinstance(obj,dict):
+                          item["top_level_keys"]=list(obj)[:50]
+                          if "results" in obj and isinstance(obj["results"],list):
+                              item["source_total_count"]=obj.get("total_count")
+                              item["sampled_source_rows"]=len(obj["results"])
+                              if obj["results"]:
+                                  first=obj["results"][0]
+                                  item["source_record_fields"]=list(first)
+                                  item["nested_fields"]=list(first.get("record",{})) if isinstance(first.get("record"),dict) else []
+                                  item["sample_value_types"]={k:type(v).__name__ for k,v in first.items()}
+                          if "metas" in obj:
+                              metas=obj.get("metas") or {}
+                              item["dataset_meta_keys"]=list(metas)
+                              item["dataset_license_meta"]=str(metas.get("default",{}).get("license",""))[:120]
+                      elif isinstance(obj,list):
+                          item["downloaded_json_rows"]=len(obj)
+                          item["sampled_source_fields"]=list(obj[0])[:45] if obj and isinstance(obj[0],dict) else []
+                          item["sampled_value_types"]={k:type(v).__name__ for k,v in (obj[0] if obj and isinstance(obj[0],dict) else {}).items()}
+              except (HTTPError,URLError,TimeoutError,ValueError,UnicodeDecodeError) as exc:
+                  item["http_status"]=getattr(exc,"code","SCHEMA_OR_TRANSPORT_ERROR")
+                  item["error"]=type(exc).__name__+" "+str(exc)[:150]
+              report["observations"].append(item)
+              print(json.dumps(item,ensure_ascii=False)[:4500])
+          pathlib.Path("/tmp/lane-d/oe417/probe.json").write_text(json.dumps(report,indent=2,ensure_ascii=False)+"\n")
+          PY
+      - name: Retain official schema and permissions diagnostics only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-d-oe417-publisher-annual-probe
+          retention-days: 7
+          if-no-files-found: warn
+          path: /tmp/lane-d/oe417/probe.json

@@ -1,0 +1,116 @@
+name: Lane D - Full official ORNL EAGLE-I 2025 1.4GB county outage readings
+
+on:
+  push:
+    branches:
+      - ingest/eia861-utility-bi-lane-d-20261023
+    paths:
+      - facilityrisk/lane_d/ingest_eaglei_2025.py
+      - tests/test_lane_d_eaglei_2025.py
+      - .github/workflows/lane-d-eaglei-2025-full-ingestion.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lane-d-full-eaglei-2025
+  cancel-in-progress: true
+
+jobs:
+  full-official-figshare-eaglei-2025:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install bounded columnar 15-minute reading ingest engine
+        run: python -m pip install duckdb
+      - name: Test original 2025 source identity and fixture row/count/duplicate semantics
+        run: python -m unittest discover -s tests -p test_lane_d_eaglei_2025.py -v
+      - name: Download exact official author-published metadata and 2025 CSV only
+        shell: bash
+        run: |
+          mkdir -p /tmp/lane-d/official-eaglei
+          curl --fail --location --retry 3 --retry-delay 6 --connect-timeout 60 --max-time 180 \
+            --user-agent 'FacilityRiskLaneD/1.0 original ORNL Figshare published release validation' \
+            'https://api.figshare.com/v2/articles/24237376' \
+            --output /tmp/lane-d/official-eaglei/figshare-v4.json
+          python - <<'PY'
+          import json
+          p="/tmp/lane-d/official-eaglei/figshare-v4.json"
+          m=json.load(open(p))
+          assert m["id"]==24237376 and m["version"]==4
+          assert m["license"]["name"]=="CC BY 4.0"
+          file=[x for x in m["files"] if x["id"]==62164877 and x["name"]=="eaglei_outages_2025.csv"]
+          assert len(file)==1 and file[0]["size"]==1402347695
+          assert file[0]["computed_md5"]=="cd2feb1282a42fb048cb6885398bc1cc"
+          assert file[0]["download_url"]=="https://ndownloader.figshare.com/files/62164877"
+          print("Official original release verified; accepted 2025 1.4GB author-published source identity")
+          PY
+          curl --fail --location --retry 3 --retry-delay 10 --connect-timeout 60 --max-time 2200 \
+            --user-agent 'FacilityRiskLaneD/1.0 original ORNL Figshare full CSV source ingestion' \
+            'https://ndownloader.figshare.com/files/62164877' \
+            --output /tmp/lane-d/official-eaglei/eaglei_outages_2025.csv
+      - name: Real full official 2025 county 15-minute reading import to Parquet plus county/day SQLite
+        shell: bash
+        run: |
+          df -h /tmp
+          python -m facilityrisk.lane_d.ingest_eaglei_2025 \
+            --csv /tmp/lane-d/official-eaglei/eaglei_outages_2025.csv \
+            --release-metadata /tmp/lane-d/official-eaglei/figshare-v4.json \
+            --output /tmp/lane-d/official-eaglei/normalized
+      - name: Independently count ORIGINAL publisher CSV lines and inspect both outputs/row provenance
+        shell: bash
+        run: |
+          python - <<'PY'
+          import csv,hashlib,json,pathlib,sqlite3
+          import duckdb
+          root=pathlib.Path("/tmp/lane-d/official-eaglei")
+          src=root/"eaglei_outages_2025.csv"
+          out=root/"normalized"
+          m=json.loads((out/"manifest.json").read_text())
+          assert m["original_full_file_identity"]["original_source_csv_bytes"]==src.stat().st_size==1402347695
+          assert m["original_full_file_identity"]["original_source_csv_md5"]=="cd2feb1282a42fb048cb6885398bc1cc"
+          assert m["downloaded_original_source_rows"]==m["accepted_normalized_source_readings"]+m["rejected_original_source_rows"]
+          with src.open("rb") as f:
+              actual_source_lines=sum(block.count(b"\n") for block in iter(lambda:f.read(8*1024*1024),b""))
+          with src.open("rb") as f:
+              f.seek(-1,2)
+              last=f.read(1)
+          # Count final line whether original ends in newline or not, minus original header.
+          original_rows_from_raw_csv_newlines=actual_source_lines-int(last==b"\n")+int(last!=b"\n")
+          # Simpler authoritative row-count with csv.reader on original file can be done separately
+          # only if original metadata displays anomalous embedded CSV newlines. Publisher CSV is flat.
+          assert actual_source_lines in (m["downloaded_original_source_rows"],m["downloaded_original_source_rows"]+1)
+          with duckdb.connect() as c:
+              count,distinct_fips=c.execute("""SELECT COUNT(*),COUNT(DISTINCT original_fips_code)
+                 FROM read_parquet(?)""",[str(out/"eaglei_2025_readings.parquet")]).fetchone()
+          assert count==m["accepted_normalized_source_readings"]
+          assert distinct_fips==m["distinct_county_fips_in_accepted_source"]
+          with sqlite3.connect(out/"eaglei_2025_county_day_staging.sqlite") as c:
+              assert c.execute("PRAGMA integrity_check").fetchone()[0]=="ok"
+              n,total,repeat=c.execute("""SELECT COUNT(*),SUM(accepted_source_readings),
+                         SUM(repeated_county_time_keys) FROM observed_county_day""").fetchone()
+              assert n==m["staged_county_day_sqlite_aggregate_rows"]
+              assert total==m["accepted_normalized_source_readings"]
+              assert repeat==m["repeated_same_county_timestamp_source_keys"]
+          assert m["persistent_backend_indexed"]==m["deployed"]==0
+          assert m["independently_verified_physical_property_power_outages"]==0
+          print("AUTHENTIC 2025 ORNL EAGLEI FULL SOURCE VERIFIED",m["downloaded_original_source_rows"],
+                "scanned",m["accepted_normalized_source_readings"],"parquet observations",
+                m["rejected_original_source_rows"],"rejected",
+                n,"county/day index aggregations, first/last timestamps",
+                m["first_original_reported_timestamp_utc"],m["last_original_reported_timestamp_utc"],
+                "duplicate county/timestamps",repeat)
+          PY
+      - name: Publish source SHA-256, original file MD5, original rows and QA only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-d-official-ornl-eaglei-2025-full-source-qa
+          retention-days: 7
+          if-no-files-found: warn
+          path: /tmp/lane-d/official-eaglei/normalized/manifest.json

@@ -1,0 +1,130 @@
+name: Lane D - Oak Ridge official public county outage source probe
+
+on:
+  push:
+    branches:
+      - ingest/eia861-utility-bi-lane-d-20261023
+    paths:
+      - .github/workflows/lane-d-odin-public-probe.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  public-odin-source-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Probe only publicly documented public energy source endpoints
+        shell: bash
+        run: |
+          mkdir -p /tmp/lane-d/odin
+          python - <<'PY'
+          from collections import Counter
+          from datetime import datetime, timezone
+          from urllib.request import Request,urlopen
+          from urllib.error import HTTPError,URLError
+          from xml.etree import ElementTree
+          import hashlib,json,pathlib
+          endpoints = [
+            "https://odin.ornl.gov/odi/status",
+            "https://odin.ornl.gov/odi",
+            "https://odin.ornl.gov/v3/api-docs",
+            "https://openenergyhub.ornl.gov/api/explore/v2.1/catalog/datasets/odin-real-time-outages-county/records?limit=5",
+            "https://openenergyhub.ornl.gov/api/explore/v2.1/catalog/datasets/odin-real-time-outages-county/exports/json",
+            "https://openenergyhub.ornl.gov/api/explore/v2.1/catalog/datasets/eaglei_outages_2014/records?limit=5",
+            "https://data.openei.org/files/6458/Outage_Dataset_R1.zip"
+          ]
+          receipts=[]
+          for url in endpoints:
+              rec={"url":url}
+              try:
+                  headers={"User-Agent":"FacilityRiskLaneD/1.0 (official public metadata probe)"}
+                  if url.endswith(".zip"):
+                      headers["Range"]="bytes=0-4095"
+                  with urlopen(Request(url,headers=headers),timeout=40) as response:
+                      data=response.read(2_000_001)
+                      rec["status"]=response.status
+                      rec["content_type"]=response.headers.get("Content-Type","")
+                      rec["content_length_header"]=response.headers.get("Content-Length","")
+                      rec["content_range"]=response.headers.get("Content-Range","")
+                      rec["fetched_byte_count"]=len(data)
+                      rec["truncated_at_probe_ceiling"]=len(data)>=2_000_001
+                      rec["sample_sha256"]=hashlib.sha256(data).hexdigest()
+                      rec["final_host"]=response.geturl().split("/")[2]
+                  if b"xml" in rec.get("content_type","").lower().encode() or data.lstrip().startswith(b"<?xml"):
+                      root=ElementTree.fromstring(data)
+                      rec["root_xml_tag"]=root.tag.rsplit("}",1)[-1]
+                      rec["children_tags"]=dict(Counter(c.tag.rsplit("}",1)[-1] for c in root))
+                      rec["depth_two_names"]=[(c.tag.rsplit("}",1)[-1], [j.tag.rsplit("}",1)[-1] for j in list(c)[:12]]) for c in list(root)[:5]]
+                  elif rec.get("content_type","").startswith("application/json") and not rec.get("truncated_at_probe_ceiling"):
+                      obj=json.loads(data)
+                      rec["json_top_level"]=list(obj)[:30] if isinstance(obj,dict) else type(obj).__name__
+                      if isinstance(obj,dict) and "outage" in obj:
+                          top=obj["outage"]
+                          rec["outage_collection_type"]=type(top).__name__
+                          if isinstance(top,list):
+                              rec["outage_collection_length"]=len(top)
+                              rec["native_element_fields"]=list(top[0].keys()) if top and isinstance(top[0],dict) else []
+                              if top and isinstance(top[0],dict):
+                                  rec["native_element_value_types"]={k:type(v).__name__ for k,v in top[0].items()}
+
+                              from collections import Counter
+                              fields=("MRID","mrid","communityDescriptor","metersAffected","reportedStartTime")
+                              rec["native_field_null_counts"]={k:sum(v.get(k) is None for v in top) for k in fields}
+                              rec["distinct_MRID"]=len({str(v.get("MRID")) for v in top})
+                              rec["distinct_mrid"]=len({str(v.get("mrid")) for v in top})
+                              rec["distinct_county_descriptor"]=len({str(v.get("communityDescriptor")) for v in top})
+                              rec["MRID_equal_mrid_count"]=sum(v.get("MRID")==v.get("mrid") for v in top)
+                              rec["native_id_samples"]=[{k:str(v.get(k))[:90] for k in ("MRID","mrid","communityDescriptor")} for v in top[:3]]
+                              rec["native_names_samples"]=[v.get("names") for v in top[:2]]
+                              rec["native_outagearea_kind_counts"]=dict(Counter((v.get("outageArea") or {}).get("outageAreaKind","NULL") for v in top))
+
+                              if top and isinstance(top[0],dict):
+                                  rec["native_first_element_nested"]={
+                                      k:{"type":type(v).__name__,
+                                         "length":len(v) if isinstance(v,(list,dict)) else None,
+                                         "child_keys":list(v[0])[:40] if isinstance(v,list) and v and isinstance(v[0],dict) else list(v)[:40] if isinstance(v,dict) else []}
+                                      for k,v in top[0].items() if isinstance(v,(list,dict))
+                                  }
+                          elif isinstance(top,dict):
+                              rec["outage_collection_fields"]=list(top)[:45]
+                              rec["outage_collection_value_types"]={k:type(v).__name__ for k,v in list(top.items())[:45]}
+
+                      if isinstance(obj,dict) and isinstance(obj.get("paths"),dict):
+                          rec["public_paths"]=list(obj["paths"])[:120]
+                      if isinstance(obj,dict) and isinstance(obj.get("results"),list):
+                          rec["total_count"]=obj.get("total_count")
+                          rec["records_in_response"]=len(obj["results"])
+                          rec["record_field_names"]=list(obj["results"][0].keys()) if obj["results"] else []
+                          if obj["results"]:
+                              r=obj["results"][0]
+                              rec["sample_typed_values"]={k:r.get(k) for k in ("communitydescriptor","metersaffected","reportedstarttime","utility_id","county","state")}
+                      if isinstance(obj,list):
+                          rec["list_length"]=len(obj)
+                          rec["first_record_field_names"]=list(obj[0])[:35] if obj and isinstance(obj[0],dict) else []
+              except (HTTPError,URLError,TimeoutError,ElementTree.ParseError,ValueError) as e:
+                  rec["status"]=getattr(e,"code","TRANSPORT_OR_SCHEMA_FAILURE")
+                  rec["error_type"]=type(e).__name__
+                  rec["description"]=str(e)[:180]
+              receipts.append(rec)
+              print(json.dumps(rec)[:4500])
+          out={"source":"DOE_ORNL_PUBLIC_OUTAGE_API_PROBE","checked_utc":datetime.now(timezone.utc).isoformat(),
+               "observations":receipts,
+               "real_source_rows_normalized":0,"source_rows_indexed":0,"deployed":0,
+               "note":"Probe status/schema only; no records automatically accepted. Authenticated ODIN endpoints not accessed."}
+          pathlib.Path("/tmp/lane-d/odin/manifest.json").write_text(json.dumps(out,indent=2)+"\n")
+          PY
+      - name: Publish ODIN public access status / schema only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-d-ornl-public-outage-schema-probe
+          retention-days: 7
+          if-no-files-found: warn
+          path: /tmp/lane-d/odin/manifest.json

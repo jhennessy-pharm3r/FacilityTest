@@ -1,0 +1,60 @@
+name: Lane D - First-party hotel hurricane BI recognized insurance income
+
+on:
+  push:
+    branches:
+      - ingest/eia861-utility-bi-lane-d-20261023
+    paths:
+      - facilityrisk/lane_d/ingest_pebblebrook_bi.py
+      - tests/test_lane_d_pebblebrook_bi.py
+      - .github/workflows/lane-d-hotel-bi-income.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pebblebrook-real-hotel-financial-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify fiscal year vs quarter nesting and no cash claim inference
+        run: python -m unittest discover -s tests -p test_lane_d_pebblebrook_bi.py -v
+      - name: Download first-party issuer 2024 and 2025 annual results
+        run: |
+          python -m facilityrisk.lane_d.ingest_pebblebrook_bi \
+            --output /tmp/lane-d/pebblebrook-official --min-sources 2
+      - name: Verify realized recognized BI accounting without double-counting source periods
+        run: |
+          python - <<'PY'
+          import json, pathlib,sqlite3
+          p=pathlib.Path("/tmp/lane-d/pebblebrook-official")
+          m=json.loads((p/"manifest.json").read_text())
+          rows=[json.loads(x) for x in (p/"source_financial_observations.jsonl").read_text().splitlines()]
+          assert m["downloaded_publisher_documents"]==2
+          assert not m["failed_sources"]
+          assert m["financial_statement_records_normalized"]==m["financial_statement_records_staged_sqlite"]==5
+          assert m["distinct_named_storm_event_groups"]==2
+          assert m["verified_annual_income_2024_ian_usd"]==23800000
+          assert m["verified_annual_income_2025_helene_milton_usd"]==12700000
+          assert m["deployed"]==m["durable_backend_indexed"]==m["independently_insurer_verified_paid_bi_claims"]==0
+          assert len([x for x in rows if x["accounting_period"] in ("2024_Q4","2025_Q4")])==2
+          assert len([x for x in rows if x["accounting_period"] in ("2024_FY","2025_FY")])==2
+          assert all(not r["cash_received_by_issuer_independently_verified"] for r in rows)
+          with sqlite3.connect(p/"issuer_bi_income_staging.sqlite") as db:
+              assert db.execute("PRAGMA integrity_check").fetchone()[0]=="ok"
+              assert db.execute("select count(*) from source_financial_observations").fetchone()[0]==5
+          print("Primary source hotel insurance income: 2024 Hurricane Ian FY recognized USD 23.8m; 2025 Helene/Milton FY recognized USD 12.7m. Q4 amounts included, not added.")
+          PY
+      - name: Publish first-party publication fingerprints and typed-source count ledger
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-d-pebblebrook-primary-bi-income-qa
+          retention-days: 7
+          if-no-files-found: warn
+          path: /tmp/lane-d/pebblebrook-official/manifest.json

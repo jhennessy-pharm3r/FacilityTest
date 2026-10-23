@@ -1,0 +1,105 @@
+name: Lane D - ORNL EAGLE-I 2025 official archive file inventory and access gate
+
+on:
+  push:
+    branches:
+      - ingest/eia861-utility-bi-lane-d-20261023
+    paths:
+      - .github/workflows/lane-d-eaglei-2025-official-inventory.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  public-archive-identity-inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Request public publisher release and figshare metadata without auth or guessing private links
+        shell: bash
+        run: |
+          mkdir -p /tmp/lane-d/eaglei
+          python - <<'PY'
+          import datetime,hashlib,json,pathlib
+          from urllib.request import Request,urlopen
+          from urllib.error import HTTPError,URLError
+          urls=[
+            "https://api.figshare.com/v2/articles/24237376",
+            "https://api.figshare.com/v2/articles/24237376/files",
+            "https://api.figshare.com/v2/articles/24237376/versions",
+            "https://figshare.com/s/417a4f147cf1357a5391",
+            "https://openenergyhub.ornl.gov/api/explore/v2.1/catalog/datasets/eaglei_outages_2014",
+          ]
+          report={
+            "source":"ORNL_EAGLEI_2014_2025_OFFICIAL_ACCESS_INVENTORY",
+            "publisher_reference":"https://openenergyhub.ornl.gov/explore/dataset/eaglei_outages_2014/",
+            "original_referenced_figshare":"https://figshare.com/s/417a4f147cf1357a5391",
+            "observed_utc":datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "probe_only":True,"real_outage_data_downloaded":0,
+            "real_outage_data_normalized":0,"indexed":0,"deployed":0,
+            "observations":[],
+          }
+          for url in urls:
+              rec={"url":url}
+              try:
+                  with urlopen(Request(url,headers={
+                      "User-Agent":"FacilityRiskLaneD/1.0 authorized public metadata inventory"}),timeout=35) as r:
+                      chunk=r.read(1_000_001)
+                      rec.update({"http_status":r.status,
+                                  "final_host":r.geturl().split("/")[2],
+                                  "content_type":r.headers.get("Content-Type"),
+                                  "response_body_prefix_bytes":len(chunk),
+                                  "sample_truncated_at_1mb":len(chunk)>1_000_000,
+                                  "sample_sha256":hashlib.sha256(chunk).hexdigest()})
+                  if "json" in (rec.get("content_type") or "") and len(chunk)<=1_000_000:
+                      data=json.loads(chunk)
+                      if isinstance(data,list):
+                          rec["public_file_or_version_items"]=len(data)
+                          if data and isinstance(data[0],dict):
+                              rec["public_item_fields"]=sorted(data[0])
+                          if "files" in url:
+                              rec["public_file_inventory"]=[
+                                  {k:item.get(k) for k in ("id","name","size","is_link_only","computed_md5","supplied_md5","download_url") if k in item}
+                                  for item in data[:40] if isinstance(item,dict)
+                              ]
+                          elif "versions" in url:
+                              rec["public_versions"]=[{k:item.get(k) for k in ("version","published_date","url")} for item in data[:15] if isinstance(item,dict)]
+                      elif isinstance(data,dict):
+                          rec["json_top_level_fields"]=list(data)[:45]
+                          rec["release_id"]=data.get("id")
+                          rec["release_version"]=data.get("version")
+                          rec["release_doi"]=data.get("doi")
+                          rec["release_title"]=data.get("title")
+                          rec["release_published_date"]=data.get("published_date")
+                          rec["license"]=data.get("license")
+                          if isinstance(data.get("files"),list):
+                              rec["public_file_inventory"]=[
+                                  {k:item.get(k) for k in ("id","name","size","is_link_only","computed_md5","supplied_md5","download_url") if k in item}
+                                  for item in data["files"][:40] if isinstance(item,dict)
+                              ]
+                          if url.endswith("eaglei_outages_2014"):
+                              metas=data.get("metas") or {}
+                              rec["metadata_fields"]=list(metas.get("default",{}))[:40]
+                              rec["metadata_license"]=metas.get("default",{}).get("license")
+                              rec["reference"]=metas.get("default",{}).get("references")
+              except (HTTPError,URLError,TimeoutError,ValueError,UnicodeDecodeError) as e:
+                  rec["http_status"]=getattr(e,"code","TRANSPORT_SCHEMA_OR_POLICY_ERROR")
+                  rec["error_class"]=type(e).__name__
+                  rec["diagnostic"]=str(e)[:160]
+              print(json.dumps(rec,ensure_ascii=False)[:9500])
+              report["observations"].append(rec)
+          pathlib.Path("/tmp/lane-d/eaglei/inventory.json").write_text(json.dumps(report,indent=2,ensure_ascii=False)+"\n")
+          PY
+      - name: Publish public metadata source manifest, never restricted data bytes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-d-eaglei-official-public-archive-inventory
+          retention-days: 7
+          if-no-files-found: warn
+          path: /tmp/lane-d/eaglei/inventory.json
