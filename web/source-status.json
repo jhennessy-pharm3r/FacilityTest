@@ -249,6 +249,16 @@
       "state": "private_index_not_deployed"
     },
     {
+      "artifact_run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39968194423",
+      "checked_at": "2026-10-23T14:17:31+00:00",
+      "details": "Official NOAA OR&R selected incidents; location reference points may be approximate. Potential release is NOT actual spilled volume, property damage or insured loss. Private indexed source not durably hosted.",
+      "documentation": "https://incidentnews.noaa.gov/raw/index",
+      "records": 4946,
+      "scope": "Selected NOAA scientific-response spill/chemical incidents, not all reported spills",
+      "source": "NOAA IncidentNews Selected Spills",
+      "state": "staged_source_artifact"
+    },
+    {
       "artifact_run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39958109221",
       "checked_at": "2026-10-23T13:04:20+00:00",
       "details": "Complete requested-year files normalized and archived as expiring GitHub Actions artifacts. Not installed on permanent backend; regional NOAA damage estimates are NOT losses or catastrophe overlays at any insured facility.",

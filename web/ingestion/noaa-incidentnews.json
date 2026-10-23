@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0",
+  "source": "NOAA IncidentNews Selected Spills",
+  "state": "staged_source_artifact",
+  "records": 4946,
+  "checked_at": "2026-10-23T14:17:31+00:00",
+  "scope": "Selected NOAA scientific-response spill/chemical incidents, not all reported spills",
+  "details": "Official NOAA OR&R selected incidents; location reference points may be approximate. Potential release is NOT actual spilled volume, property damage or insured loss. Private indexed source not durably hosted.",
+  "documentation": "https://incidentnews.noaa.gov/raw/index",
+  "artifact_run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39968194423",
+  "manifest_sha256": "0e5c659f0ddd2ce35057298c89f79db7ea11c71ca2db8260471151ecda263e00",
+  "coordinate_records": 4942,
+  "threat_counts": {
+    "Chemical": 337,
+    "Oil": 2945,
+    "Other": 324,
+    "Unspecified": 1340
+  }
+}
