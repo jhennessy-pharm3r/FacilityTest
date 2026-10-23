@@ -50,10 +50,6 @@ def parse(blob,snapshot_time):
             continue
         eid=raw.get("eiaId")
         eid=str(eid).strip() if eid is not None and str(eid).strip() else None
-        if eid is not None:
-            eia_ids.add(eid)
-        else:
-            missing_id+=1
         total=raw.get("totalOutages")
         if total is not None and str(total).strip():
             try:
@@ -66,6 +62,10 @@ def parse(blob,snapshot_time):
                 continue
         else:
             outages=None
+        if eid is not None:
+            eia_ids.add(eid)
+        else:
+            missing_id+=1
         previous=first_seen.get(hashed)
         if previous is None:
             first_seen[hashed]=position
