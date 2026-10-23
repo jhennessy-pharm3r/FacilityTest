@@ -130,6 +130,33 @@ def verify_dir(root):
             "region_count": w.get("region_count"),
             "sample_not_national_raster": True,
         }
+    classes_dir = root / "whp_classified"
+    classes_manifest_file = classes_dir / "manifest.json"
+    if classes_manifest_file.is_file():
+        m = json.loads(classes_manifest_file.read_text(encoding="utf-8"))
+        replies = ([m["metadata"]] if m.get("metadata") else []) + m["records"]
+        verified = [receipt for r in replies
+                    if (receipt := file_receipt(classes_dir, r)) is not None]
+        table_count = sqlite_count(
+            classes_dir / "whp-classified-source-only.sqlite", "usfs_whp_classified_probes")
+        if (m.get("indexed_observations") is not None and
+            (m["indexed_observations"] != table_count or
+             m["received"] != m["burnable_classes"] + m["special_mask_classes"] +
+                              m["nodata"] + m["rejected"] or
+             m["received"] != table_count + m["rejected"] or
+             m["received"] + m["source_failures"] != m["requested_points"])):
+            raise ValueError("WHP 2023 classified real-source count mismatch")
+        report["total_preserved_source_responses"] += len(verified)
+        report["source_directories"]["whp_classified"] = {
+            "original_response_sha256_verified": len(verified),
+            "indexed": table_count, "received": m["received"],
+            "burnable_hazard_classes": m["burnable_classes"],
+            "special_nonburnable_water": m["special_mask_classes"],
+            "no_data": m["nodata"], "invalid": m["rejected"],
+            "source_failures": m["source_failures"],
+            "sample_complete": m.get("sample_complete", False),
+            "national_raster_complete": False,
+        }
     paged = root / "paged_windows"
     manifest_path = paged / "manifest.json"
     if manifest_path.exists():
