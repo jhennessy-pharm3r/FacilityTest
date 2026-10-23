@@ -45,7 +45,7 @@ ALIASES = {
         "damage": ("damage", "property_damage"),
     },
     "csb": {
-        "id": ("csb_id", "incident_id", "report_number", "event_id"),
+        "id": ("csb_id", "incident_id", "report_number", "event_id", "number"),
         "date": ("incident_date", "date_of_incident", "date_of_event", "event_date"),
         "name": ("company_name", "facility_name", "company", "facility"),
         "city": ("city", "incident_city"), "state": ("state", "incident_state"),
