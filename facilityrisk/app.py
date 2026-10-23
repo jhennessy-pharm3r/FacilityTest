@@ -28,6 +28,7 @@ from .source_sidecars import (status as source_index_status, frs_status, frs_sea
     frs_detail, noaa_index_status, noaa_connection, noaa_events,
     incidentnews_index_status, incidentnews_connection, incidentnews_events,
     SourceIndexUnavailable)
+from .lane_d.private_api import router as lane_d_private_router, installed_status as lane_d_installed_status
 from .incident_news import nearby_reviewed_site as nearby_incidentnews_site
 from .lane_a_service import (status as lane_a_source_status, usda_geography as lane_a_usda_geography,
     fema_polygon as lane_a_fema_polygon, wildfire_qa_pixel as lane_a_qa_pixel,
@@ -48,6 +49,7 @@ app.mount('/assets',StaticFiles(directory=WEB),name='assets')
 add_security(app)
 # Read-only source authority routes remain unavailable until verified private volumes are mounted.
 app.include_router(lane_b_router())
+app.include_router(lane_d_private_router)
 
 
 def conn_dependency():
@@ -69,7 +71,7 @@ def health(c=Depends(conn_dependency)):
 
 @app.get('/api/source-indices/status')
 def private_source_indices():
-    return {**source_index_status(), 'lane_b_epa': lane_b_status()}
+    return {**source_index_status(), 'lane_b_epa': lane_b_status(), 'lane_d': lane_d_installed_status()}
 
 
 @app.get('/api/lane-a/status')

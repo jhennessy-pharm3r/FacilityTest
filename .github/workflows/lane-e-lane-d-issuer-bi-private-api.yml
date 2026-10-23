@@ -1,0 +1,197 @@
+name: Coordinator Lane D original issuer BI evidence through authenticated API
+
+on:
+  push:
+    branches:
+      - integrate/lane-d-private-serving-20261023
+      - integration/utility-private-current-main-v2
+    paths:
+      - facilityrisk/lane_d/install_issuer_financial.py
+      - facilityrisk/lane_d/private_api.py
+      - tests/test_lane_d_issuer_financial_private_api.py
+      - facilityrisk/lane_d/ingest_crane_bi_pdf.py
+      - facilityrisk/lane_d/ingest_pebblebrook_bi.py
+      - .github/workflows/lane-e-lane-d-issuer-bi-private-api.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  firstparty-published-issuer-bi:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install private FastAPI and original PDF parser
+        run: python -m pip install -r requirements-dev.txt pypdf
+      - name: Test exact issuer document digests, typed financial periods and rollback
+        run: python -m pytest -q tests/test_lane_d_issuer_financial_private_api.py
+      - name: Download actual original Crane issuer annual/interim PDF disclosures
+        run: |
+          python -m facilityrisk.lane_d.ingest_crane_bi_pdf \
+            --output /tmp/lane-e-finance/stage-crane --min-sources 2
+      - name: Download actual original Pebblebrook first-party results disclosures
+        run: |
+          python -m facilityrisk.lane_d.ingest_pebblebrook_bi \
+            --output /tmp/lane-e-finance/stage-peb --min-sources 2
+      - name: Independently inspect original issuer documents and source-native SQLite
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, sqlite3, pathlib, hashlib
+          from facilityrisk.lane_d.install_issuer_financial import SPECS, audit_bundle
+          root=pathlib.Path("/tmp/lane-e-finance")
+          rows={}
+          for kind,src in (("crane","stage-crane"),("pebblebrook","stage-peb")):
+              folder=root/src
+              info=audit_bundle(folder,kind)
+              assert info["source_financial_records"]==SPECS[kind]["rows"]
+              assert info["original_publisher_documents_verified"]==2
+              m=json.loads((folder/"manifest.json").read_text())
+              assert m["deployed"]==0
+              assert info["issuer_reported_not_independent_insurer_claims"]
+              rows[kind]=info
+          assert rows["crane"]["source_financial_records"]==7
+          assert rows["pebblebrook"]["source_financial_records"]==5
+          root.joinpath("original_primary_issuer_source_audit.json").write_text(
+              json.dumps(rows,indent=2)+"\n")
+          print("Real original issuer SHA/typed periods: Crane 2/7, Pebblebrook 2/5, paid claims independently confirmed zero")
+          PY
+      - name: Transfer original source-only issuer SQL and manifest into separate private namespace
+        shell: bash
+        run: |
+          mkdir -p /tmp/lane-e-finance/transfer-crane /tmp/lane-e-finance/transfer-peb \
+            /tmp/lane-e-finance/installed/lane-d/issuer_financial /tmp/lane-e-finance/workspace
+          cp /tmp/lane-e-finance/stage-crane/crane_issuer_financial_staging.sqlite \
+            /tmp/lane-e-finance/stage-crane/manifest.json \
+            /tmp/lane-e-finance/transfer-crane/
+          cp /tmp/lane-e-finance/stage-peb/issuer_bi_income_staging.sqlite \
+            /tmp/lane-e-finance/stage-peb/manifest.json \
+            /tmp/lane-e-finance/transfer-peb/
+      - name: Install pinned first-party issuer BI accounting indexes immutably and verify
+        shell: bash
+        run: |
+          python -m facilityrisk.lane_d.install_issuer_financial install \
+            --bundle /tmp/lane-e-finance/transfer-crane \
+            --dest /tmp/lane-e-finance/installed/lane-d/issuer_financial \
+            --case crane > /tmp/lane-e-finance/crane-installed.json
+          python -m facilityrisk.lane_d.install_issuer_financial install \
+            --bundle /tmp/lane-e-finance/transfer-peb \
+            --dest /tmp/lane-e-finance/installed/lane-d/issuer_financial \
+            --case pebblebrook > /tmp/lane-e-finance/pebblebrook-installed.json
+          python -m facilityrisk.lane_d.install_issuer_financial verify \
+            --dest /tmp/lane-e-finance/installed/lane-d/issuer_financial \
+            --case crane
+          python -m facilityrisk.lane_d.install_issuer_financial verify \
+            --dest /tmp/lane-e-finance/installed/lane-d/issuer_financial \
+            --case pebblebrook
+      - name: Verify actual hosted authenticated issuer financial HTTP without client loss inference
+        shell: bash
+        run: |
+          export FACILITY_RISK_DB=/tmp/lane-e-finance/workspace/insured.sqlite
+          export FACILITY_RISK_REQUIRE_AUTH=1
+          export FACILITY_RISK_AUTH_TOKEN=$(python -c 'import secrets;print(secrets.token_urlsafe(48))')
+          export FACILITY_RISK_ENABLE_WRITES=0
+          export FACILITY_RISK_LANE_D_INDEX_ROOT=/tmp/lane-e-finance/installed/lane-d
+          export FACILITY_RISK_LANE_D_ODIN_USE_APPROVED=0
+          python -m uvicorn facilityrisk.app:app --host 127.0.0.1 --port 8895 \
+            > /tmp/lane-e-finance/private-issuer-api.log 2>&1 &
+          PID=$!
+          trap 'kill "$PID" 2>/dev/null || true' EXIT
+          python - <<'PY'
+          import json, os, pathlib, time
+          from urllib.parse import urlencode
+          from urllib.request import Request,urlopen
+          from urllib.error import HTTPError
+          base="http://127.0.0.1:8895"
+          token=os.environ["FACILITY_RISK_AUTH_TOKEN"]
+          def fetch(route,auth=True):
+              headers=({"Authorization":"Bearer "+token} if auth else {})
+              try:
+                  with urlopen(Request(base+route,headers=headers),timeout=30) as r:
+                      return r.status,json.load(r)
+              except HTTPError as e:
+                  return e.code,json.load(e)
+          for attempt in range(35):
+              try:
+                  if fetch("/api/health",False)[0]==200:
+                      break
+              except OSError:
+                  time.sleep(1)
+          else:
+              raise RuntimeError("Private financial evidence API did not start")
+          assert fetch("/api/source-context/issuer-bi?issuer=Crane%20Company",False)[0]==401
+          status_code, health=fetch("/api/source-context/lane-d/status")
+          assert status_code==200
+          financial=health["issuer_bi_financial_context"]
+          assert financial["crane"]["private_indexed_financial_statement_observations"]==7
+          assert financial["pebblebrook"]["private_indexed_financial_statement_observations"]==5
+          assert financial["crane"]["state"]==financial["pebblebrook"]["state"]=="verified_private_issuer_financial_context"
+          assert health["datasets"]["pnnl_2014_2023"]["state"]=="not_installed"
+          verified={}
+          for issuer,count in (("Crane Company",7),("Pebblebrook Hotel Trust",5)):
+              code,result=fetch("/api/source-context/issuer-bi?"+urlencode({"issuer":issuer,"limit":20}))
+              assert code==200
+              assert result["source_financial_observations_installed"]==count
+              assert len(result["data"]["returned_financial_source_observations"])==count
+              assert result["independent_carrier_claim_payment_verified"] is False
+              assert result["physical_insured_site_or_outage_independently_verified"] is False
+              assert result["business_interruption_coverage_terms_verified"] is False
+              assert result["do_not_sum_quarter_included_in_annual_or_cumulative_amounts"] is True
+              for row in result["data"]["returned_financial_source_observations"]:
+                  assert not row["carrier_payment_independently_verified"]
+                  assert not row["facility_power_outage_independently_verified"]
+              verified[issuer]={"issuer_source_financial_rows":count,
+                              "original_publisher_documents_verified":2,
+                              "original_source_digest_set":result["issuer_first_party_publication_source_set_sha256"]}
+              if issuer=="Crane Company":
+                  rows=result["data"]["returned_financial_source_observations"]
+                  bi=[x for x in rows if x["cash_received_for_lost_profits_reported_by_issuer"]]
+                  assert len(bi)==1 and bi[0]["issuer_reported_usd"]==4000000
+                  assert bi[0]["accounting_period"]=="2025_Q2"
+              else:
+                  rows=result["data"]["returned_financial_source_observations"]
+                  annual=[x for x in rows if x["financial_metric_kind"]=="RECOGNIZED_BI_INSURANCE_INCOME"]
+                  assert {r["issuer_reported_usd"] for r in annual}=={23800000,12700000}
+          assert fetch("/api/source-context/issuer-bi?issuer=Unapproved%20Inc")[0]==422
+          output={
+              "execution_context":"EPHEMERAL_HOSTED_GITHUB_CI_LOOPBACK_NOT_PRODUCTION",
+              "private_source_original_issuer_finance_http_verified":True,
+              "original_source_financial_evidence_by_issuer":verified,
+              "crane_issuer_reports_received_lost_profits_bi_proceeds_usd":4000000,
+              "pebblebrook_2024_bi_recognized_income_usd":23800000,
+              "pebblebrook_2025_bi_recognized_income_usd":12700000,
+              "no_quarter_or_cumulative_double_count":True,
+              "independent_insurer_paid_claims_confirmed":0,
+              "independent_site_power_outages_confirmed":0,
+              "verified_insured_site_meter_connections":0,
+              "ephemeral_indexed_source_financial_rows":12,
+              "production_private_indexed_source_financial_rows":0,
+              "deployed_static_pages_financial_source_rows":0,
+          }
+          pathlib.Path("/tmp/lane-e-finance/issuer_backend_validation.json").write_text(
+              json.dumps(output,indent=2)+"\n")
+          print(json.dumps(output,indent=2))
+          PY
+      - name: Upload aggregate issuer provenance and HTTP QA only, not original documents or rows
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-e-issuer-bi-financial-original-source-private-api-qa
+          retention-days: 7
+          if-no-files-found: warn
+          path: |
+            /tmp/lane-e-finance/original_primary_issuer_source_audit.json
+            /tmp/lane-e-finance/issuer_backend_validation.json
+      - name: Remove private ephemeral downloaded issuer documents and indexes
+        if: always()
+        shell: bash
+        run: |
+          rm -rf /tmp/lane-e-finance/stage-crane /tmp/lane-e-finance/stage-peb \
+            /tmp/lane-e-finance/transfer-crane /tmp/lane-e-finance/transfer-peb \
+            /tmp/lane-e-finance/installed /tmp/lane-e-finance/workspace
+          echo "Original publisher documents and finance indexes deleted from temporary hosted runner"
