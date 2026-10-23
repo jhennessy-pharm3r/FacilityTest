@@ -42,6 +42,14 @@ class LaneBTests(unittest.TestCase):
             self.assertEqual(m["indexed_rows"],2)
             self.assertEqual(m["valid_coordinate_pairs"],1)
             self.assertEqual(m["archive_members"]["RCRA_FACILITIES.csv"]["identity_column"],"ID_NUMBER")
+    def test_echo_actual_fac_lat_long_and_explicit_reject_reasons(self):
+        with tempfile.TemporaryDirectory() as d:
+            x=Path(d);p=x/"export.csv"
+            p.write_text("REGISTRY_ID,FAC_LAT,FAC_LONG,FAC_NAME\n1100,43,-72,Factory\n,43,-72,Missing ID\n")
+            m=ingest("echo",p,x/"out")
+            self.assertEqual(m["indexed_rows"],1)
+            self.assertEqual(m["valid_coordinate_pairs"],1)
+            self.assertEqual(m["reject_reason_counts"]["missing_native_id"],1)
     def test_no_false_facility_merge(self):
         with tempfile.TemporaryDirectory() as d:
             x=Path(d);p=x/"echo.csv";p.write_text("REGISTRY_ID,NAME\nA,Same\nB,Same\n")
