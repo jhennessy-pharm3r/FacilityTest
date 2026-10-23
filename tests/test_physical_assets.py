@@ -100,3 +100,47 @@ def test_source_coordinate_validation_and_private_api_write_gate(conn):
             json={'asset_type':'building','name':'Unaudited warehouse'})
         assert request.status_code==403
         assert client.get('/api/facilities/missing/assets').status_code==404
+
+
+def test_authenticated_independent_asset_review_api_roles(conn,monkeypatch):
+    import base64
+    import json
+    from fastapi.testclient import TestClient
+    from facilityrisk.app import app
+    from facilityrisk.security import make_password_hash
+    users={'reviewerA':{'role':'reviewer','password_hash':make_password_hash('reviewer-private-password-2026')},
+           'approverB':{'role':'approver','password_hash':make_password_hash('approver-private-password-2026')}}
+    monkeypatch.setenv('FACILITY_RISK_USERS_JSON',json.dumps(users))
+    monkeypatch.setenv('FACILITY_RISK_REQUIRE_AUTH','1')
+    monkeypatch.setenv('FACILITY_RISK_ENABLE_WRITES','1')
+    monkeypatch.setenv('FACILITY_RISK_DUAL_REVIEW','1')
+    def headers(user):
+        pw='reviewer-private-password-2026' if user=='reviewerA' else 'approver-private-password-2026'
+        encoded=base64.b64encode((user+':'+pw).encode()).decode()
+        return {'Authorization':'Basic '+encoded}
+    with TestClient(app) as client:
+        candidate=client.post('/api/facilities/site-a/assets',headers=headers('reviewerA'),json={
+          'asset_type':'building','name':'Individually scheduled building',
+          'address':'1 Industry Way - building 2','country':'CA'})
+        assert candidate.status_code==200,candidate.text
+        asset_id=candidate.json()['asset_id']
+        request=client.post('/api/assets/'+asset_id+'/propose-review',
+            headers=headers('reviewerA'),json={
+              'proposed_status':'identity_corroborated',
+              'review_evidence_url':'https://example.org/individual-building-plan',
+              'rationale':'An independent survey identifies this as a distinct physical building'
+            })
+        assert request.status_code==200,request.text
+        approval_id=request.json()['review_id']
+        forbidden=client.post('/api/asset-reviews/'+approval_id+'/decide',
+            headers=headers('reviewerA'),json={
+              'decision':'approve','note':'Reviewer cannot self approve'})
+        assert forbidden.status_code==403
+        decided=client.post('/api/asset-reviews/'+approval_id+'/decide',
+            headers=headers('approverB'),json={
+              'decision':'approve','note':'Independent second review of source building plan'})
+        assert decided.status_code==200,decided.text
+        assert decided.json()['asset_identity_promoted'] is True
+        read=client.get('/api/facilities/site-a/assets',headers=headers('reviewerA'))
+        assert read.json()['identity_corroborated_assets']==1
+        assert read.json()['reviewed_property_coordinates']==0
