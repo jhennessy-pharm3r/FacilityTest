@@ -98,3 +98,34 @@ external deployment gates** until their configurations are reviewed.
 See `docs/SECURE_DEPLOYMENT.md`, `docs/UNIVERSAL_FACILITIES.md` and
 issues #39 (production search), #40 (insurance coverage), #41 (drug country)
 for the remaining acceptance criteria.
+
+## Fail-closed private source-only index installation
+
+The private deployment has a safe local installer for an **already validated**
+GitHub Actions index and its matching QA file. It does not download GitHub
+artifacts, provision any server, copy insurance policies or configure SSO.
+
+After inspecting a successful `epa-frs-indexed-registry` artifact and making
+a separate secure, empty volume:
+
+```sh
+python scripts/install_frs_source_index.py \
+  --source /secure/staging/full-frs-index.sqlite \
+  --qa /secure/staging/full-frs-index-qa.json \
+  --target /secure/facility-search/public-source-index.sqlite
+```
+
+The installer checks the original source/normalized SHA-256 fields in the QA
+manifest, counts, original validation status, transfer integrity via SQLite
+`quick_check`, that only EPA FRS identities were indexed, and that no
+client/private research, review, claims or policy rows are stored. It writes to
+a temporary file in the target directory and creates the final file using an
+exclusive hard link, **refusing to overwrite an existing file** even in a
+concurrent install attempt. Destination directories must exist and be secured
+by the operator first.
+
+A successful installation is **not** an operational deployment. Only after
+separately configuring an authenticated private API, persistent storage,
+backup/restore tests and firewall/TLS controls should the operator make the
+index available to appropriately authorized users. The benchmark remains a
+separate measurement of search performance on each full official source import.
