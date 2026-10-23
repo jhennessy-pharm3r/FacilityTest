@@ -68,7 +68,7 @@ class SiteHazardEvidenceTests(unittest.TestCase):
                       "coordinates_corroborated": True}
             inside = query_fema_point(root / "fema-window-index.sqlite",
                                       root / "manifest.json",
-                                      longitude=-90.0805, latitude=29.9485, **kwargs)
+                                      longitude=-90.0802, latitude=29.9482, **kwargs)
             self.assertEqual(inside["coverage_state"],
                              "SOURCE_POLYGON_INTERSECTION_AT_CORROBORATED_POINT")
             self.assertEqual(len(inside["source_features"]), 3)
@@ -96,7 +96,7 @@ class SiteHazardEvidenceTests(unittest.TestCase):
             db.close()
             q = query_fema_point(root / "fema-window-index.sqlite",
                                  root / "manifest.json",
-                                 longitude=-90.0805, latitude=29.9485,
+                                 longitude=-90.0802, latitude=29.9482,
                                  site_reference="fixture",
                                  coordinate_evidence="test parcel record",
                                  coordinates_corroborated=True)
