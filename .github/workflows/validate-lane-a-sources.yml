@@ -14,6 +14,8 @@ on:
       - 'scripts/diagnose_lane_a_fema_access.py'
       - 'tests/test_lane_a_fema_transport.py'
       - 'scripts/verify_lane_a_archive.py'
+      - 'scripts/lane_a_integration_handoff.py'
+      - 'tests/test_lane_a_integration_handoff.py'
       - 'tests/test_lane_a_archive_verify.py'
       - 'scripts/lane_a_nfhl_paged.py'
       - 'tests/test_lane_a_nfhl_paged.py'
@@ -81,6 +83,9 @@ jobs:
       - name: Independently verify captured raw SHA256 and SQLite row reconciliations
         if: always()
         run: python -m scripts.verify_lane_a_archive --root data/lane_a
+      - name: Emit Lane A only coordinator handoff with staged source grain and zero deployed rows
+        if: always()
+        run: python -m scripts.lane_a_integration_handoff --root data/lane_a --output data/lane_a/lane_a_integration_handoff.json
       - name: Upload real source receipts, checksums and isolated source-only indexes
         if: always()
         uses: actions/upload-artifact@v4
@@ -112,6 +117,7 @@ jobs:
             data/lane_a/whp_official_index/manifest.json
             data/lane_a/whp_official_index/whp2023-source-geographies.sqlite
             data/lane_a/whp_official_index/whp2023-source-geographies.ndjson.gz
+            data/lane_a/lane_a_integration_handoff.json
           retention-days: 7
           compression-level: 5
           if-no-files-found: warn
