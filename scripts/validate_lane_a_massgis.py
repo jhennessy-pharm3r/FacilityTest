@@ -1,6 +1,6 @@
 """Non-exhaustive Massachusetts government republication QA of FEMA-derived NFHL.
 
-This 2025, MassGIS-derived SFHA subset is NOT current nationwide FEMA NFHL.
+This July 2025 MassGIS statewide FEMA-derived layer is NOT current nationwide FEMA NFHL.
 Never silently substitute it for the unavailable FEMA authoritative live service.
 """
 import argparse
@@ -12,9 +12,9 @@ from datetime import datetime, timezone
 
 from scripts.validate_lane_a_sources import fetch_capture, parse_fema, setup_sqlite
 
-MASSGIS = ("https://services1.arcgis.com/7iJyYTjCtKsZS1LR/ArcGIS/rest/services/"
-           "RZRP_StoryMap_100_Year_Flood_Zone/FeatureServer/303")
-MASSGIS_SOURCE = "massgis_ma_nfhl_2025_sfha_subset"
+MASSGIS = ("https://arcgisserver.digital.mass.gov/arcgisserver/rest/services/"
+           "FEMA/FEMA_National_Flood_Hazard_Layer/FeatureServer/0")
+MASSGIS_SOURCE = "massgis_ma_nfhl_2025_state_archive"
 WINDOW = (-71.056, 42.344, -71.042, 42.354)
 
 
@@ -40,9 +40,11 @@ def collect(out_dir, fetch=None):
         "dataset_id": MASSGIS_SOURCE, "source_url": MASSGIS,
         "publisher": "Commonwealth of Massachusetts MassGIS (FEMA-derived data)",
         "source_data_vintage": "FEMA as of 2025-07-18 per MassGIS source description",
-        "coverage": "Massachusetts subset of designated 100-year/SFHA polygons only",
+        "coverage": "July 18 2025 MassGIS Massachusetts FEMA NFHL state snapshot; mapped regions only, not national current coverage",
         "not_a_national_nfhl_replacement": True,
-        "omits_non_sfha_and_unmapped_flood_zones": True,
+        "sfha_only": False,
+        "unmapped_areas_are_unknown": True,
+        "declared_vintage_is_not_current_live_fema": True,
         "source_link": "https://www.mass.gov/info-details/massgis-data-fema-national-flood-hazard-layer",
         "verified_physical_facilities": 0, "sample_is_national_census": False,
         "metadata": meta, "samples": [], "sample_raw": 0,
