@@ -19,6 +19,27 @@ class PublicRMPIndexTests(unittest.TestCase):
             b=import_public(root/"b",fetch=source(True),page_size=3)
             self.assertEqual(a["raw_jsonl_sha256"],b["raw_jsonl_sha256"])
             self.assertEqual(a["index_sha256"],b["index_sha256"])
+    def test_original_same_size_mtime_replacement_revalidates_hash(self):
+        import os
+        def fake(p):
+            if "returnCountOnly" in p:return {"count":1}
+            if "returnIdsOnly" in p:return {"objectIds":[1]}
+            return {"features":[{"attributes":{"OBJECTID":1,"REGISTRY_ID":"FRS01",
+                "PGM_SYS_ID":"RMP01","LATITUDE83":42,"LONGITUDE83":-75}}]}
+        with tempfile.TemporaryDirectory() as d:
+            directory=Path(d)/"public";import_public(directory,fetch=fake)
+            self.assertEqual(status(directory)["records"],1)
+            raw=directory/"rmp_frs_public.raw.jsonl"
+            original_stat=raw.stat()
+            swapped=directory/"replaced.jsonl"
+            data=bytearray(raw.read_bytes());data[-3]^=1
+            swapped.write_bytes(data)
+            os.utime(swapped,ns=(original_stat.st_atime_ns,original_stat.st_mtime_ns))
+            os.replace(swapped,raw)
+            self.assertEqual(raw.stat().st_mtime_ns,original_stat.st_mtime_ns)
+            self.assertEqual(raw.stat().st_size,original_stat.st_size)
+            with self.assertRaises(InvalidRMPIndex):status(directory)
+
     def test_readonly_public_program_id_lookups_and_verification(self):
         def fake(p):
             if "returnCountOnly" in p:return {"count":2}
