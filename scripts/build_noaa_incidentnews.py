@@ -116,6 +116,22 @@ def _float(value, label, *, bound=None):
     return str(n)
 
 
+def _coordinate(value, bound):
+    """Invalid/approximate upstream position cannot become a property point."""
+    raw=str(value or "").strip()
+    if not raw:
+        return ""
+    try:
+        number=float(raw)
+        if math.isfinite(number) and -bound <= number <= bound:
+            return str(number)
+    except (ValueError,OverflowError):
+        pass
+    # Keep the original source bytes unchanged in the raw archived file.
+    # Invalid/sentinel coordinates are *missing*, never silently clamped.
+    return ""
+
+
 def _flag(value):
     raw = str(value or "").strip()
     if raw not in ("", "0", "1"):
@@ -142,6 +158,7 @@ def normalize(source, output, *, minimum_rows=100):
     count = 0
     geocoded = 0
     missing_dates = 0
+    excluded_coordinate_rows = 0
     classes = Counter()
     dates = []
     seen = set()
@@ -175,12 +192,14 @@ def normalize(source, output, *, minimum_rows=100):
                     missing_dates += 1
                 else:
                     dates.append(when)
-                latitude = _float(raw.get("lat"), "latitude", bound=90)
-                longitude = _float(raw.get("lon"), "longitude", bound=180)
+                latitude = _coordinate(raw.get("lat"), 90)
+                longitude = _coordinate(raw.get("lon"), 180)
                 if bool(latitude) != bool(longitude):
                     latitude = longitude = ""
                 if latitude and longitude:
                     geocoded += 1
+                elif str(raw.get("lat") or "").strip() or str(raw.get("lon") or "").strip():
+                    excluded_coordinate_rows += 1
                 threat = _text(raw.get("threat"), 80)
                 if threat not in ("Oil", "Chemical", "Other", ""):
                     # New publisher categories require review, not silent mapping.
@@ -203,6 +222,7 @@ def normalize(source, output, *, minimum_rows=100):
             raise ValueError(f"IncidentNews source too small: {count} < {minimum_rows}")
         temp.replace(output)
         return {"records": count, "coordinate_records": geocoded,
+                "excluded_coordinate_rows": excluded_coordinate_rows,
                 "missing_notification_dates": missing_dates,
                 "earliest_notification_date": min(dates) if dates else None,
                 "latest_notification_date": max(dates) if dates else None,
