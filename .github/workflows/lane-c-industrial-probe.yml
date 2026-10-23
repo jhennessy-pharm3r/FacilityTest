@@ -16,7 +16,7 @@ jobs:
       - name: Install source and test dependencies
         run: pip install -r requirements.txt -r requirements-dev.txt openpyxl requests
       - name: Validate all Lane C tests and importer failure gates
-        run: pytest -q tests/test_industrial_incidents.py tests/test_nrc_enriched.py tests/test_lane_c_index.py tests/test_csb_release.py
+        run: python -m pytest -q tests/test_industrial_incidents.py tests/test_nrc_enriched.py tests/test_lane_c_index.py tests/test_csb_release.py
       - name: Acquire REAL NRC and CSB, repeat transforms, index temporarily, inspect authorized PHMSA distribution
         run: python scripts/run_lane_c_verified.py --output output
       - name: Save aggregate-only source and ephemeral index audit (no raw incident rows or SQLite)
