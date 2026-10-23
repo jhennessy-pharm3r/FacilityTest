@@ -28,6 +28,15 @@ from .source_sidecars import (status as source_index_status, frs_status, frs_sea
     frs_detail, noaa_index_status, noaa_connection, noaa_events,
     incidentnews_index_status, incidentnews_connection, incidentnews_events,
     SourceIndexUnavailable)
+from .industrial_facility_screen import screen_site as screen_industrial_site
+from .industrial_source_indices import (
+    status as industrial_index_status,
+    observations as industrial_observations,
+    observation_detail as industrial_observation_detail,
+    enforcement as industrial_enforcement,
+    review_candidates as industrial_review_candidates,
+    IndustrialSourceUnavailable
+)
 from .incident_news import nearby_reviewed_site as nearby_incidentnews_site
 from .lane_a_service import (status as lane_a_source_status, usda_geography as lane_a_usda_geography,
     fema_polygon as lane_a_fema_polygon, wildfire_qa_pixel as lane_a_qa_pixel,
@@ -69,7 +78,10 @@ def health(c=Depends(conn_dependency)):
 
 @app.get('/api/source-indices/status')
 def private_source_indices():
-    return {**source_index_status(), 'lane_b_epa': lane_b_status()}
+    output={**source_index_status(), 'lane_b_epa': lane_b_status()}
+    output['industrial_incidents']=industrial_index_status('observations')
+    output['phmsa_wms_enforcement']=industrial_index_status('enforcement')
+    return output
 
 
 @app.get('/api/lane-a/status')
@@ -120,6 +132,74 @@ def lane_a_facility_flood_evidence(facility_id:str,c=Depends(conn_dependency)):
         raise HTTPException(404,str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(422,str(exc)) from exc
+
+
+@app.get('/api/industrial/status')
+def industrial_source_health():
+    """Private indexed publisher observations, never a live insured-facility census."""
+    return {'observations':industrial_index_status('observations'),
+            'phmsa_enforcement':industrial_index_status('enforcement'),
+            'primary_phmsa_incidents':'NOT_TESTED_OFFICIAL_SOURCE_ACCESS_BLOCKED',
+            'physical_facility_matches_verified':0,
+            'confirmed_insured_losses':0,
+            'warning':'Regulator source notifications and enforcement cases are not unique verified accidents or insurance losses'}
+
+
+@app.get('/api/industrial/observations')
+def industrial_source_observations(source:str=Query(...,min_length=3,max_length=18),
+                  state:str|None=None,since:str|None=None,
+                  limit:int=Query(50,ge=1,le=100),
+                  offset:int=Query(0,ge=0,le=100000)):
+    try:
+        return industrial_observations(source=source,state=state,since=since,
+                                       limit=limit,offset=offset)
+    except IndustrialSourceUnavailable as e:
+        raise HTTPException(503,'Industrial source index unavailable; no incident coverage conclusion') from e
+    except ValueError as e:
+        raise HTTPException(422,str(e)) from e
+
+
+@app.get('/api/industrial/observations/{source}/{source_id}')
+def industrial_source_observation_detail(source:str,source_id:str):
+    try:
+        record=industrial_observation_detail(source=source,source_id=source_id)
+    except IndustrialSourceUnavailable as e:
+        raise HTTPException(503,'Industrial source index unavailable; source ID not checked') from e
+    except ValueError as e:
+        raise HTTPException(422,str(e)) from e
+    if record is None:
+        raise HTTPException(404,'Report identifier absent from this source release; not proof of no incident')
+    record['insured_facility_verification']='NOT_PERFORMED'
+    return record
+
+
+@app.get('/api/industrial/phmsa-enforcement')
+def private_phmsa_enforcement(operator_id:str|None=None,case_number:str|None=None,
+                  limit:int=Query(50,ge=1,le=100),
+                  offset:int=Query(0,ge=0,le=100000)):
+    try:
+        return industrial_enforcement(operator_id=operator_id,case_number=case_number,
+                                       limit=limit,offset=offset)
+    except IndustrialSourceUnavailable as e:
+        raise HTTPException(503,'PHMSA enforcement case source unavailable; this is not an incident census') from e
+    except ValueError as e:
+        raise HTTPException(422,str(e)) from e
+
+
+@app.get('/api/industrial/review-candidates')
+def private_industrial_review_candidates(request:Request,
+                  limit:int=Query(50,ge=1,le=100),
+                  offset:int=Query(0,ge=0,le=100000)):
+    # This is a *human-only* reviewer workflow. A shared service token,
+    # legacy Basic secret or local-development actor is not a named reviewer.
+    if getattr(request.state,'role','') not in ('reviewer','admin'):
+        raise HTTPException(403,'Individually authenticated reviewer account required')
+    try:
+        return industrial_review_candidates(limit=limit,offset=offset)
+    except IndustrialSourceUnavailable as e:
+        raise HTTPException(503,'Industrial review-only index unavailable') from e
+    except ValueError as e:
+        raise HTTPException(422,str(e)) from e
 
 
 @app.get('/api/noaa/storm-events/status')
@@ -388,6 +468,30 @@ def universal_facility_detail(site_id:str,c=Depends(conn_dependency)):
             raise HTTPException(503,'National EPA source index unavailable') from exc
     if result is None:raise HTTPException(404,'Facility source identity not found')
     return result
+
+
+@app.get('/api/universal-facilities/{site_id}/industrial-screen')
+def universal_industrial_screen(site_id:str,request:Request,
+                                radius_km:float=Query(10,ge=1,le=50),
+                                limit:int=Query(30,ge=1,le=50),
+                                c=Depends(conn_dependency)):
+    """Human-only source-to-reported-site screen, NEVER a verified incident or loss."""
+    if getattr(request.state,'role','') not in ('reviewer','admin'):
+        raise HTTPException(403,'Individually authenticated reviewer required for facility-report candidates')
+    result=universal_detail(c,site_id)
+    if result is None and frs_status()['state'] in ('ready_full','ready_partial'):
+        try:
+            result=frs_detail(site_id)
+        except SourceIndexUnavailable as exc:
+            raise HTTPException(503,'Private source-identity index unavailable') from exc
+    if result is None:
+        raise HTTPException(404,'Source-site identifier not found in authorized registry')
+    try:
+        return screen_industrial_site(result['site'],radius_km=radius_km,limit=limit)
+    except IndustrialSourceUnavailable as exc:
+        raise HTTPException(503,'NRC/CSB original-source index not available; no absence-of-incidents conclusion') from exc
+    except ValueError as exc:
+        raise HTTPException(422,str(exc)) from exc
 
 
 @app.post('/api/universal-facilities/{site_id}/track')
