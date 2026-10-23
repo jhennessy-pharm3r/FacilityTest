@@ -20,6 +20,7 @@ try:
     from scripts.index_lane_c_incidents import index_sources, search_source, audit_multiyear_source_coverage
     from scripts.lane_c_review_candidates import build_review_candidates
     from scripts.lane_c_private_handoff import private_bundle
+    from scripts.lane_c_install import install, active_status, query
 except ModuleNotFoundError:  # direct script
     from probe_lane_c_sources import download
     from build_nrc_enriched import stage_nrc
@@ -27,6 +28,7 @@ except ModuleNotFoundError:  # direct script
     from index_lane_c_incidents import index_sources, search_source, audit_multiyear_source_coverage
     from lane_c_review_candidates import build_review_candidates
     from lane_c_private_handoff import private_bundle
+    from lane_c_install import install, active_status, query
 
 URLS = {
     "nrc": "https://nrc.uscg.mil/FOIAFiles/CY25.xlsx",
@@ -78,7 +80,9 @@ def fetch_official_phmsa(name, url, work):
         temp.unlink(missing_ok=True)
     return report
 
-def run(output,*,private_bundle_dir=None):
+def run(output,*,private_bundle_dir=None,install_test_root=None):
+    if install_test_root is not None and private_bundle_dir is None:
+        raise ValueError("A real private source bundle is required for the install/query smoke gate")
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
     audit = {"run_started_at":datetime.now(timezone.utc).isoformat(),
@@ -223,6 +227,42 @@ def run(output,*,private_bundle_dir=None):
                 audit["opt_in_private_handoff"]=private_bundle(
                     work/"lane-c-multiyear.sqlite",inputs,raw_sources,
                     private_bundle_dir,repo_root=Path(__file__).resolve().parents[1])
+                if install_test_root is not None:
+                    install_root=Path(install_test_root)
+                    if not install_root.is_dir() or not (install_root.stat().st_mode & 0o077)==0:
+                        raise ValueError("Smoke install root must be pre-created with 0700 private access")
+                    installed=install(private_bundle_dir,install_root,
+                        release_id="lane-c-real-source-smoke",
+                        repo_root=Path(__file__).resolve().parents[1])
+                    verified=active_status(install_root,
+                        repo_root=Path(__file__).resolve().parents[1])
+                    expected=consolidated["total_indexed_ephemeral"]
+                    if (installed["total_indexed_source_observations"] != expected or
+                        verified["total_indexed_source_observations"] != expected):
+                        raise ValueError("Private release install count diverges from verified temporary source index")
+                    query_summaries={}
+                    for name,_,_ in inputs:
+                        sample=query(install_root,source=name,page_size=3,
+                                     repo_root=Path(__file__).resolve().parents[1])
+                        if sample["total"]!=consolidated["sources"][name]["accepted_rows"] or len(sample["items"])!=3:
+                            raise ValueError("Private installed source query failed: "+name)
+                        if any(item["site_link_status"]!="candidate_only_not_matched" for item in sample["items"]):
+                            raise ValueError("Unreviewed insured property promotion detected")
+                        query_summaries[name]={"total":sample["total"],"read_only_query":"PASS"}
+                    audit["private_installation_query_smoke"]={
+                        "state":"TEMPORARY_PRIVATE_INDEX_INSTALL_AND_QUERY_VERIFIED",
+                        "installation":installed["installation"],
+                        "source_namespaces":len(query_summaries),
+                        "source_query_counts":query_summaries,
+                        "verified_installed_count":expected,
+                        "index_sha256":verified["index_sha256"],
+                        "provenance_sha256_against_originals":"PASS",
+                        "sqlite_quick_check":verified["sqlite_quick_check"],
+                        "persistent_production_serving":"NOT_TESTED",
+                        "authenticated_api_service":"NOT_DEPLOYED",
+                        "app_deployed_records":0,
+                        "verified_insured_properties":0
+                    }
             audit["consolidated_multi_year_index"]={
                 "state":"INDEXED_EPHEMERAL_NOT_DEPLOYED",
                 "total_rows":consolidated["total_indexed_ephemeral"],
@@ -279,8 +319,10 @@ def main():
     ap.add_argument("--output",type=Path,required=True)
     ap.add_argument("--private-bundle-dir",type=Path,
         help="Explicit pre-provisioned secure outside-repository path for original XLSX, normalized gzip, manifests, and SQLite; NEVER under public Pages/CI artifact directory")
+    ap.add_argument("--install-test-root",type=Path,
+        help="Precreated private 0700 root OUTSIDE repository; run REAL bundle install + per-source read-only query verification")
     a=ap.parse_args()
-    run(a.output,private_bundle_dir=a.private_bundle_dir)
+    run(a.output,private_bundle_dir=a.private_bundle_dir,install_test_root=a.install_test_root)
 
 if __name__=="__main__":
     main()
