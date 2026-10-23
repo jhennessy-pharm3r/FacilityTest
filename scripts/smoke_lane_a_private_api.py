@@ -6,6 +6,10 @@ release on this runner. Fixture private research intake ≠ verified insured sit
 import json
 import os
 import sys
+from pathlib import Path
+import hashlib
+
+from facilityrisk.lane_a_installed import installed_release
 
 from fastapi.testclient import TestClient
 
@@ -80,6 +84,33 @@ def validate():
         assert site["verified_property_hazard"] is False
         assert get("/api/lane-a/status")["verified_insured_sites"] == 0
 
+        # Alter a retained *real* official raw response after initial validated
+        # status was cached. A private mount must now fail closed on the NEXT
+        # source request, without replacing the read-only release pointer.
+        mounted = Path(os.environ["FACILITY_RISK_LANE_A_INDEX_ROOT"])
+        source_root, pointer = installed_release(mounted)
+        proof = json.loads((source_root.parents[1] / "release-verification.json").read_text())
+        selected = next(key for key in sorted(proof["retained_source_file_sha256"])
+                        if key.startswith("paged_windows/raw/") and key.endswith(".json"))
+        original_file = source_root / selected
+        original_bytes = original_file.read_bytes()
+        original_mode = original_file.stat().st_mode & 0o777
+        pointer_original = (mounted / "current.json").read_bytes()
+        try:
+            original_file.chmod(0o600)
+            original_file.write_bytes(original_bytes + b"unexpected-modification")
+            unavailable = get("/api/lane-a/status")
+            assert unavailable["state"] == "unavailable"
+            assert client.get("/api/lane-a/fema-nfhl/06067C/06067C_1223",
+                              headers=authorization).status_code == 503
+        finally:
+            original_file.write_bytes(original_bytes)
+            original_file.chmod(original_mode)
+        assert hashlib.sha256(original_file.read_bytes()).hexdigest() == proof[
+            "retained_source_file_sha256"][selected]["sha256"]
+        assert (mounted / "current.json").read_bytes() == pointer_original
+        assert get("/api/lane-a/status")["state"] == "ready_partial"
+
     return {
         "real_source_queries_through_authenticated_api": True,
         "publisher_native_identifiers_preserved": True,
@@ -87,6 +118,7 @@ def validate():
         "source_release": status["release_id"],
         "missing_coverage_unknown": True,
         "unreviewed_site_blocked": True,
+        "real_source_runtime_tamper_detected_and_recovered": True,
         "external_client_api_deployment_claimed": False,
         "insured_site_links": 0,
     }
