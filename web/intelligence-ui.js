@@ -72,12 +72,61 @@
       }finally{button.disabled=!mounted;}
     });
   }
+  function laneAWildfirePanel(sites){
+    if(window.PublicRiskAPI)return '';
+    const options=sites.slice(0,250).map(s=>'<option value="'+esc(s.id)+'">'+esc(s.name||s.id)+'</option>').join('');
+    return card(title('US Forest Service original wildfire raster','WHP2023 · actual native 270m pixels · modeled landscape hazard only')+
+      '<div class="intel-card-body"><p>Use the complete, original USDA 2023 continuous and classified GeoTIFFs for a reviewed facility coordinate. Coverage includes CONUS, Alaska and Hawaii where the original source pixels exist. Non-burnable, water and nodata are not proof of low insured property risk.</p>'+
+      '<div class="intel-map-source-query"><label for="lane-a-wildfire-site">Private research site</label>'+
+      '<div class="intel-source-check-controls"><select id="lane-a-wildfire-site">'+options+'</select>'+
+      '<button class="btn" id="lane-a-check-wildfire" type="button"'+(options?'':' disabled')+'>Check original wildfire raster</button></div></div>'+
+      '<div class="intel-source-check-result" id="lane-a-wildfire-result" role="status" aria-live="polite">Verifying original six-raster private source availability…</div></div>');
+  }
+  async function initLaneAWildfirePanel(api){
+    const button=$('#lane-a-check-wildfire'),output=$('#lane-a-wildfire-result'),picker=$('#lane-a-wildfire-site');
+    if(!button||!output||!picker)return;
+    let ready=false;
+    try{
+      const status=await api('lane-a/whp2023/full-status');
+      ready=status?.state==='ready_publisher_rasters';
+      output.textContent=ready?
+        ('Original 2023 270m publisher raster mounted: '+Number(status.raster_valid_cells/2).toLocaleString()+
+         ' non-masked model pixels per product across CONUS, Alaska and Hawaii. Not a current-season forecast or insured loss model.') :
+         'Complete USDA 270m publisher raster not mounted on this private server; wildfire property hazard remains UNKNOWN.';
+    }catch{
+      output.textContent='Original USDA wildfire raster source unavailable; no facility risk conclusion is available.';
+    }
+    if(!output.isConnected)return;
+    button.disabled=!ready||!picker.value;
+    button.addEventListener('click',async()=>{
+      if(!picker.value)return;
+      button.disabled=true;
+      output.textContent='Checking original USDA raster pixels using the currently reviewed location…';
+      try{
+        const result=await api('facilities/'+encodeURIComponent(picker.value)+'/usfs-whp2023');
+        const state=String(result.state||'UNKNOWN');
+        if(state==='PUBLISHER_RELATIVE_LANDSCAPE_HAZARD_AT_REVIEWED_POINT'){
+          output.textContent='Publisher landscape hazard: '+String(result.classified_label)+
+            ' (class '+String(result.classified_value)+'), continuous source value '+
+            String(result.continuous_value)+'. WHP2023, 270m, fuels largely 2020. NOT wildfire probability, insured damage or premium.';
+        }else if(state==='SPECIAL_NON_BURNABLE_OR_WATER_MASK_NOT_LOW_RISK'){
+          output.textContent='Source mask: '+String(result.classified_label)+
+            '. This is NOT a verified property-level low-risk determination or evidence of zero exposure.';
+        }else{
+          output.textContent='Wildfire hazard UNKNOWN: '+state.replaceAll('_',' ').toLowerCase()+
+            '. A current verified site point and an actual unmasked source cell are required.';
+        }
+      }catch{
+        output.textContent='Original wildfire source or current reviewed site not queryable; risk remains UNKNOWN.';
+      }finally{button.disabled=!ready;}
+    });
+  }
   function mapPage(sites){
     const plotted=sites.filter(s=>s.latitude!=null&&s.longitude!=null),verified=sites.filter(sitePrecise).length;
     const sidebar=plotted.map(s=>`<button class="intel-map-row" data-focus-lat="${Number(s.latitude)}" data-focus-lon="${Number(s.longitude)}"><span class="intel-location-dot ${sitePrecise(s)?'verified':'approx'}"></span><span><strong>${esc(s.name)}</strong><small>${sitePrecise(s)?'Reviewed site point':'Unverified / reference point'} · ${esc(s.country||'')}</small></span></button>`).join('');
     return `${info('Map pins are navigational. A city point or unreviewed analyst coordinate does not establish parcel-specific flood, wildfire or property exposure. FEMA zone checks require a separately verified site point.')}
     <div class="intel-map-grid">${card(`<div class="intel-map-canvas" id="intel-map-canvas"><div class="intel-map-fallback">Loading interactive basemap…</div></div><div class="intel-map-foot"><span>● ${plotted.length} mapped reference points</span><span>${verified} site point(s) independently reviewed</span></div>`)}${card(`${title('Facilities','Click a site to focus its location')}<div class="intel-map-site-list">${sidebar||'<p class="small-muted">No coordinate points available</p>'}</div>`)}</div>
-    <div class="intel-perils">${[['Flood','FEMA NFHL','Requires site-verified coordinates'],['Tornado / storm','NOAA Storm Events','Point and county event limitations'],['Seismic','USGS ComCat','Epicenter proximity is not shaking intensity'],['Water stress','WRI Aqueduct','Basin-scale modeled exposure'],['Wildfire','USFS WHP2023','Verified QA raster pixels / geographic aggregates only; property-level raster still missing']].map(a=>`<div class="intel-peril"><b>${esc(a[0])}</b><span>${esc(a[1])}</span><small>${esc(a[2])}</small></div>`).join('')}</div>${laneAFloodPanel(sites)}`;
+    <div class="intel-perils">${[['Flood','FEMA NFHL','Requires site-verified coordinates'],['Tornado / storm','NOAA Storm Events','Point and county event limitations'],['Seismic','USGS ComCat','Epicenter proximity is not shaking intensity'],['Water stress','WRI Aqueduct','Basin-scale modeled exposure'],['Wildfire','USFS WHP2023','Complete original 270m raster can be mounted privately; site point must be reviewed']].map(a=>`<div class="intel-peril"><b>${esc(a[0])}</b><span>${esc(a[1])}</span><small>${esc(a[2])}</small></div>`).join('')}</div>${laneAFloodPanel(sites)}${laneAWildfirePanel(sites)}`;
   }
   async function initMap(sites){
     const root=$('#intel-map-canvas');if(!root)return;
@@ -173,6 +222,17 @@
   }
   function feedsPage(src,checks,extended=[],ledger=[],generatedAt=null,runUrl='',mounted=null,parallel=null){
     const laneA=mounted?.lane_a;
+    const fullRaster=mounted?.usda_whp2023_national_raster;
+    const fullRasterRow=mounted?
+      '<tr><td><strong>USFS WHP2023 full original 270m raster</strong></td><td>'+
+      esc(String(fullRaster?.state||'not_configured').replaceAll('_',' '))+'</td><td>'+
+      (fullRaster?.state==='ready_publisher_rasters'?
+        Number(fullRaster.raster_valid_cells/2).toLocaleString()+' modeled pixels per product':
+        'Not mounted')+'</td><td>WHP2023 revised 2024 · landscape based on 2020</td><td>'+
+      esc(fullRaster?.state==='ready_publisher_rasters'?
+        'All six publisher GeoTIFFs SHA-checked (CONUS/AK/HI); no automatically verified insured sites or losses':
+        fullRaster?.notice||'Private source release has not been installed')+'</td></tr>':'';
+
     const laneARows=!laneA?'':laneA.state==='ready_partial'?[
       ['FEMA NFHL — bounded flood polygons','fema_nfhl','Six limited city QA envelopes; original map effective dates unverified'],
       ['USFS WHP 2023 — continuous QA pixels','usda_continuous','70 geographic raster QA pixels, not facility risk'],
@@ -194,7 +254,7 @@
       esc(String(index?.state||'not_configured').replaceAll('_',' '))+'</td><td>'+
       (index?.[countKey]==null?'Not mounted':Number(index[countKey]).toLocaleString())+'</td><td>'+
       esc(index?.vintage||'No indexed vintage')+'</td><td>'+
-      esc(index?.notice||'No verified private source index')+'</td></tr>').join('')+laneARows):'';
+      esc(index?.notice||'No verified private source index')+'</td></tr>').join('')+laneARows+fullRasterRow):'';
     const laneDRows=mounted?.lane_d?.datasets?Object.values(mounted.lane_d.datasets).map(d=>'<tr><td><strong>'+esc(d.source)+'</strong></td><td>'+esc(String(d.state||'not_configured').replaceAll('_',' '))+'</td><td>'+(d.indexed_private_readonly_rows==null?'Unknown':Number(d.indexed_private_readonly_rows).toLocaleString())+'</td><td>Original source vintage; check private release</td><td>'+esc(d.publisher_grain_notice)+' · Insured-site matches not verified</td></tr>').join(''):'';
     const reportAge = generatedAt ? (Date.now()-Date.parse(generatedAt))/86400000 : Infinity;
     const aged = !Number.isFinite(reportAge)||reportAge>3;
@@ -232,7 +292,10 @@
         const sites=state.facilities.map(f=>({...f,...(status.get(f.id)||{}),
           latitude:f.latitude,longitude:f.longitude}));
         root.innerHTML=mapPage(sites);await initMap(sites);
-        if(!window.PublicRiskAPI)await initLaneAFloodPanel(api);
+        if(!window.PublicRiskAPI){
+          await initLaneAFloodPanel(api);
+          await initLaneAWildfirePanel(api);
+        }
         return;
       }
       const intel=await api('intelligence');if(!root.isConnected)return;

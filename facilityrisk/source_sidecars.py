@@ -19,6 +19,7 @@ from .universal_registry import search as universal_search, detail as universal_
 from .storm_events import search as noaa_search
 from .incident_news import search as incidentnews_search, validate_manifest as validate_incidentnews_manifest
 from .lane_a_service import status as lane_a_source_status
+from .lane_a_national_whp import status as whp_full_raster_status
 
 FRS_INDEX_ENV = "FACILITY_RISK_FRS_INDEX_PATH"
 FRS_QA_ENV = "FACILITY_RISK_FRS_INDEX_QA"
@@ -222,6 +223,7 @@ def status():
     return {"frs": frs_status(), "noaa": noaa_index_status(),
             "incidentnews": incidentnews_index_status(),
             "lane_a": lane_a_source_status(),
+            "usda_whp2023_national_raster": whp_full_raster_status(),
             "scope": "Read-only public-authority source catalogs, not verified insured properties or claims"}
 
 

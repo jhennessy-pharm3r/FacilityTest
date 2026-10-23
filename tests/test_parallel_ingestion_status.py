@@ -20,7 +20,7 @@ def test_reviewed_lane_manifest_is_complete_reconciled_and_never_claims_deployme
     assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", doc["as_of"])
     assert doc["coordination_issue"] == GITHUB + "issues/73"
     assert [lane["id"] for lane in doc["lanes"]] == ["A", "B", "C", "D"]
-    assert len(sources) == sum(len(lane["sources"]) for lane in doc["lanes"]) == 20
+    assert len(sources) == sum(len(lane["sources"]) for lane in doc["lanes"]) == 21
     permitted = {"sample_ci_indexed", "ci_indexed", "staged_normalized",
                  "downloaded_qa", "access_blocked"}
     for lane in doc["lanes"]:
@@ -52,9 +52,18 @@ def test_reviewed_lane_manifest_is_complete_reconciled_and_never_claims_deployme
 
 def test_specific_official_workflow_counts_are_not_fabricated_or_summed_as_sites():
     doc, rows = load_sources()
-    assert len(rows) == 20
+    assert len(rows) == 21
     assert (rows['fema_nfhl']['accepted'], rows['usfs_whp']['accepted'],
             rows['usfs_whp_classified']['accepted'], rows['usfs_whp_aggregates']['accepted']) == (34, 70, 70, 35304)
+    full = rows['usfs_whp2023_six_national_tiffs']
+    assert full['scanned'] == full['accepted'] == full['indexed_ci'] == 6
+    assert full['rejected'] == full['deployed'] == full['verified_insured_sites'] == 0
+    assert full['source_sha256'] == '7f10f1f8dd97551b8be1458fe0ec924df60b2cea7ece2d1af4c3c1166d1895ab'
+    assert '133,505,015' in full['scope'] and '168,553,707' in full['scope']
+    assert 'not physical sites' in full['scope'].lower()
+    assert '368,424,961' in full['notes']
+    assert 'NOT' in full['notes'] and 'durable server' in full['notes']
+
     assert (rows['epa_echo']['scanned'], rows['epa_echo']['accepted'],
             rows['epa_echo']['rejected'], rows['epa_echo']['valid_coordinates']) == (
             3229311, 3208008, 21303, 3146109)
