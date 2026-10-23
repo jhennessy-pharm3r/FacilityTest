@@ -157,6 +157,67 @@ class VerifiedSourceInstallTests(unittest.TestCase):
             self.assertEqual(before,current.read_bytes())
             lock.unlink()
 
+    def test_publisher_authenticated_live_odin_snapshot_install_and_review_guard(self):
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td)
+            bundle=root/"first-party-odin"
+            bundle.mkdir()
+            source=hashlib.sha256(b"SYNTHETIC_ORNL_SOURCE_BYTES_NOT_REAL_OUTAGES").hexdigest()
+            dbpath=bundle/"odin_direct_county_staging.sqlite"
+            with sqlite3.connect(dbpath) as db:
+                db.execute("""CREATE TABLE source_observations (
+                    source_row_key TEXT PRIMARY KEY,
+                    original_position INTEGER NOT NULL,
+                    native_mrid TEXT,
+                    native_county_fips TEXT NOT NULL,
+                    native_eia_utility_id TEXT,
+                    reported_start TEXT,
+                    meters_affected INTEGER,
+                    snapshot_utc TEXT NOT NULL,
+                    is_exact_duplicate INTEGER NOT NULL,
+                    duplicate_of_source_row INTEGER,
+                    original_row_sha256 TEXT NOT NULL,
+                    original_json TEXT NOT NULL)""")
+                db.executemany("INSERT INTO source_observations VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",[
+                    ("a",1,None,"04013","803",None,10,"2026-10-23T18:00:00Z",0,None,"sha1","{}"),
+                    ("b",2,None,"04013","803",None,10,"2026-10-23T18:00:00Z",1,1,"sha1","{}"),
+                ])
+            digest=sha256_file(dbpath)
+            manifest={
+                "source":"DOE_ORNL_ODIN_DIRECT_NON_AUTH_COUNTY",
+                "original_raw_json_sha256":source,
+                "normalized_accepted":2,"rejected":0,
+                "original_https_download":True,
+                "observations":{"exact_duplicate_source_rows_in_snapshot":1},
+                "durable_backend_indexed":0,"deployed":0
+            }
+            handoff={
+                "original_json_sha256":source,
+                "staged_sqlite_sha256":digest,
+                "indexed_source_rows":2,
+                "staged_sqlite_bytes":dbpath.stat().st_size,
+                "publisher_use_review_required":True,
+                "deployed":0,
+            }
+            (bundle/"manifest.json").write_text(json.dumps(manifest))
+            (bundle/"coordinator_handoff.json").write_text(json.dumps(handoff))
+            installed=root/"private-check"
+            result=install(bundle,installed,"odin_direct_public",source)
+            self.assertEqual(result["source_rows_accepted"],2)
+            self.assertEqual(result["exact_duplicate_rows_flagged"],1)
+            q=query_install(installed,"odin_direct_public",fips="04013")
+            self.assertEqual(q["data"]["candidate_counts"]["odin_firstparty_public_county_snapshot_raw_rows"],2)
+            self.assertEqual(q["data"]["candidate_counts"]["odin_firstparty_exact_duplicate_rows_excluded"],1)
+            self.assertFalse(q["deployed_to_live_facility_app"])
+            pointer=(installed/"odin_direct_public"/"current.json").read_bytes()
+            manifest["original_https_download"]=False
+            (bundle/"manifest.json").write_text(json.dumps(manifest))
+            with self.assertRaisesRegex(ValueError,"authenticated official HTTPS"):
+                install(bundle,installed,"odin_direct_public",source)
+            self.assertEqual((installed/"odin_direct_public"/"current.json").read_bytes(),pointer)
+            with self.assertRaises(ValueError):
+                query_install(installed,"odin_direct_public",fips="04013",year=2023)
+
     def test_unauthorized_source_family_or_symlink_source_disallowed(self):
         with tempfile.TemporaryDirectory() as td:
             root=Path(td)
