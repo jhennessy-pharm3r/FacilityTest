@@ -50,6 +50,26 @@ class LaneBReadOnlyIndexTests(unittest.TestCase):
             m["indexed_rows"]=500000;manifest.write_text(json.dumps(m))
             with self.assertRaises(InvalidSourceIndex):
                 source_status(out/"tri.sqlite",manifest,"tri")
+    def test_same_size_and_mtime_replaced_sqlite_invalidates_integrity_cache(self):
+        import os
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d);raw=root/"echo.csv"
+            raw.write_text("REGISTRY_ID,FAC_NAME\nE001,Warehouse\n")
+            out=root/"out";ingest("echo",raw,out)
+            db=out/"echo.sqlite";meta=out/"echo.manifest.json"
+            self.assertEqual(source_status(db,meta,"echo")["indexed_rows"],1)
+            original_stat=db.stat()
+            tampered=db.with_suffix(".swap")
+            data=bytearray(db.read_bytes())
+            data[-1] ^= 1
+            tampered.write_bytes(data)
+            os.utime(tampered,ns=(original_stat.st_atime_ns,original_stat.st_mtime_ns))
+            os.replace(tampered,db)
+            self.assertEqual(db.stat().st_mtime_ns,original_stat.st_mtime_ns)
+            self.assertEqual(db.stat().st_size,original_stat.st_size)
+            with self.assertRaises(InvalidSourceIndex):
+                source_status(db,meta,"echo")
+
     def test_injection_is_exact_match(self):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d);raw=root/"echo.csv";raw.write_text("REGISTRY_ID,FAC_NAME\nA001,Factory\n")
