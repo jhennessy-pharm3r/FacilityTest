@@ -54,11 +54,13 @@ def assess(oe417: list[dict],epm: list[dict]):
         index[key].append(row)
     match_groups=defaultdict(lambda:{"epm":[],"oe417":[]})
     skipped_epm=Counter()
+    unparseable_start_samples=Counter()
     for row in epm:
         dt=epm_start_date(row)
         area=norm_area(row.get("reported_area"))
         if not dt:
             skipped_epm["unparseable_or_missing_start_date"]+=1
+            unparseable_start_samples[str(row.get("reported_start"))[:100]]+=1
             continue
         if not area:
             skipped_epm["missing_affected_area"]+=1
@@ -99,6 +101,7 @@ def assess(oe417: list[dict],epm: list[dict]):
         "oe417_candidate_eligible_date_area_rows":sum(map(len,index.values())),
         "oe417_source_rows_skipped_from_candidate_search":dict(skipped_oe),
         "epm_rows_skipped_from_candidate_search":dict(skipped_epm),
+        "epm_unparseable_start_source_values":dict(unparseable_start_samples.most_common(25)),
         "exact_normalized_date_area_candidate_groups":len(groups),
         "one_to_one_unverified_candidate_groups":one_to_one,
         "ambiguous_multiplicity_candidate_groups":ambiguous,
