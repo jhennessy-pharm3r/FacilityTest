@@ -113,6 +113,8 @@ def initialize(conn: sqlite3.Connection) -> None:
     initialize_approvals(conn)
     from .coverage_review import initialize_insurance_reviews
     initialize_insurance_reviews(conn)
+    from .physical_assets import initialize_assets
+    initialize_assets(conn)
     conn.commit()
 
 
