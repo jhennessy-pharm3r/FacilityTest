@@ -1,18 +1,19 @@
 # Facility Risk Intelligence — verified status and current roadmap
 
-**As of:** October 22, 2026.
+**As of:** October 23, 2026.
 **Universal scope:** All facility types and industries; life sciences are one optional vertical. Sources cover only the places each publisher reports. Regulatory identities, place observations and insured physical properties are not interchangeable.
 
 ## Verified implementation
 
 | Component | Verified result | Deployment gap |
 | --- | --- | --- |
-| Public GitHub Pages | Static preview, 3 sourced retrospective research cases and 50,368 FDA/Canadian/Irish source identities; browser smoke passing | Not universal live search or an insured-client portal |
+| Public GitHub Pages | Static preview, 3 sourced retrospective research cases and 50,369 FDA/Canadian/Irish source identities; browser smoke passing | Not universal live search or an insured-client portal |
 | National EPA FRS | Complete official export: 5,354,716 valid records, 7,158 rejected; source provenance SHA256 | National registry excludes many commercial premises |
 | National indexed backend | 5,354,716 identities loaded and indexed; 11,174 search matches for warehouse; SQLite quick_check OK; 4.56 GB database; Actions run 39813812469 | An expiring Actions artifact, not running in a durable authenticated production host |
 | Overture pilot | 101,979 place observations across Halifax, Cleveland, Dublin, Singapore; 99,251 categorized in 1,364 categories; database integrity passed | Small sample areas, unverified property identity, no global census |
 | Facility identity and research | Separate cross-source observations, review gates and evidence-linked case reports | Building/campus and company parent reconciliation pending |
 | Natural hazards / incidents | FEMA, NOAA, USGS, WRI and EPA connectors / review flows | Not screened for all discovered sites; no claim or property-impact validation |
+| NOAA regional Storm Events — 2023–2026 | **256,816 official event records**, 153,437 with reported point coordinates; official annual source archives, checksums, schema checks, normalized gzip and 256,816-row disposable private SQLite index verified in [Actions run 39952929129](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39952929129); aggregate ingestion manifest published to Pages | Index remains a short-lived workflow artifact, not a production backend; 2026 is a partial-year data file, pre-2023 history and actual parcel-level event footprints unassessed |
 | Insurance coverage reference | Property, flood, windstorm, earthquake, wildfire, standard/contingent BI, utility, extra expense, spoilage, non-damage BI and parametric types | Reference only, no insured policy terms |
 | Insurance workbench | User-selected cross-industry exposure scenarios, utility/supplier dependencies, review topics, illustrative downtime cost, JSON export | No live geohazard crosswalk; user-entered policy statuses are not verified |
 | Model scoring | No published overall actuarial risk score | Claims outcomes and insured denominators have not been validated |
@@ -24,6 +25,16 @@
 **Discover facility → resolve property/parent/operator → assess verified location and perils → map operations and dependencies → inspect insured policies and parametric alternatives → distinguish verified gaps from unknowns → document financial loss scenarios → export sourced assessment.**
 
 The public Pages workbench supports only scenario and policy-review preparation. It never measures actual property hazard, validates a contract, computes an insured claim or prices risk.
+
+## October 23 source ingestion / live dashboard checkpoints
+
+- [NOAA national ingestion](../.github/workflows/build-noaa-storm-events.yml) now downloads the latest available publisher revision for each requested 2023–2026 annual Storm Events Details archive, validates source row IDs and schema, hashes original and normalized files, and verifies a source-only SQLite import. The [source manifest](../web/ingestion/noaa-storm-events.json) reports **256,816 events**; 2023: 75,593, 2024: 69,801, 2025: 72,360, and partial 2026: 39,062. This is regional weather incident context **only**.
+- The public **Source health** page now loads observed [source probe results](../web/source-status.json), distinct additional-source probes, and a separately published NOAA ingestion row. Tests exercise the visible actual NOAA record count. Connection states are not ingestion states. **FEMA NFHL failed** its October 23 source probe (not evidence of no flood risk). FDA inspections and NOAA primary connectors still report manual-file requirements for their older adapter; the new NOAA bulk intake is independently tracked.
+- **No production facility hazard layer or loss validation is asserted.** The 256,816 events are stored only in a source-only, expiring Actions artifact and test SQLite; the public Pages app receives aggregate counts, not its complete indexed event dataset. Sites without reviewed physical location are unassessed.
+- Shared source ingest conventions: independent source identities, retrieved-vintage and SHA256 provenance, complete-cohort QA, fail-closed handling of missing years and schema drift, private data storage, source-to-site approval, displayable freshness, and no risk score without validated outcomes.
+- The next change must deploy **durable authenticated query service** for existing 5.35M EPA FRS and 256,816 NOAA source records. Connect its status endpoint to the private app; do not push massive databases, insurer addresses or claims into public GitHub Pages.
+- Once that is live, proceed to FDA inspections, NOAA historical years and official storm hazard footprints, PHMSA, NRC, CSB and NFIRS/NERIS, while preserving unknown instead of pretending complete-source coverage.
+- Remaining tracked issues: [#3 universal facility registry](https://github.com/jhennessy-pharm3r/FacilityTest/issues/3), [#4 catastrophe/incident outcomes](https://github.com/jhennessy-pharm3r/FacilityTest/issues/4), [#39 durable EPA service](https://github.com/jhennessy-pharm3r/FacilityTest/issues/39), and [#40 verified BI/policy terms](https://github.com/jhennessy-pharm3r/FacilityTest/issues/40).
 
 ## P0 — universal backend for all industries
 
