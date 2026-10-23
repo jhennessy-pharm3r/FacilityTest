@@ -18,6 +18,7 @@ def workbook(with_headers=True):
     material=wb.create_sheet("MATERIAL")
     material.append(["SEQNOS","MATERIAL_TYPE","QUANTITY"])
     material.append([101,"Diesel","5"])
+    material.append([101,"Oil","2"])
     stream=io.BytesIO()
     wb.save(stream)
     return stream.getvalue()
@@ -47,6 +48,12 @@ def test_public_uscg_annual_workbook_schema_and_provenance(tmp_path):
     assert result["year"]==2025
     assert result["state"]=="schema_probe_only_not_imported"
     assert result["recognizable_headers"]==2
+    primary,child=result["worksheets"]
+    assert primary["seqnos_present"] and primary["unique_seqnos"]==1
+    assert primary["repeated_seqnos_rows"]==0
+    assert child["unique_seqnos"]==1
+    assert child["repeated_seqnos_rows"]==1
+    assert child["nonempty_rows_scanned"]==2
     assert "SEQNOS" in result["worksheets"][0]["header_names"]
     assert "incident counts" in result["data_caveat"].lower()
     assert len(result["sha256"])==64
