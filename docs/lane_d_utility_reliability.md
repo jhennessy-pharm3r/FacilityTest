@@ -87,3 +87,59 @@ At [Actions #39975705946](https://github.com/jhennessy-pharm3r/FacilityTest/acti
 5. **Acceptance:** CI, actual source downloads with hashes, reconciliation, reviewed source licenses/terms, durable index benchmark, facility candidate review and a live backend/browser test before marking `DEPLOYED`. No score/ranking until independently validated outcomes and denominator.
 
 No edits outside the Lane D importers, tests, workflow and this document; don't merge PR #77.
+
+
+---
+
+## Additional official-source validation — 23 October 2026 (Lane D continuation)
+
+The following are actual publisher downloads executed in the official-source GitHub Actions runners, with original-source provenance and SQLite count checks. Counts are observations of different source kinds and cannot be summed as unique outage incidents, utility customers or insured facilities.
+
+### DOE/PNNL Event-correlated Outage Dataset in America (2014–2023)
+
+Primary source: https://data.openei.org/submissions/6458 . Exact publisher ZIP: https://data.openei.org/files/6458/Outage_Dataset_R1.zip . PNNL (She, Adetola & Yun, 2024), CC BY 4.0 per https://catalog.data.gov/dataset/event-correlated-outage-dataset-in-america . Retain author/source credit and attribution in all redistributions. Dataset is produced from historical EAGLE-I and DOE-417 event correlation; NOT an insurer property claim census.
+
+- Archive: 31,260,449 bytes; SHA-256 44557bae7a5c8e02c611a14f75fe9e123d81d286f700b9fd88ac538edd910fe7 ; 51 archive members, of which 50 distinct source CSVs.
+- Source records: downloaded/scanned 2,124,183; normalized 2,124,183; rejected 0; indexed in local transient SQLite 2,124,183; durable backend indexed 0; insured-site outages verified 0; deployed 0.
+- 2014–2023 accepted row partitions: 1,385,389 county outage episodes (MERGED); 526,165 DOE-event-correlated county observations; 91,402 eight-hour correlation-lag variants; 114,610 twenty-four-hour correlation-lag variants; 6,617 state/month aggregate rows. Month=0 in the last category is a publisher aggregate, NOT a calendar month.
+- Geographic coverage: 2,985 unique five-digit county FIPS and 54 distinct source state/territory NAME strings (includes two aliases for U.S. Virgin Islands). Source times: 2014-11-01 through 2023-12-31, no original timezone imputed.
+- Native event identities: 2,922 distinct (source-year, event_id) pairs in event-correlation families. Event ID repeats across counties; merged county outages have NO published native event ID. 288,519 candidate repeated county/time/event-key occurrences retained: NOT 288,519 confirmed duplicates and NOT separately countable losses.
+- QA: 50/50 publisher table schemas recognized; each original CSV recount exactly agrees with importer, manifest and SQLite by type; member SHA-256s recorded; SQLite integrity_check=ok, original archive checksum verified. No invalid rows rejected in this publisher ZIP.
+- Actual CI and provenance receipt: https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39980242383
+- Reproducible command: python -m facilityrisk.lane_d.ingest_pnnl_county_outages --zip /path/Outage_Dataset_R1.zip --output /private/lane-d/pnnl
+
+### DOE/ORNL ODIN public near-real-time county outage snapshot
+
+ORNL ODIN official public dataset https://openenergyhub.ornl.gov/explore/dataset/odin-real-time-outages-county/ and export https://openenergyhub.ornl.gov/api/explore/v2.1/catalog/datasets/odin-real-time-outages-county/exports/json . Snapshot source is changing, so every collection must preserve its own observed time/hash and must not be summed across refreshes. Public availability does NOT establish unrestricted redistribution or commercial-use terms; policy review remains open.
+
+- Observed official 2026-10-23 15:42 UTC JSON export: 1,782,901 bytes; SHA-256 2e23afd647119793b15499c3210508142faca8de5f7aae014d7af502abf4366f.
+- Downloaded 424 source records, accepted 423, rejected 1 due nonempty invalid date, transient SQLite indexed 423. Durable backend indexed/deployed 0/0. There were 160 legitimate publisher NULL start times, recorded as UNKNOWN instead of falsely rejecting or inferring zero downtime.
+- Geographic scope of this particular snapshot: 241 county FIPS, 37 source states, 89 native utility IDs. No duplicate complete raw-row fingerprints among 423 accepted observations. FIPS geometry is county context, NOT facility coordinates or a verified metered-utility link. Insured facility outage and business-interruption amount verification both zero.
+- Official row-by-row source JSON/hash versus SQLite query validation: https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39980518977
+- Reproduce: python -m facilityrisk.lane_d.ingest_odin --output /private/lane-d/odin-snapshot
+
+### First-party Baxter corporate operations interruption case
+
+SEC EDGAR remains access blocked with HTTP 403 from the GitHub Actions runner. Rather than bypass this restriction, the importer uses three actual first-party Baxter issuer investor-relations publications dated September 29 2024, November 8 2024 and February 20 2025 relating to the North Cove manufacturing facility interruption. They are ONE underlying company-reported hurricane-related interruption, NOT three unrelated insured losses and NOT evidence of an independently confirmed electric utility power outage. All issuer publication title/date/event/site/interruption anchors validated, original exact HTTPS URLs and HTML SHA-256 preserved.
+
+- Actual source documents: 3 downloaded / 3 normalized / 3 staged SQLite / 0 rejected; one underlying issuer-reported operational event; financial insured claims amounts verified 0; deployed 0.
+- HTML source hashes (same release-date order): a7f6e83f2f3cdb7b6135e4316c6bb9add083e5b73ff12ba69e7af9ddfb8668a6 ; ab45a54c091f4bb1f66def24521168a28a29018281d6026c43ff35d7f24161e3 ; 93b90a697ce9110a0e69dcb64b2e47b0f85dc3f3dd91caa6d4627630314c4781.
+- Official first-party validation run: https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39978131475 . Original publisher URL references and permitted provenance fields are defined in facilityrisk/lane_d/ingest_issuer_release.py. No financial loss, sales disruption cost, insurance proceeds, claim payment or outage duration is auto-inferred.
+
+### Read-only county context contract for Lane E
+
+facilityrisk/lane_d/query_staging.py has an isolated, bounded county-FIPS query against PNNL and ODIN SQLite source-only stores, with category-specific results and SHA/row IDs. It prevents input injection and does NOT assign power providers, verify a property/meter, score an insured risk, or equate county events with insured premises. Example:
+
+python -m facilityrisk.lane_d.query_staging --fips 01001 --pnnl-db /private/lane-d/pnnl/pnnl_county_outage_staging.sqlite --odin-db /private/lane-d/odin-snapshot/odin_county_outage_staging.sqlite --limit 10
+
+Run tests: python -m unittest discover -s tests -p 'test_lane_d_*.py' -v . CI validates SQLite row counts, source-row provenance and in-source rejections; no table is merged with other workstreams. Coordinator must separately import a reviewed Lane D source-only index into private durable serving and set shared Source Health from REAL deployed/queried evidence, not from local staging.
+
+### Unresolved hard blockers (do not mark Lane D complete yet)
+
+1. Persistent backed-up server-side storage for all official archives and normalized source-only indexes; cannot use GitHub Pages or expiring Actions artifacts as long-lived backend. Durable indexed/deployed rows all ZERO.
+2. Independently verified insured physical-site to serving-utility connection, and independent site power outage corroboration. No automatic provider assignment from source county or utility name; insurer facility-verified rows ZERO.
+3. Actual financial interruption, revenue margin/downtime, coverage and paid-insurance-claim evidence, with source accession and consistent accounting periods. SEC original archive returned HTTP 403 from Actions; do not bypass. Public EAGLE-I 2014 Opendatasoft endpoint likewise returned HTTP 403, addressed with authorized official PNNL archive instead.
+4. Publisher data-use/redistribution policy for ORNL ODIN current snapshots; explicit public API access alone is not a distribution license.
+5. Shared backend interface integration, actual service query benchmark, authentication and live browser smoke. These belong to coordinator Lane E; this branch changes no other lane/shared UI/registry files.
+
+All recorded counts distinguish downloaded, accepted/rejected, ephemeral SQLite indexed, durable backend indexed, facility verified, and deployed. Success of synthetic tests, official data download or staging does not satisfy deployment or insured-claim verification.
