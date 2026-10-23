@@ -62,6 +62,7 @@ jobs:
         run: |
           python - <<'PY'
           import hashlib, json, pathlib, sqlite3
+          from facilityrisk.lane_d.install_source_index import sha256_file
           root = pathlib.Path("/tmp/lane-e")
           specs = [
               ("eia861_2025", "staged-eia", "lane_d_eia861_staging.sqlite", "accepted", 12923,
@@ -79,7 +80,7 @@ jobs:
                   assert db.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
                   assert db.execute("SELECT COUNT(*) FROM source_observations").fetchone()[0] == count
               assert m[count_key] == count and m["rejected"] == reject
-              sha = hashlib.sha256(db_path.read_bytes()).hexdigest()
+              sha = sha256_file(db_path)
               receipt = {"deployed": 0}
               if dataset == "eia861_2025":
                   assert m["archive_sha256"] == expected_sha
