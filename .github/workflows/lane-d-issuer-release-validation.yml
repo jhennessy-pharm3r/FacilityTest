@@ -40,6 +40,17 @@ jobs:
           assert all(x["source_authentication"]=="HTTPS_FIRST_PARTY_200_EXACT_URL" for x in rows)
           assert all(not x["claims_paid_verified"] and not x["electrical_power_outage_verified"] for x in rows)
           assert m["distinct_named_underlying_events"] == 1
+          guidance=[r for r in rows if r.get("issuer_prospective_sales_guidance") is not None]
+          assert len(guidance)==1, "2024Q4 source-published companywide forecast anchor not verified"
+          forecast=guidance[0]["issuer_prospective_sales_guidance"]
+          assert guidance[0]["source_id"]=="baxter-north-cove-2024-11-08"
+          assert forecast["scope"]=="TOTAL_COMPANY_Q4_2024"
+          assert forecast["as_reported_approximate_amount"]==200000000
+          assert forecast["estimated_not_realized"] and forecast["not_covered_loss"] and forecast["not_paid_insurance"]
+          assert m["issuer_forecast_sales_guidance_observations"]==1
+          assert m["verified_realized_profit_loss_amounts"]==0
+          assert m["verified_paid_business_interruption_claims"]==0
+          print("First-party Nov 2024 prospective sales downside guidance observed: approx USD 200m, NOT a paid insured BI loss")
           with sqlite3.connect(root/"issuer_evidence_staging.sqlite") as db:
               assert db.execute("PRAGMA integrity_check").fetchone()[0]=="ok"
               assert db.execute("SELECT count(*) FROM issuer_evidence").fetchone()[0]==len(rows)
