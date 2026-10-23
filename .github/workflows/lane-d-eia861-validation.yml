@@ -1,0 +1,79 @@
+name: Lane D - EIA-861 official validation
+
+on:
+  push:
+    branches:
+      - ingest/eia861-utility-bi-lane-d-20261023
+    paths:
+      - facilityrisk/lane_d/**
+      - tests/test_lane_d_*.py
+      - docs/lane_d_utility_reliability.md
+      - .github/workflows/lane-d-eia861-validation.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  official-eia861:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install EIA workbook dependency
+        run: python -m pip install openpyxl
+      - name: Lane D source-only regression tests
+        run: python -m unittest discover -s tests -p 'test_lane_d_*.py' -v
+      - name: Download official 2025 final EIA-861 source
+        shell: bash
+        run: |
+          mkdir -p /tmp/facility-lane-d
+          curl --fail --location --retry 3 --retry-delay 5 --connect-timeout 30 --max-time 240 --user-agent 'FacilityRiskLaneD/1.0 (source validation)' \
+            'https://www.eia.gov/electricity/data/eia861/zip/f8612025.zip' \
+            --output /tmp/facility-lane-d/f8612025.zip
+      - name: Inspect source archive and worksheets
+        shell: bash
+        run: |
+          mkdir -p /tmp/facility-lane-d/probe
+          python - <<'PY'
+          import hashlib, io, json, pathlib, zipfile
+          from openpyxl import load_workbook
+          path=pathlib.Path('/tmp/facility-lane-d/f8612025.zip')
+          rows=[]
+          with zipfile.ZipFile(path) as archive:
+              for name in sorted(archive.namelist()):
+                  info=archive.getinfo(name)
+                  rec={'member': name, 'uncompressed_bytes': info.file_size}
+                  if 'reliability' in name.lower() and name.lower().endswith(('.xlsx', '.xlsm')):
+                      data=archive.read(name)
+                      rec['member_sha256']=hashlib.sha256(data).hexdigest()
+                      with load_workbook(io.BytesIO(data), read_only=True, data_only=True) as book:
+                          sheets=[]
+                          for ws in book:
+                              headers=list(ws.iter_rows(min_row=1, max_row=12, values_only=True))
+                              sheets.append({'name': ws.title, 'max_row': ws.max_row, 'max_column': ws.max_column,
+                                             'first_twelve_rows': [[str(c)[:80] if c is not None else None for c in row[:24]] for row in headers]})
+                          rec['worksheets']=sheets
+                  rows.append(rec)
+          output={'official_url': 'https://www.eia.gov/electricity/data/eia861/zip/f8612025.zip',
+                  'archive_bytes': path.stat().st_size, 'archive_sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
+                  'members': rows}
+          out=pathlib.Path('/tmp/facility-lane-d/probe/archive_inventory.json')
+          out.write_text(json.dumps(output, indent=2), encoding='utf-8')
+          print(json.dumps(output, indent=2)[:20000])
+          PY
+      - name: Normalize live official reliability workbook
+        run: python -m facilityrisk.lane_d.ingest_eia861 --year 2025 --zip /tmp/facility-lane-d/f8612025.zip --output /tmp/facility-lane-d/normalized
+      - name: Publish safe manifest and schema inventory for peer validation
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-d-eia861-2025-validation
+          retention-days: 7
+          if-no-files-found: warn
+          path: |
+            /tmp/facility-lane-d/probe/archive_inventory.json
+            /tmp/facility-lane-d/normalized/manifest.json
