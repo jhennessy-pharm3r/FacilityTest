@@ -118,11 +118,11 @@
         '<p>'+esc(s.name)+' · '+esc(stageText[s.stage])+'</p>'+
         '<small>Also: '+esc(other.name)+' ('+fmt(other.accepted)+' '+esc(TYPES[l.other]?.unit||'rows')+')</small>'+
         '<div class="si-lens-bottom"><span><b>Underwriting gate:</b> '+esc(l.review)+'</span>'+
-        '<a href="?page='+esc(l.target)+'" data-page="'+esc(l.target)+'">Review evidence →</a></div></article>';
+        '<a href="?page='+esc(l.target)+'" data-si-nav="'+esc(l.target)+'">Review evidence →</a></div></article>';
     }).join('');
     return '<section class="si-panel si-overview"><div class="si-panel-head"><div><span class="si-eyebrow">ALL-INDUSTRY SOURCE INTELLIGENCE</span><h2>What the source data can tell us</h2>'+
       '<p>Four complementary evidence domains. Counts retain their source grain and do not represent unique facilities, loss events or insured claims.</p></div>'+
-      '<a class="btn tiny" data-page="sources" href="?page=sources">Explore 20 datasets →</a></div>'+
+      '<a class="btn tiny" data-si-nav="sources" href="?page=sources">Explore 20 datasets →</a></div>'+
       '<div class="si-lens-grid">'+cards+'</div>'+banner(d,'Real official-source validation is separate from physical site matching and production deployment.')+'</section>';
   }
   function contextual(d,page){
@@ -132,7 +132,7 @@
     const highlight=['map','underwriting','cases','disclosures','workbench','insurance','identity'].includes(page);
     return '<section class="si-panel si-context" data-si-panel="'+esc(page)+'"><div class="si-panel-head"><div>'+
       '<span class="si-eyebrow">PUBLISHER-SOURCED EVIDENCE · '+esc(d.as_of)+'</span><h2>'+esc(cfg.name)+'</h2>'+
-      '<p>'+esc(cfg.intro)+'</p></div><a href="?page=sources" data-page="sources" class="si-link">All source evidence →</a></div>'+
+      '<p>'+esc(cfg.intro)+'</p></div><a href="?page=sources" data-si-nav="sources" class="si-link">All source evidence →</a></div>'+
       (highlight?'<div class="si-ask"><b>Underwriting next step</b><p>'+esc(cfg.next)+'</p></div>':
        '<p class="si-guidance"><b>Next validation:</b> '+esc(cfg.next)+'</p>')+
       '<div class="si-card-track">'+cards+'</div>'+banner(d,'These are source validation cohorts, not separately verified individual properties.')+'</section>';
@@ -159,7 +159,7 @@
     }).join('');
     return '<section class="si-panel si-quality"><div class="si-panel-head"><div><span class="si-eyebrow">READINESS / DATA INTEGRITY</span>'+
       '<h2>Source-to-site validation gates</h2><p>Evidence coverage, temporal validity and incident linking must be reconciled before insurance decisions.</p></div>'+
-      '<a href="?page=feeds" data-page="feeds" class="si-link">Source health →</a></div>'+
+      '<a href="?page=feeds" data-si-nav="feeds" class="si-link">Source health →</a></div>'+
       '<div class="si-metric-grid">'+tiles.map(x=>'<div class="si-metric"><span>'+esc(x[0])+'</span><b>'+fmt(x[1])+'</b><small>'+esc(x[2])+'</small></div>').join('')+'</div>'+
       '<div class="si-gates">'+steps.map((x,i)=>'<div><strong>'+String(i+1).padStart(2,'0')+' · '+esc(x[0])+'</strong><span>'+esc(x[1])+'</span></div>').join('')+'</div>'+
       '<details class="si-qa-table"><summary>Review all original-source QA states</summary><div class="table-wrap"><table><thead><tr><th>Source</th><th>Risk area</th><th>Accepted source rows</th><th>CI state</th><th>Production state</th><th>Evidence</th></tr></thead><tbody>'+stage+'</tbody></table></div></details>'+
@@ -179,7 +179,7 @@
     const domains=LENSES.map(l=>'<option value="'+esc(l.name)+'">'+esc(l.name)+'</option>').join('');
     return '<section class="si-panel si-inventory"><div class="si-panel-head"><div><span class="si-eyebrow">SOURCED EVIDENCE CATALOG</span>'+
       '<h2>Reviewed source streams across four risk areas</h2><p>Search by industry concern, dataset, source ID or limitation. Detailed source grains are preserved; none are an insured-property census.</p></div>'+
-      '<a href="?page=feeds" data-page="feeds" class="si-link">Source health and provenance →</a></div>'+
+      '<a href="?page=feeds" data-si-nav="feeds" class="si-link">Source health and provenance →</a></div>'+
       '<div class="si-controls"><label>Find a source<input id="si-inventory-search" class="field" placeholder="ECHO, flood, chemical, utility, NRC…" autocomplete="off"></label>'+
       '<label>Risk area<select id="si-inventory-family" class="select"><option value="">All risk areas</option>'+domains+'</select></label>'+
       '<label>Data status<select id="si-inventory-stage" class="select"><option value="">All statuses</option><option value="indexed">Validated in CI</option><option value="access_blocked">Official access blocked</option></select></label>'+
@@ -225,10 +225,15 @@
     apply();
   }
   function rootClick(event){
+    const nav=event.target.closest?.('a[data-si-nav]');
     const link=event.target.closest?.('a.si-jump');
-    if(!link||event.button!==0||event.ctrlKey||event.metaKey||event.shiftKey||event.altKey)return;
+    if((!nav&&!link)||event.button!==0||event.ctrlKey||event.metaKey||event.shiftKey||event.altKey)return;
     if(!window.FacilityRiskRouter)return;
     event.preventDefault();
+    if(nav){
+      window.FacilityRiskRouter.navigate(nav.dataset.siNav);
+      return;
+    }
     const id=link.dataset.siSource;
     window.FacilityRiskRouter.navigate('sources');
     window.FacilityRiskRouter.patch({record:id});
@@ -245,7 +250,7 @@
     else element.prepend(slot);
     const doc=await get();
     if(!slot.isConnected)return;
-    if(!doc){slot.innerHTML='<div class="si-unavailable">Independent source-ingestion status is unavailable. Verified site coverage and source freshness must be checked before decisions. <a href="?page=feeds" data-page="feeds">View Source health</a>.</div>';return;}
+    if(!doc){slot.innerHTML='<div class="si-unavailable">Independent source-ingestion status is unavailable. Verified site coverage and source freshness must be checked before decisions. <a href="?page=feeds" data-si-nav="feeds">View Source health</a>.</div>';return;}
     slot.innerHTML=page==='overview'?overview(doc):page==='sources'?inventory(doc):page==='quality'?quality(doc):contextual(doc,page);
     if(page==='sources')wire(slot,doc);
   }
