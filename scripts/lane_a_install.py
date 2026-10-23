@@ -142,10 +142,14 @@ def stage_sources(root, *, artifact_paths=(), source_root=None):
                 process(rel, lambda a=archive, e=entry: a.open(e), entry.file_size)
     if source_root is not None:
         source_root = pathlib.Path(source_root)
+        if source_root.is_symlink():
+            raise ValueError("Refusing symlinked source artifact root")
         if not source_root.is_dir():
             raise ValueError("Source root does not exist")
         for name in sorted(DIRECTORIES):
             directory = source_root / name
+            if directory.is_symlink():
+                raise ValueError("Refusing symlinked source component directory")
             if not directory.is_dir():
                 continue
             for path in sorted(directory.rglob("*")):
@@ -279,11 +283,14 @@ def install(destination, *, archives=(), source_root=None, required=("usda_summa
     Root must be an authorized, persistent directory owned by the operator.
     Operator controls authentication, backups, refresh and real app deployment.
     """
-    destination = pathlib.Path(destination).resolve()
-    if destination.exists() and destination.is_symlink():
+    requested = pathlib.Path(destination).expanduser()
+    if requested.is_symlink():
         raise ValueError("Installer destination must not be a symlink")
+    destination = requested.resolve()
     destination.mkdir(parents=True, exist_ok=True)
     releases = destination / "releases"
+    if releases.is_symlink():
+        raise ValueError("Refusing symlinked release storage")
     releases.mkdir(exist_ok=True)
     scratch = pathlib.Path(tempfile.mkdtemp(prefix=".lane_a_pending_", dir=destination))
     try:
@@ -299,6 +306,8 @@ def install(destination, *, archives=(), source_root=None, required=("usda_summa
         result["retained_source_file_sha256"] = files
         result["release_content_sha256"] = hashlib.sha256(deterministic).hexdigest()
         target = releases / release_id
+        if target.is_symlink():
+            raise ValueError("Refusing symlinked existing release")
         (scratch / "release-verification.json").write_text(
             json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         for path in scratch.rglob("*"):
