@@ -33,6 +33,7 @@ jobs:
           node --check web/universal-ui.js
           node --check web/workbench-ui.js
           node --check web/insurance-ui.js
+          node --check web/epa-ui.js
           node --check web/coverage-review-ui.js
           node --check web/bi-scenario-ui.js
           node --check web/registry-ui.js
