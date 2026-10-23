@@ -272,7 +272,7 @@ function mount(){
    if(e.target.id==='wb-copy'){try{await navigator.clipboard.writeText(brief());note('Assessment review brief copied to clipboard.');}catch{note('Clipboard permission unavailable; use Export assessment JSON.');}}
    if(e.target.id==='wb-reset'){
      state={facility:'',industry:'',location:'',reference:'',days:'',daily:'',perils:new Set(),deps:new Set(),coverage:{},sourceIdentity:null};
-     root.innerHTML=render();note('Worksheet cleared from this browser session.');
+     root.innerHTML=render();window.SourceInsights?.mount('workbench',root);note('Worksheet cleared from this browser session.');
    }
  });
 }
