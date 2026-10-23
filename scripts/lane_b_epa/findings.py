@@ -19,7 +19,7 @@ def source_decimal(value,allow_negative=False):
         amount=Decimal(cleaned)
     except (InvalidOperation,ValueError):
         return {"value":None,"state":"invalid_numeric"}
-    if not amount.is_finite():
+    if not amount.is_finite() or amount.adjusted()>24 or amount.adjusted() < -100:
         return {"value":None,"state":"invalid_numeric"}
     if amount<0 and not allow_negative:
         return {"value":None,"state":"negative_value_requires_review"}
