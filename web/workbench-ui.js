@@ -44,6 +44,40 @@ const PRODUCTS=[
   ['environmental','Environmental impairment liability','Liability','Specified pollution or contamination condition','Cleanup, gradual/sudden exclusions, retroactive date and off-site liability']
 ].map(([id,name,category,trigger,questions])=>({id,name,category,trigger,questions}));
 const TYPES=new Map(PRODUCTS.map(p=>[p.id,p]));
+const SOURCE_RESEARCH={
+  flood:['fema_nfhl'],wind:[],quake:[],fire:['usfs_whp_aggregates','usfs_whp'],
+  storm:[],freeze:['eia861'],heat:['eia861'],landslide:[],
+  industrial:['uscg_nrc','csb','epa_rmp_public','epa_tri'],
+  power:['eia861','pnnl_outages','odin_county'],water:['epa_echo'],
+  data:['odin_feeds'],supplier:['baxter_bi'],access:['uscg_nrc'],
+  temperature:['eia861']
+};
+const SOURCE_SHORT={
+  fema_nfhl:'FEMA flood polygon samples',usfs_whp:'USDA wildfire pixels',
+  usfs_whp_aggregates:'USDA wildfire regional summaries',
+  eia861:'EIA electric reliability',pnnl_outages:'DOE/PNNL county outages',
+  odin_county:'ORNL ODIN outage snapshot',odin_feeds:'ORNL feed status',
+  epa_echo:'EPA ECHO',epa_tri:'EPA TRI',epa_rmp_public:'Public EPA RMP',
+  uscg_nrc:'USCG release notifications',csb:'CSB incidents',
+  baxter_bi:'Baxter operational interruption publications'
+};
+function researchTasks(){
+  return [...PERILS.filter(x=>state.perils.has(x.id)),...DEPENDENCIES.filter(x=>state.deps.has(x.id))].map(x=>({
+    id:x.id,scenario:x.label,source_ids:SOURCE_RESEARCH[x.id]||[],
+    site_evidence_status:'not_verified',research_question:x.question
+  }));
+}
+function sourceResearchHTML(){
+  const items=researchTasks();
+  if(!items.length)return '<p class="wb-source-help">Choose an exposure or dependency to see which ingested source classes can help and what still requires property-specific verification.</p>';
+  return '<div class="wb-source-tasks">'+items.map(row=>{
+    const refs=row.source_ids.map(id=>'<a class="si-link si-jump" data-si-source="'+esc(id)+'" href="?page=sources&record='+encodeURIComponent(id)+'">'+esc(SOURCE_SHORT[id]||id)+' →</a>').join(' · ');
+    return '<div class="wb-source-task"><strong>'+esc(row.scenario)+'</strong>'+
+      '<div>'+(refs||'<span>No directly applicable verified source cohort yet</span>')+'</div>'+
+      '<small>Verify site applicability; source/CI data do not establish this insured exposure.</small></div>';
+  }).join('')+'</div>';
+}
+
 const STATUS=[
  ['unknown','Not yet reviewed'],
  ['reported','Reported in place — unverified'],
@@ -94,6 +128,7 @@ function record(){
       verified_coverage:'unknown',verification_required:true})),
     assessor_reference:state.reference.trim(),
     unresolved_questions:selected.map(x=>x.question),
+    source_research_tasks:researchTasks(),
     limitations:[
       'Selected exposures are hypothetical research topics, not observed or verified site hazards.',
       'User-entered insurance status is not verified policy coverage.',
@@ -126,7 +161,8 @@ function planHTML(){
     '<p class="wb-summary">'+esc(msg)+'. '+(items.length?'Of those, '+reported+' reported in place and '+unknown+' unresolved / needing wording review.':'')+'</p>'+
     (dollars?'<div class="wb-financial"><span>Illustrative contribution margin at risk</span><strong>'+money(dollars.grossScenarioValue)+'</strong><small>'+dollars.days+' day(s) × '+money(dollars.daily)+'/day. Not an insured BI loss or payment.</small></div>':'<div class="wb-financial wb-muted"><span>Financial illustration</span><strong>Not entered</strong><small>Requires expected outage days and contribution margin/day.</small></div>')+
     '<div class="wb-microtitle">What an underwriter would still need</div>'+
-    '<ul class="wb-questions">'+(questions.length?questions.map(q=>'<li>'+esc(q)+'</li>').join(''):'<li>Site coordinates or address and applicable hazard evidence</li><li>Engineering, asset values, supply dependencies and actual policy documents</li>')+'</ul>';
+    '<ul class="wb-questions">'+(questions.length?questions.map(q=>'<li>'+esc(q)+'</li>').join(''):'<li>Site coordinates or address and applicable hazard evidence</li><li>Engineering, asset values, supply dependencies and actual policy documents</li>')+'</ul>'+ 
+    '<div class="wb-microtitle">Official-source research to follow up</div>'+sourceResearchHTML();
 }
 function tableHTML(){
   const arr=relevant();
@@ -192,6 +228,7 @@ function brief(){
   'Selected scenarios (not verified hazards): '+(obj.scenarios.map(s=>s.name).join(', ')||'None'),
   'Potential coverages to review:'];
  for(const row of obj.potential_coverages)lines.push('- '+row.name+' | '+row.user_reported_status+' | Verify: '+row.requirement);
+ for(const task of obj.source_research_tasks)lines.push('Source research for '+task.scenario+': '+(task.source_ids.join(', ')||'No validated cohort')+'; site match unverified.');
  if(obj.financial_illustration)lines.push('Illustrative gross downtime only: '+money(obj.financial_illustration.gross_downtime_illustration_usd));
  lines.push('Evidence supplied: '+(obj.assessor_reference||'None'),
  'All statuses are user-entered and unverified; not a policy, quote, claim payment or insurer rating.');
@@ -235,7 +272,7 @@ function mount(){
    if(e.target.id==='wb-copy'){try{await navigator.clipboard.writeText(brief());note('Assessment review brief copied to clipboard.');}catch{note('Clipboard permission unavailable; use Export assessment JSON.');}}
    if(e.target.id==='wb-reset'){
      state={facility:'',industry:'',location:'',reference:'',days:'',daily:'',perils:new Set(),deps:new Set(),coverage:{},sourceIdentity:null};
-     root.innerHTML=render();note('Worksheet cleared from this browser session.');
+     root.innerHTML=render();window.SourceInsights?.mount('workbench',root);note('Worksheet cleared from this browser session.');
    }
  });
 }

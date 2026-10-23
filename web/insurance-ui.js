@@ -24,6 +24,33 @@ const DEFAULT=[
  ['environmental','Environmental impairment liability','Liability','Expressly covered pollution liability event']
 ].map(([id,name,category,potential_trigger])=>({id,name,category,potential_trigger,
   review_requirements:'Read applicable policy or contract, triggers, geography, exclusions, limits and evidence.',verified_coverage:'unknown'}));
+const COVERAGE_SOURCES={
+  property:['fema_nfhl','usfs_whp_aggregates'],flood:['fema_nfhl'],
+  earthquake:[],windstorm:[],wildfire:['usfs_whp_aggregates','usfs_whp'],
+  bi:['baxter_bi','pnnl_outages'],extra_expense:['baxter_bi'],
+  utility:['eia861','pnnl_outages','odin_county'],cbi:['baxter_bi'],
+  civil_authority:[],non_damage_bi:['odin_county','baxter_bi'],
+  equipment:['eia861'],parametric_wind:[],parametric_flood:['fema_nfhl'],
+  parametric_quake:[],parametric_outage:['odin_county','eia861'],
+  parametric_wildfire:['usfs_whp_aggregates'],political:[],
+  environmental:['epa_echo','epa_rcra','epa_tri','epa_rmp_public']
+};
+const SOURCE_NAMES={
+  fema_nfhl:'FEMA flood source (sample only)',usfs_whp:'USFS 270m wildfire sample',
+  usfs_whp_aggregates:'USDA regional wildfire summaries',baxter_bi:'Baxter disruption publications',
+  pnnl_outages:'DOE/PNNL county outage history',eia861:'EIA electric reliability',
+  odin_county:'ORNL ODIN outage snapshot',epa_echo:'EPA ECHO',epa_rcra:'EPA RCRA',
+  epa_tri:'EPA TRI reports',epa_rmp_public:'EPA public RMP program'
+};
+function linkedEvidence(id){
+  const sources=COVERAGE_SOURCES[id]||[];
+  return '<div class="si-coverage-support"><strong>Evidence to research, not a coverage determination</strong>'+
+    '<div>'+ (sources.length?sources.map(key=>
+      '<a class="si-jump" data-si-source="'+esc(key)+'" href="?page=sources&record='+encodeURIComponent(key)+'">'+esc(SOURCE_NAMES[key]||key)+' ↗</a>').join(' · '):
+      '<span>No directly linked validated source cohort in this preview; request the appropriate independent peril, policy or engineering evidence.</span>')+
+    '</div><small>Source-index records have not been independently mapped to this insured property. Contract terms control coverage.</small></div>';
+}
+
 let data=DEFAULT,category='',query='',initialized=false;
 const categories=['Property damage','Natural catastrophe','Operational interruption','Equipment and inventory','Parametric','Liability','Specialty'];
 function renderCards(){
@@ -31,7 +58,7 @@ function renderCards(){
  return '<div class="intel-case-grid">'+r.map(x=>
  '<article class="panel"><div class="panel-header"><div><h2>'+esc(x.name)+'</h2><span class="overline">'+esc(x.category)+'</span></div></div>'+
  '<div class="intel-card-body"><div class="detail">'+esc(x.potential_trigger)+'</div><p class="note-line">'+esc(x.review_requirements||'Contract review required')+'</p>'+
- '<div class="card-meta"><span class="pill orange">Coverage unknown</span><span class="small-muted">Subject to facility and contract assessment</span></div></div></article>').join('')+'</div>'+
+ '<div class="card-meta"><span class="pill orange">Coverage unknown</span><span class="small-muted">Subject to facility and contract assessment</span></div>'+linkedEvidence(x.id)+'</div></article>').join('')+'</div>'+
  (r.length?'':'<div class="empty">No matching coverage categories.</div>');
 }
 function render(){
