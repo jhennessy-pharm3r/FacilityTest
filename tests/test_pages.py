@@ -116,3 +116,39 @@ def test_pages_and_records_have_shareable_history_routes_without_exposing_forms(
     route_keys=app.split('const ROUTE_KEYS=new Set(',1)[1].split(');',1)[0]
     assert 'coverage' not in route_keys and 'daily' not in route_keys
     assert 'sourceIdentity' not in route_keys and 'policy' not in route_keys
+
+
+def test_cross_industry_evidence_context_is_source_specific_and_not_claims():
+    page = (ROOT/'index.html').read_text()
+    private = (ROOT/'web'/'index.html').read_text()
+    script = (ROOT/'web'/'source-insights.js').read_text()
+    css = (ROOT/'web'/'source-insights.css').read_text()
+    wb = (ROOT/'web'/'workbench-ui.js').read_text()
+    insurance = (ROOT/'web'/'insurance-ui.js').read_text()
+    app = (ROOT/'web'/'app.js').read_text()
+    manifest = json.loads((ROOT/'web'/'coordination'/'parallel-ingestion.json').read_text())
+    rows = [s for lane in manifest['lanes'] for s in lane['sources']]
+    assert len(manifest['lanes']) == 4 and len(rows) >= 20
+    assert all(s['deployed'] == 0 and s['verified_insured_sites'] == 0 for s in rows)
+    assert all(s['run_url'].startswith('https://github.com/') for s in rows)
+    for html in (page, private):
+        assert 'source-insights.js' in html and 'source-insights.css' in html
+        assert html.index('source-insights.js') < html.index('app.js')
+    for page_name in ('workbench','insurance','universal','registry','facilities',
+                      'cases','map','identity','underwriting','evidence',
+                      'disclosures','methodology'):
+        assert page_name + ':' in script or "'" + page_name + "':" in script
+    for key in ('fema_nfhl','usfs_whp_aggregates','epa_echo','epa_rcra',
+                'epa_tri','uscg_nrc','csb','eia861','pnnl_outages','odin_county'):
+        assert key + ':' in script or "'" + key + "':" in script
+    assert 'No new-source site match approved' in script
+    assert 'site-specific pixel' in script.lower() or 'site-specific' in script.lower()
+    assert "if(page==='feeds'||!element)return" in script
+    assert "window.SourceInsights?.mount(state.page,ROOT)" in app
+    assert 'si-inventory-search' in script and 'si-inventory-family' in script
+    assert '.si-inventory-row[hidden]{display:none}' in css
+    assert 'source_research_tasks:researchTasks()' in wb
+    assert "site_evidence_status:'not_verified'" in wb
+    assert 'linkedEvidence(x.id)' in insurance
+    # Source links are research references; assessment/policy/site values are NOT serialized.
+    assert 'policy' not in script.split("function sourceLink(id,label)",1)[1].split('function statline',1)[0].lower()
