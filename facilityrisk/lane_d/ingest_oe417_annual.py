@@ -97,13 +97,14 @@ def parse(records_blob:bytes,metas:dict):
     first_by_fingerprint={}
     years,types,regions=Counter(),Counter(),Counter()
     missing_customer=missing_restore=missing_mw=missing_area=0
+    missing_event_start_date=0
     has_numeric_customers=0
     for position,raw in enumerate(rows,start=1):
         source_sha=digest(canonical(raw))
         try:
             if not isinstance(raw,dict) or set(raw)!=set(EXPECTED_FIELDS):
                 raise ValueError("source_schema_drift_or_row_not_object")
-            event_date=date_or_none(raw["date_event_began"],"date_event_began",required=True)
+            event_date=date_or_none(raw["date_event_began"],"date_event_began")
             restoration=date_or_none(raw["date_of_restoration"],"date_of_restoration")
             customers=optional_nonnegative(raw["number_of_customers_affected"],"number_of_customers_affected")
             demand=optional_nonnegative(raw["demand_loss_mw"],"demand_loss_mw")
@@ -124,7 +125,10 @@ def parse(records_blob:bytes,metas:dict):
         first=first_by_fingerprint.get(source_sha)
         if first is None:
             first_by_fingerprint[source_sha]=position
-        years[event_date[:4]]+=1
+        if event_date is None:
+            missing_event_start_date+=1
+        else:
+            years[event_date[:4]]+=1
         types[str(raw_type or "NOT_REPORTED")]+=1
         regions[str(raw["nerc_region"] or "NOT_REPORTED")]+=1
         missing_customer+=int(customers is None)
@@ -146,6 +150,7 @@ def parse(records_blob:bytes,metas:dict):
             "is_exact_duplicate_publisher_record":first is not None,
             "duplicate_of_source_position":first,
             "event_date_source":event_date,
+            "event_date_source_status":"NOT_REPORTED" if event_date is None else "REPORTED",
             "restoration_date_source":restoration,
             "source_time_event_began":raw["time_event_began"],
             "source_time_restoration":raw["time_of_restoration"],
@@ -155,7 +160,8 @@ def parse(records_blob:bytes,metas:dict):
             "source_alert_criteria":raw["alert_criteria"],
             "reported_customers_affected":customers,
             "reported_demand_loss_mw_decimal":demand,
-            "publishing_year":event_date[:4],
+            "source_event_year":event_date[:4] if event_date else None,
+            "undated_source_row_not_assumed_zero_risk":event_date is None,
             "publisher_source_grain":"ANNUAL_ELECTRIC_EMERGENCY_REPORT_ROW_NOT_INSURED_SITE",
             "site_electric_outage_verified":False,
             "site_utility_meter_verified":False,
@@ -173,6 +179,7 @@ def parse(records_blob:bytes,metas:dict):
         "exact_duplicate_source_rows":sum(r["is_exact_duplicate_publisher_record"] for r in accepted),
         "content_distinct_accepted_publisher_rows":sum(not r["is_exact_duplicate_publisher_record"] for r in accepted),
         "source_calendar_year_counts":dict(years),
+        "missing_event_start_date_preserved_as_unknown":missing_event_start_date,
         "source_event_type_counts":dict(types),
         "source_nerc_regions":dict(regions),
         "missing_reported_customer_count":missing_customer,
@@ -254,6 +261,7 @@ def run(original_json:Path,metadata_json:Path,output:Path,downloaded_official=Fa
             "This separately distributed DOE OE-417 2023 annual summary overlaps EIA DOE-417-derived EPM disturbance tables. Do not add event counts across them.",
             "Publisher native unique emergency event/incident ID is absent; record positions are derived IDs, NOT source-native incident keys.",
             "Date/time, area and affected customers are self-reported aggregate emergency observations, not confirmed insured-site outages.",
+            "Publisher rows without an event start date are ACCEPTED with missing date, not discarded or imputed from 2023 annual vintage.",
             "No street address, meter identity or coordinates; area_affected is free text, no automatic physical site match.",
             "Public-domain license asserted in ORNL source metadata, attribution retained to DOE CESER and ORNL distribution.",
             "No production index, insurance coverage, downtime or paid claim verified.",
