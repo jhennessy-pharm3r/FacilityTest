@@ -66,7 +66,11 @@ def ingest(source,path,out,source_url=None,year=None):
         indexed=db.execute("SELECT COUNT(*) FROM observation").fetchone()[0]
         check=db.execute("PRAGMA integrity_check").fetchone()[0]
         if indexed!=accepted or scanned!=accepted+rejected or check!="ok":raise AssertionError("reconciliation failed")
-        result=dict(source=source,schema_version=2,raw_rejected_payloads_preserved=True,rcra_join_rule="ID_NUMBER + ACTIVITY_LOCATION (do not join by name or ID_NUMBER alone)" if source=="rcra" else None,state="INDEXED",deployment_state="NOT_DEPLOYED",retrieved_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),source_url=source_url,year=year,archive_sha256=digest.hexdigest(),scanned_rows=scanned,accepted_rows=accepted,rejected_rows=rejected,reject_reason_counts=reject_reasons,indexed_rows=indexed,valid_coordinate_pairs=coords,duplicate_member_ids=duplicates,archive_members=inventory,integrity=check,source_identity_only=True)
+        dbsize=target.stat().st_size
+        dbdigest=hashlib.sha256()
+        with target.open("rb") as source_db:
+            for part in iter(lambda:source_db.read(1048576),b""):dbdigest.update(part)
+        result=dict(source=source,schema_version=2,raw_rejected_payloads_preserved=True,rcra_join_rule="ID_NUMBER + ACTIVITY_LOCATION (do not join by name or ID_NUMBER alone)" if source=="rcra" else None,state="INDEXED",deployment_state="NOT_DEPLOYED",retrieved_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),source_url=source_url,year=year,archive_sha256=digest.hexdigest(),index_sha256=dbdigest.hexdigest(),index_bytes=dbsize,scanned_rows=scanned,accepted_rows=accepted,rejected_rows=rejected,reject_reason_counts=reject_reasons,indexed_rows=indexed,valid_coordinate_pairs=coords,duplicate_member_ids=duplicates,archive_members=inventory,integrity=check,source_identity_only=True)
         (out/(source+".manifest.json")).write_text(json.dumps(result,indent=2)+"\n")
         return result
     except Exception:
