@@ -89,7 +89,13 @@ def verify_dir(root):
                     raise ValueError("Accepted/rejected mismatch: " + source)
                 if s["sample_accepted"] != actual:
                     raise ValueError("Accepted/indexed mismatch: " + source)
-            elif m["total_raw_observations"] != (m["total_accepted_observations"] + m["total_rejected_observations"]) if d == "fema_transport" else m["sample_raw"] != m["sample_accepted"] + m["sample_rejected"]:
+            elif d == "fema_transport":
+                if (m["total_raw_observations"] !=
+                        m["total_accepted_observations"] + m["total_rejected_observations"] or
+                        m["total_accepted_observations"] != actual):
+                    raise ValueError("FEMA transport count mismatch")
+            elif (m["sample_raw"] != m["sample_accepted"] + m["sample_rejected"] or
+                  m["sample_accepted"] != actual):
                 raise ValueError("Accepted/rejected mismatch: " + d)
             tables[source] = {"indexed_observations": actual}
         report["source_directories"][d] = {
