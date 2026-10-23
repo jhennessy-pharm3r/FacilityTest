@@ -5,9 +5,14 @@ on:
     branches:
       - ingest/eia861-utility-bi-lane-d-20261023
     paths:
-      - facilityrisk/lane_d/**
-      - tests/test_lane_d_*.py
-      - docs/lane_d_utility_reliability.md
+      - facilityrisk/lane_d/ingest_eia861.py
+      - facilityrisk/lane_d/audit_eia861.py
+      - facilityrisk/lane_d/query_eia_service_territory.py
+      - facilityrisk/lane_d/ingest_electric_events.py
+      - tests/test_lane_d_eia861.py
+      - tests/test_lane_d_audit_eia861.py
+      - tests/test_lane_d_eia_service_territory.py
+      - tests/test_lane_d_electric_events.py
       - .github/workflows/lane-d-eia861-validation.yml
   workflow_dispatch:
 
@@ -26,7 +31,10 @@ jobs:
       - name: Install EIA workbook dependency
         run: python -m pip install openpyxl
       - name: Lane D source-only regression tests
-        run: python -m unittest discover -s tests -p 'test_lane_d_*.py' -v
+        run: |
+          python -m unittest discover -s tests -p 'test_lane_d_eia861.py' -v
+          python -m unittest discover -s tests -p 'test_lane_d_audit_eia861.py' -v
+          python -m unittest discover -s tests -p 'test_lane_d_eia_service_territory.py' -v
       - name: Download official 2025 final EIA-861 source
         shell: bash
         run: |
