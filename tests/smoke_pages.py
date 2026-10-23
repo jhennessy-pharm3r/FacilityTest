@@ -131,6 +131,19 @@ with sync_playwright() as pw:
         expect(page.locator('#intel-content')).to_contain_text(f"{item['accepted']:,}",timeout=15000)
     expect(page.locator('#intel-content')).to_contain_text('Official access blocked',timeout=15000)
     expect(page.locator('#intel-content')).to_contain_text('not a deployed facility-risk dataset',timeout=15000)
+    # Filters must operate on the real reviewed 20-source progress ledger.
+    expect(page.locator('.parallel-source-row:visible')).to_have_count(len(records),timeout=15000)
+    page.locator('#parallel-lane-filter').select_option('C')
+    expect(page.locator('.parallel-source-row:visible')).to_have_count(len(progress['lanes'][2]['sources']))
+    expect(page.locator('#parallel-visible-count')).to_contain_text('4 of 20 source streams')
+    page.locator('#parallel-stage-filter').select_option('access_blocked')
+    expect(page.locator('.parallel-source-row:visible')).to_have_count(1)
+    expect(page.locator('#parallel-visible-count')).to_contain_text('1 of 20 source streams')
+    page.locator('#parallel-lane-filter').select_option('')
+    expect(page.locator('.parallel-source-row:visible')).to_have_count(2)
+    page.locator('#parallel-stage-filter').select_option('')
+    expect(page.locator('.parallel-source-row:visible')).to_have_count(len(records))
+
 
     # Use the actual committed NOAA summary, never a fixed or guessed row count.
     noaa_status=Path(__file__).resolve().parents[1]/'web/ingestion/noaa-storm-events.json'
