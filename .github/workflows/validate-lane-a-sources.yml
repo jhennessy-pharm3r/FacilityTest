@@ -17,6 +17,8 @@ on:
       - 'tests/test_lane_a_archive_verify.py'
       - 'scripts/lane_a_nfhl_paged.py'
       - 'tests/test_lane_a_nfhl_paged.py'
+      - 'scripts/lane_a_whp_regions.py'
+      - 'tests/test_lane_a_whp_regions.py'
       - '.github/workflows/validate-lane-a-sources.yml'
 permissions:
   contents: read
@@ -36,6 +38,9 @@ jobs:
       - name: Fully enumerate FEMA polygons within bounded geographic test windows
         if: always()
         run: python -m scripts.lane_a_nfhl_paged --out-dir data/lane_a/paged_windows --max-per-window 250 --batch-size 4
+      - name: Collect real USDA WHP samples across fourteen US geographic regions
+        if: always()
+        run: python -m scripts.lane_a_whp_regions --out-dir data/lane_a/whp_regions
       - name: Probe optional Massachusetts FEMA 2025 derivative without substituting for national NFHL
         if: always()
         continue-on-error: true
@@ -65,6 +70,9 @@ jobs:
             data/lane_a/paged_windows/manifest.json
             data/lane_a/paged_windows/raw/
             data/lane_a/paged_windows/fema-window-index.sqlite
+            data/lane_a/whp_regions/manifest.json
+            data/lane_a/whp_regions/raw/
+            data/lane_a/whp_regions/whp-regional-source-only.sqlite
           retention-days: 7
           compression-level: 5
           if-no-files-found: warn
