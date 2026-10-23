@@ -48,6 +48,8 @@ python scripts/lane_c_install.py install \
   --root /srv/facility-risk/lane-c \
   --release-id lane-c-20261023
 python scripts/lane_c_install.py status --root /srv/facility-risk/lane-c
+# Read-only, source-separated, aggregate provenance/health for coordinator:
+python scripts/lane_c_install.py health --root /srv/facility-risk/lane-c
 python scripts/lane_c_install.py query \
   --root /srv/facility-risk/lane-c \
   --source nrc_2025 --state TX --since 2025-01-01 --page 1 --page-size 25
@@ -82,6 +84,8 @@ LIMIT 25;
 `source_incidents` columns: `source`, `source_id`, `publisher_native_id`, `source_vintage`, nullable occurrence `incident_date`, as-reported `city` and `state`, optional source-reported `latitude`/`longitude`, `evidence_status`, review-only `site_link_status`, original `source_url`, and `source_json` with preserved normalized publisher row. Indexes: source/native composite primary key, `source_incidents_date`, `source_incidents_state`, `source_incidents_geo`. **Do not expose `source_json` in unrestricted client API**. Separate `lane_c_review_candidates` table has `nrc_source`, `nrc_source_id`, `csb_source`, `csb_source_id`, `match_rule`, `status='review_candidate_not_corrob'`; **135 candidate pairs / 83 CSB records**, no independent same-event verification or site-level corroboration. CSB may legally report by reusing an NRC reference, so cross-agency overlap does NOT prove independent corroboration.
 
 `lane_c_install.py query` uses read-only SQLite, parameterized filters, bounded `page_size` 1–200, and deliberately returns only source-identifying, dated and geographic fields—not original report free text. The private service must authorize every request and redact sensitive source fields by role/tenant.
+
+**Machine-readable integration status:** `lane_c_install.py health --root <private_store>` verifies each official source manifest and immutable SQLite, then returns a read-only per-namespace summary: `namespace`, `source_vintage`, `source_url`, `raw_sha256`, `normalized_sha256`, `publisher_source_rows`, `accepted_rows`, `rejected_rows`, `indexed_private_file_rows`, source-reported coordinates, child-link/date uncertainty, and explicit `authenticated_serving_verified=false`, `live_app_deployed_rows=0`. Lane E can consume this sanitized JSON after authenticating the service; do **not** rewrite it to deployed until independent backend/browser verification.
 
 **Proposed Lane E API (not yet implemented):**
 
