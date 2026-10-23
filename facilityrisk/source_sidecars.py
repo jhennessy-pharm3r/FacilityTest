@@ -47,6 +47,11 @@ def _config(path_var, evidence_var):
         raise SourceIndexUnavailable("Source index must not be the writable insured research database")
     if not db.is_file() or not meta.is_file():
         raise SourceIndexUnavailable("Configured index or manifest is absent")
+    # Immutable SQLite deliberately ignores WAL writes: a nonempty WAL means
+    # the source has not been sealed/checkpointed and must never be served.
+    live_wal=Path(str(db)+"-wal")
+    if live_wal.is_file() and live_wal.stat().st_size>0:
+        raise SourceIndexUnavailable("Source-only SQLite has a live uncheckpointed WAL")
     return db, meta
 
 
