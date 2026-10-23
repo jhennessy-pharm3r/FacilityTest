@@ -88,3 +88,31 @@ def test_private_review_queue_is_not_exposed_in_public_navigation():
     assert 'data-review-action' in appjs
     assert '/api/review-approvals/' in appjs
     assert 'Shared service tokens cannot approve' in appjs
+
+
+def test_pages_and_records_have_shareable_history_routes_without_exposing_forms():
+    public=(ROOT/'index.html').read_text()
+    private=(ROOT/'web'/'index.html').read_text()
+    app=(ROOT/'web'/'app.js').read_text()
+    registry=(ROOT/'web'/'registry-ui.js').read_text()
+    universal=(ROOT/'web'/'universal-ui.js').read_text()
+    for html in (public,private):
+        assert 'id="copy-view-link"' in html
+        assert '<a class="nav-item' in html
+        assert 'href="?page=feeds"' in html
+        assert 'href="?page=registry"' in html
+        assert 'href="?page=facilities"' in html
+    assert "window.addEventListener('popstate',restoreLocation)" in app
+    assert "window.history.pushState" in app
+    assert "window.history[method==='replace'?'replaceState':'pushState']" in app
+    assert 'window.FacilityRiskRouter=Object.freeze' in app
+    assert 'navigator.clipboard.writeText(window.location.href)' in app
+    assert 'routeableFacility(id)' in app
+    assert 'routeableFacility(state.facility)' in app
+    assert 'openSite(route.facility,{fromRoute:true,tab:route.tab})' in app
+    assert 'window.RegistryUI={render:' in registry and 'mount,restoreRoute,pages' in registry
+    assert 'window.UniversalUI={render,mount,restoreRoute}' in universal
+    # Private assessment/policy values are never placed in browser URL parameters.
+    route_keys=app.split('const ROUTE_KEYS=new Set(',1)[1].split(');',1)[0]
+    assert 'coverage' not in route_keys and 'daily' not in route_keys
+    assert 'sourceIdentity' not in route_keys and 'policy' not in route_keys
