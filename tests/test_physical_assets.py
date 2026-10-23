@@ -57,6 +57,12 @@ def test_campus_building_and_review_are_not_property_geocode_validation(conn):
     assert decision['coordinate_verified'] is False
     assert facility_assets(conn,'site-a')['identity_corroborated_assets']==1
     assert facility_assets(conn,'site-a')['reviewed_property_coordinates']==0
+    from facilityrisk.assessment import build_assessment,render_assessment_html
+    assessed=build_assessment(conn,'site-a')
+    assert assessed['physical_assets']['total_assets']==2
+    assert assessed['coverage']['physical_site']['status']=='unassessed'
+    assert assessed['coverage']['physical_asset_inventory']['status']=='source_assets_observed'
+    assert 'Production building B' in render_assessment_html(assessed)
     updated=revise_asset(conn,building['asset_id'],{
       'address':'1 Industry Way, Building B (corrected)'},'analystA')
     assert updated['status']=='candidate'
