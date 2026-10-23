@@ -1,0 +1,28 @@
+name: Lane C official PHMSA-derived BTS context probe
+on:
+  push:
+    branches:
+      - 'ingest/industrial-events-nrc-csb-phmsa-*'
+    paths:
+      - scripts/probe_lane_c_bts.py
+      - .github/workflows/lane-c-bts-probe.yml
+  workflow_dispatch:
+jobs:
+  official-bts-stats:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install requirements
+        run: pip install requests openpyxl
+      - name: Real official BTS PHMSA-derived national summary download
+        run: python scripts/probe_lane_c_bts.py --output output
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lane-c-bts-official-aggregate-schema
+          path: output/*.json
+          retention-days: 14
