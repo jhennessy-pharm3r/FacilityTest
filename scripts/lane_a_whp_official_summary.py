@@ -78,6 +78,8 @@ def run(out_dir, fetch=download):
          "rejected_archive_members": [], "warnings": []}
     try:
         raw, url = fetch()
+        if not zipfile.is_zipfile(io.BytesIO(raw)):
+            raise ValueError("Official publisher response is not a valid ZIP")
         target = out_dir / "whp2023_official_summaries.zip"
         target.write_bytes(raw)
         m["source_downloaded"] = True
