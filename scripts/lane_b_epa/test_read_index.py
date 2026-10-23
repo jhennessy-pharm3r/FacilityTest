@@ -3,6 +3,7 @@ import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+from zipfile import ZipFile
 from scripts.lane_b_epa.ingest import ingest
 from scripts.lane_b_epa.read_index import lookup,source_status,InvalidSourceIndex
 
@@ -25,6 +26,22 @@ class LaneBReadOnlyIndexTests(unittest.TestCase):
             self.assertEqual(al["rows"][0]["date"],"2024-03-12")
             self.assertEqual(al["rows"][0]["regulatory_observation_kind"],"rcra_evaluation")
             self.assertEqual(al["physical_site_linkage"],"NOT_REVIEWED")
+    def test_rcra_enforcement_native_join_never_matches_wrong_location(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d);archive=root/"src.zip"
+            with ZipFile(archive,"w") as f:
+                f.writestr("RCRA_FACILITIES.csv","ID_NUMBER,ACTIVITY_LOCATION,FACILITY_NAME,LATITUDE83,LONGITUDE83\n"
+                    "TXD123,TX,Reporting Handler,32,-97\n")
+                f.writestr("RCRA_ENFORCEMENTS.csv","ID_NUMBER,ACTIVITY_LOCATION,ENFORCEMENT_IDENTIFIER,ENFORCEMENT_ACTION_DATE\n"
+                    "TXD123,TX,EN1,04/01/2024\n"
+                    "TXD123,OK,EN2,05/02/2024\n")
+            out=root/"index";ingest("rcra",archive,out)
+            good=lookup(out/"rcra.sqlite",out/"rcra.manifest.json","rcra","TXD123",activity_location="TX")
+            match=[x for x in good["rows"] if x["regulatory_observation_kind"]=="rcra_enforcement"][0]
+            self.assertEqual(match["rcra_same_source_handler_context"]["reported_handler_latitude"],32.0)
+            self.assertFalse(match["rcra_same_source_handler_context"]["physical_property_match_verified"])
+            wrong=lookup(out/"rcra.sqlite",out/"rcra.manifest.json","rcra","TXD123",activity_location="OK")
+            self.assertEqual(wrong["rows"][0]["rcra_same_source_handler_context"]["join_state"],"no_unique_regulator_handler_match")
     def test_tampering_fails_closed(self):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d);raw=root/"tri.csv";raw.write_text("2. TRIFD,1. YEAR\nX0001,2024\n")
