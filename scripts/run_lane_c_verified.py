@@ -183,6 +183,45 @@ def run(output):
             audit.get("source_index",{}).get("total_indexed_ephemeral",0)
             + sum(x.get("ephemeral_indexed",0) for x in audit["additional_nrc_cohorts"].values())
         )
+        # Consolidated *source-only* SQLite: primary key (source_namespace,
+        # publisher_native_id) retains years independently when NRC numbers
+        # repeat. This is for Lane E integration readiness, NOT an insured
+        # property index, and is never uploaded as a public build artifact.
+        try:
+            inputs=[
+                ("nrc_2025",work/"nrc.csv.gz",output/"nrc-manifest.json"),
+                ("csb",work/"csb.csv.gz",output/"csb-manifest.json"),
+            ]
+            for year in (2024,2023,2022,2021,2020):
+                if audit["additional_nrc_cohorts"].get(str(year),{}).get("ephemeral_indexed"):
+                    inputs.append((f"nrc_{year}",work/f"nrc-{year}.csv.gz",
+                                   output/f"nrc-{year}-manifest.json"))
+            consolidated=index_sources(work/"lane-c-multiyear.sqlite",inputs,
+                                  output/"all-cohorts-index-audit.json")
+            for name in [item[0] for item in inputs]:
+                query=search_source(work/"lane-c-multiyear.sqlite",
+                                     source=name,page_size=10)
+                if query["total"] != consolidated["sources"][name]["indexed_rows_ephemeral"]:
+                    raise ValueError("Consolidated source namespace/count mismatch: "+name)
+            if (consolidated["total_indexed_ephemeral"] !=
+                audit["total_ephemeral_indexed_all_independent_cohorts"]):
+                raise ValueError("Consolidated index counts differ from separately checked source indices")
+            audit["consolidated_multi_year_index"]={
+                "state":"INDEXED_EPHEMERAL_NOT_DEPLOYED",
+                "total_rows":consolidated["total_indexed_ephemeral"],
+                "source_keys":[x[0] for x in inputs],
+                "source_counts":{k:v["indexed_rows_ephemeral"]
+                    for k,v in consolidated["sources"].items()},
+                "quick_check":consolidated["quick_check"],
+                "source_native_ids_preserved_and_namespaced":True,
+                "source_query_paging":"PASS",
+                "deployment":"NOT_DEPLOYED"
+            }
+        except Exception as error:
+            audit["blocked_items"].append({
+                "source":"consolidated_source_index",
+                "error":type(error).__name__+": "+str(error)[:400]})
+            success=False
         # External access attempts do not prevent the two successful source
         # cohorts from being independently usable as staging.
         for name, url in PHMSA_OFFICIAL_URLS.items():
@@ -205,6 +244,7 @@ def run(output):
             "ephemeral_index":audit.get("source_index",{}).get("total_indexed_ephemeral"),
             "additional_nrc_cohorts":audit.get("additional_nrc_cohorts"),
             "total_ephemeral_indexed":audit.get("total_ephemeral_indexed_all_independent_cohorts"),
+            "consolidated_index":audit.get("consolidated_multi_year_index"),
             "deterministic":audit.get("deterministic_repeated_sha256"),
             "phmsa":audit["phmsa"],
             "blocked_items":audit["blocked_items"],
