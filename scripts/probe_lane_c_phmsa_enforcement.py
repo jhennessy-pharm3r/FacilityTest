@@ -137,6 +137,14 @@ def main():
             if indexed["source_case_rows"]!=staged["accepted_case_rows"]:
                 raise ValueError("PHMSA normalized/indexed source-case reconciliation failed")
             audit["normalized_case_rows"]=staged["accepted_case_rows"]
+            audit["normalized_sha256"]=staged["normalized_sha256"]
+            audit["unique_case_numbers"]=staged["native_case_ids"]
+            audit["duplicate_native_case_ids"]=staged["duplicate_case_numbers"]
+            audit["duplicate_case_activity_composites"]=staged["duplicate_case_activity_composites"]
+            audit["report_reference_rows"]=staged["report_reference_rows"]
+            audit["distinct_typed_report_references"]=staged["distinct_typed_report_references"]
+            audit["source_open_date_range"]=[staged["opened_date_min"],staged["opened_date_max"]]
+            audit["unparseable_opened_dates"]=staged["unparseable_or_missing_opened_dates"]
             audit["rejected_case_rows"]=staged["rejected_case_rows"]
             audit["ephemeral_enforcement_index"]=indexed
             audit["state"]="OFFICIAL_ENFORCEMENT_CASES_CONTENT_VALIDATED_INDEXED_EPHEMERAL_NOT_INCIDENT_CENSUS"
