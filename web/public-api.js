@@ -6,24 +6,55 @@
   const seedUrl = new URL('./public-demo.json', script?.src || document.baseURI);
   const statusUrl = new URL('./source-status.json', script?.src || document.baseURI);
   const noaaStatusUrl = new URL('./ingestion/noaa-storm-events.json', script?.src || document.baseURI);
+  const parallelUrl = new URL('./coordination/parallel-ingestion.json', script?.src || document.baseURI);
   let statusPromise = null;
   function fetchOptionalJson(url) {
     return fetch(url, {cache:'no-store'}).then(r => r.ok?r.json():null).catch(()=>null);
   }
+  // Source-only coordination metadata. Fail closed on unreviewed counts or on
+  // any suggestion that ephemeral CI indexes are production facility evidence.
+  function validatedParallel(snapshot) {
+    if (!snapshot || snapshot.schema_version !== '1.0' ||
+        snapshot.review_status !== 'verified_source_qa_not_deployed' ||
+        !/^\\d{4}-\\d{2}-\\d{2}$/.test(snapshot.as_of||'') ||
+        !Array.isArray(snapshot.lanes) || snapshot.lanes.length !== 4) return null;
+    const laneIds = new Set();
+    const sourceIds = new Set();
+    const stages = new Set(['sample_ci_indexed','ci_indexed','staged_normalized','downloaded_qa','access_blocked']);
+    const count = v => v === null || (Number.isSafeInteger(v) && v >= 0);
+    for (const lane of snapshot.lanes) {
+      if (!['A','B','C','D'].includes(lane.id) || laneIds.has(lane.id) ||
+          !Array.isArray(lane.sources) || !lane.sources.length) return null;
+      laneIds.add(lane.id);
+      for (const source of lane.sources) {
+        if (!source.id || sourceIds.has(source.id) || !stages.has(source.stage) ||
+            !['scanned','accepted','rejected','indexed_ci','valid_coordinates'].every(k=>count(source[k])) ||
+            source.deployed !== 0 || source.verified_insured_sites !== 0) return null;
+        if (source.scanned !== null &&
+            (source.accepted === null || source.rejected === null ||
+             source.scanned !== source.accepted + source.rejected)) return null;
+        if (source.indexed_ci !== null &&
+            (source.accepted === null || source.indexed_ci > source.accepted)) return null;
+        sourceIds.add(source.id);
+      }
+    }
+    return snapshot;
+  }
   function getStatus() {
     if (!statusPromise) {
-      statusPromise = Promise.all([fetchOptionalJson(statusUrl), fetchOptionalJson(noaaStatusUrl)])
-        .then(([base, noaa]) => {
+      statusPromise = Promise.all([fetchOptionalJson(statusUrl), fetchOptionalJson(noaaStatusUrl), fetchOptionalJson(parallelUrl)])
+        .then(([base, noaa, parallel]) => {
           if (!base || base.schema_version !== '1.0') return null;
+          const reviewed = {...base, parallel_ingestion:validatedParallel(parallel)};
           if (noaa?.schema_version !== '1.0' || noaa?.source !== 'NOAA Storm Events Details' ||
               noaa?.state !== 'staged_source_artifact' || !Number.isSafeInteger(noaa.records) || noaa.records < 1) {
-            return base;
+            return reviewed;
           }
           const existing = (base.ingestions||[]).filter(x => x.source !== noaa.source);
           const vetted = {source:noaa.source, state:noaa.state, records:noaa.records,
             checked_at:noaa.checked_at, scope:noaa.scope, details:noaa.details,
             documentation:noaa.documentation, artifact_run_url:noaa.artifact_run_url};
-          return {...base, ingestions:[...existing,vetted]};
+          return {...reviewed, ingestions:[...existing,vetted]};
         });
     }
     return statusPromise;
@@ -124,7 +155,7 @@
       quality:{verified_frs_links:0,frs_candidates_pending:0,verified_site_locations:0,historical_incidents:0,hazard_screenings:0,profiles:0,live_source_checks:0},
       source_health:[],source_catalog:[]};
       if (!snapshot || snapshot.schema_version !== '1.0') return intel;
-      return {...intel, source_health:snapshot.checks||[], source_catalog:(snapshot.checks||[]).map(x=>({source:x.source,documentation:x.documentation})), public_status_generated_at:snapshot.generated_at, ingestions:snapshot.ingestions||[], source_run_url:snapshot.run_url};
+      return {...intel, source_health:snapshot.checks||[], source_catalog:(snapshot.checks||[]).map(x=>({source:x.source,documentation:x.documentation})), public_status_generated_at:snapshot.generated_at, ingestions:snapshot.ingestions||[], parallel_ingestion:snapshot.parallel_ingestion||null, source_run_url:snapshot.run_url};
     }
     if (r==='source-extensions'){
       const snapshot = await getStatus();
