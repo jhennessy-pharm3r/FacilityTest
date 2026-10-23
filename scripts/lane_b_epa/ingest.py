@@ -20,9 +20,9 @@ def ingest(source,path,out,source_url=None,year=None):
     archive=zipfile.ZipFile(path) if zipfile.is_zipfile(path) else None
     members=[x for x in archive.infolist() if not x.is_dir() and x.filename.lower().endswith((".csv",".txt"))] if archive else [None]
     db=sqlite3.connect(target)
-    db.execute("CREATE TABLE observation(source TEXT,source_id TEXT,member TEXT,row_number INTEGER,payload TEXT,row_sha256 TEXT,latitude REAL,longitude REAL,PRIMARY KEY(source,member,row_number))")
-    db.execute("CREATE INDEX idx_sourceid ON observation(source,source_id)")
-    db.execute("CREATE TABLE rejected(member TEXT,row_number INTEGER,reason TEXT)")
+    db.execute("CREATE TABLE observation(source TEXT,source_id TEXT,member TEXT,row_number INTEGER,payload TEXT,row_sha256 TEXT,latitude REAL,longitude REAL,activity_location TEXT,PRIMARY KEY(source,member,row_number))")
+    db.execute("CREATE INDEX idx_sourceid ON observation(source,source_id,activity_location)")
+    db.execute("CREATE TABLE rejected(member TEXT,row_number INTEGER,reason TEXT,row_sha256 TEXT,payload_json TEXT)")
     scanned=accepted=rejected=coords=duplicates=0;seen=set();inventory={};reject_reasons={}
     try:
         for item in members:
@@ -47,7 +47,8 @@ def ingest(source,path,out,source_url=None,year=None):
                         rejected+=1
                         reason="malformed_csv" if None in row else "missing_native_id"
                         reject_reasons[reason]=reject_reasons.get(reason,0)+1
-                        db.execute("INSERT INTO rejected VALUES (?,?,?)",(member,n,reason))
+                        quarantined=json.dumps(obj,sort_keys=True,ensure_ascii=False,separators=(",",":"))
+                        db.execute("INSERT INTO rejected VALUES (?,?,?,?,?)",(member,n,reason,hashlib.sha256(quarantined.encode()).hexdigest(),quarantined))
                         continue
                     if (member,sid) in seen:duplicates+=1
                     seen.add((member,sid))
@@ -55,15 +56,17 @@ def ingest(source,path,out,source_url=None,year=None):
                     b=coordinate(obj.get(lon),-180,180) if lon else None
                     if a is not None and b is not None:coords+=1
                     raw=json.dumps(obj,sort_keys=True,ensure_ascii=False,separators=(",",":"))
-                    db.execute("INSERT INTO observation VALUES (?,?,?,?,?,?,?,?)",(source,sid,member,n,raw,hashlib.sha256(raw.encode()).hexdigest(),a,b))
+                    db.execute("INSERT INTO observation VALUES (?,?,?,?,?,?,?,?,?)",(source,sid,member,n,raw,hashlib.sha256(raw.encode()).hexdigest(),a,b,obj.get("ACTIVITY_LOCATION","")) )
                     accepted+=1
                     if scanned%10000==0:db.commit()
-                inventory[member]={"state":"normalized","scanned":rows,"identity_column":identity}
+                inventory[member]={"state":"normalized","scanned":rows,"identity_column":identity,
+                                  "header_columns":keys,"activity_location_in_header":"ACTIVITY_LOCATION" in keys}
         db.commit()
+        if not accepted:raise ValueError("No source records had accepted native keys; inspect archive and official headers")
         indexed=db.execute("SELECT COUNT(*) FROM observation").fetchone()[0]
         check=db.execute("PRAGMA integrity_check").fetchone()[0]
         if indexed!=accepted or scanned!=accepted+rejected or check!="ok":raise AssertionError("reconciliation failed")
-        result=dict(source=source,state="INDEXED",deployment_state="NOT_DEPLOYED",retrieved_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),source_url=source_url,year=year,archive_sha256=digest.hexdigest(),scanned_rows=scanned,accepted_rows=accepted,rejected_rows=rejected,reject_reason_counts=reject_reasons,indexed_rows=indexed,valid_coordinate_pairs=coords,duplicate_member_ids=duplicates,archive_members=inventory,integrity=check,source_identity_only=True)
+        result=dict(source=source,schema_version=2,raw_rejected_payloads_preserved=True,rcra_join_rule="ID_NUMBER + ACTIVITY_LOCATION (do not join by name or ID_NUMBER alone)" if source=="rcra" else None,state="INDEXED",deployment_state="NOT_DEPLOYED",retrieved_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),source_url=source_url,year=year,archive_sha256=digest.hexdigest(),scanned_rows=scanned,accepted_rows=accepted,rejected_rows=rejected,reject_reason_counts=reject_reasons,indexed_rows=indexed,valid_coordinate_pairs=coords,duplicate_member_ids=duplicates,archive_members=inventory,integrity=check,source_identity_only=True)
         (out/(source+".manifest.json")).write_text(json.dumps(result,indent=2)+"\n")
         return result
     except Exception:
