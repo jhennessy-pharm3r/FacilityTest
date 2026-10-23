@@ -1,7 +1,16 @@
 name: Lane B independent EPA index artifact replay
 on:
+  push:
+    branches: ['ingest/epa-echo-tri-rcra-rmp-lane-b-20261023']
+    paths: ['.github/workflows/lane-b-replay.yml']
   workflow_dispatch:
     inputs:
+      source:
+        description: "Sources to verify for an existing official-source run"
+        required: true
+        type: choice
+        default: both
+        options: [both, echo, rcra]
       producer_run_id:
         description: "Successful Lane B official archives run number containing manifests and index parts"
         required: true
@@ -10,29 +19,50 @@ permissions:
   contents: read
   actions: read
 jobs:
+  select_replay:
+    runs-on: ubuntu-latest
+    outputs:
+      sources: ${{ steps.select.outputs.sources }}
+      producer_run_id: ${{ steps.select.outputs.producer_run_id }}
+    steps:
+      - id: select
+        env:
+          SOURCES: ${{ inputs.source || 'rcra' }}
+          PRODUCER_RUN: ${{ inputs.producer_run_id || '39982893655' }}
+        run: |
+          set -euo pipefail
+          case "$SOURCES" in
+            rcra) echo 'sources=["rcra"]' >> "$GITHUB_OUTPUT";;
+            echo) echo 'sources=["echo"]' >> "$GITHUB_OUTPUT";;
+            both) echo 'sources=["echo","rcra"]' >> "$GITHUB_OUTPUT";;
+            *) exit 1;;
+          esac
+          [[ "$PRODUCER_RUN" =~ ^[0-9]+$ ]] || exit 1
+          echo "producer_run_id=$PRODUCER_RUN" >> "$GITHUB_OUTPUT"
   verify_artifact_replay:
+    needs: select_replay
     runs-on: ubuntu-latest
     timeout-minutes: 55
     strategy:
       fail-fast: false
       matrix:
-        source: [echo, rcra]
+        source: ${{ fromJSON(needs.select_replay.outputs.sources) }}
     env:
-      PRODUCER_RUN: ${{ inputs.producer_run_id }}
+      PRODUCER_RUN: ${{ needs.select_replay.outputs.producer_run_id }}
       SOURCE: ${{ matrix.source }}
     steps:
       - uses: actions/checkout@v4
       - name: Download exactly the producer's provenance manifests
         uses: actions/download-artifact@v4
         with:
-          run-id: ${{ inputs.producer_run_id }}
+          run-id: ${{ needs.select_replay.outputs.producer_run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           name: lane-b-${{ matrix.source }}-complete-manifests
           path: ${{ runner.temp }}/replay/meta
       - name: Download source-specific published chunks from producer run
         uses: actions/download-artifact@v4
         with:
-          run-id: ${{ inputs.producer_run_id }}
+          run-id: ${{ needs.select_replay.outputs.producer_run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           pattern: lane-b-${{ matrix.source }}-index-part-*
           merge-multiple: true
