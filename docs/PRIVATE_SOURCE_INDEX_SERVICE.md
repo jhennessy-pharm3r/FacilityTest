@@ -57,3 +57,15 @@ Mount states: not_configured, unavailable, ready_partial and ready_full. Missing
 - Backups, restore/rollback, SSO, tenancy, perimeter controls and real full-cohort hosted benchmarks remain signed-off prerequisites for production operation.
 
 See docs/FRS_INDEX_OPERATIONS.md, docs/NOAA_STORM_EVENTS.md, docs/SECURE_DEPLOYMENT.md and issues #3, #4 and #39 for next work.
+
+## EPA environmental compliance source-only integration (all industries)
+
+The merged Lane B importer now has a coordinator-approved optional read-only source API for **ECHO, RCRAInfo, TRI Basic 1987–2024 and public FRS-RMP**. It does not replace FRS universal identity search; it is a separate regulator-native observation index, **not** a canonical insured-site or regulatory violation attribution.
+
+- Versioned, original SHA-256-validated bundles mount beneath `/app/source-index`, with original ZIP/CSV/JSONL and quarantined records preserved.
+- `/api/epa/lane-b/status` enumerates `not_configured`, `unavailable` or `mounted_source_only` independently per source. `/api/source-indices/status` includes the same private `lane_b_epa` readiness object; never equate “mounted” with verified insured-property match or production release approval.
+- `GET /api/epa/lane-b/{source}/identity?native_id=...` requires the regulator’s **exact original ID**, with two-character `activity_location` for RCRA and explicit year for TRI. Program interest RMP is public metadata only. Raw attributes need researcher/reviewer/admin credentials.
+- The private research UI exposes **EPA regulatory evidence** only from a genuinely mounted private API. GitHub Pages cannot serve the index and may not claim these observations are deployed.
+- `FACILITY_RISK_LANE_B_ROUTES_ENABLED=0` by default, `FACILITY_RISK_ENABLE_WRITES=0`; private Docker image includes the source adapter and drops privileges to UID 10001. Production requires operator-controlled source archive retention, TLS/SSO, multi-tenant security, and reviewed site links.
+
+**Exact artifact IDs, restore, installation, environment variables, UID permissions, expected source counts, live smoke tests, and rollback:** [EPA Lane B operator runbook](EPA_LANE_B_DEPLOYMENT.md). Source-level original URL/hash audit: [Lane B integration release ledger](../scripts/lane_b_epa/INTEGRATION_RELEASE.md). The real non-root Docker and authenticated HTTP acceptance used official public RMP observations [Actions run 40004791507](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/40004791507). **Actual live production source rows remain 0 until independently hosted and measured.**

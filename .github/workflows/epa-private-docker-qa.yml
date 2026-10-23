@@ -1,0 +1,142 @@
+name: Coordinator EPA actual-source private Docker API acceptance
+on:
+  push:
+    branches: ['integration/epa-lane-b-private-api-20261023']
+    paths: ['.github/workflows/epa-private-docker-qa.yml']
+  pull_request:
+    paths:
+      - Dockerfile
+      - compose.yaml
+      - facilityrisk/app.py
+      - scripts/lane_b_epa/**
+      - .github/workflows/epa-private-docker-qa.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  real_docker_source_api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CI_BEARER: "ci-only-eparegulator-private-source-auth-testing-abcdef123456"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: 39981171808
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          name: lane-b-public-frs-rmp-source-only-index
+          path: ${{ runner.temp }}/epa_source_original
+      - name: Prepare real source-only mount for Docker UID 10001
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/epa_source_rmp"
+          for file in rmp_frs_public.sqlite rmp_frs_public.raw.jsonl rmp_frs_public.manifest.json; do
+            src=$(find "$RUNNER_TEMP/epa_source_original" -type f -name "$file" -print -quit)
+            test -n "$src" && test -s "$src"
+            cp "$src" "$RUNNER_TEMP/epa_source_rmp/$file"
+          done
+          # Hash official files before sealing them for non-root UID 10001.
+          python - <<'PY'
+          import hashlib,json,os,pathlib
+          root=pathlib.Path(os.environ["RUNNER_TEMP"])/"epa_source_rmp"
+          m=json.loads((root/"rmp_frs_public.manifest.json").read_text())
+          assert m["indexed_rows"]==21853
+          for filename,key in (("rmp_frs_public.sqlite","index_sha256"),("rmp_frs_public.raw.jsonl","raw_jsonl_sha256")):
+              h=hashlib.sha256()
+              with (root/filename).open("rb") as f:
+                  for chunk in iter(lambda:f.read(1048576),b""):h.update(chunk)
+              assert h.hexdigest()==m[key],(filename,"sha mismatch")
+          PY
+          sudo find "$RUNNER_TEMP/epa_source_rmp" -maxdepth 1 -type f -exec chmod 440 {} +
+          sudo chown -R 10001:10001 "$RUNNER_TEMP/epa_source_rmp"
+          sudo chmod 750 "$RUNNER_TEMP/epa_source_rmp"
+      - name: Build production Dockerfile (ensure merged Lane B package included)
+        run: docker build --pull -t facilityrisk-epa-coordinator:test .
+      - name: Start real container as non-root with read-only EPA publisher mount
+        run: |
+          set -euo pipefail
+          docker run -d --name facilityrisk-epa-smoke \
+            --read-only --tmpfs /tmp:rw,noexec,nosuid,size=64m \
+            --cap-drop ALL --security-opt no-new-privileges:true \
+            --mount "type=bind,src=$RUNNER_TEMP/epa_source_rmp,dst=/app/source-index/rmp,readonly" \
+            -e FACILITY_RISK_REQUIRE_AUTH=1 \
+            -e FACILITY_RISK_AUTH_TOKEN="$CI_BEARER" \
+            -e FACILITY_RISK_ENABLE_WRITES=0 \
+            -e FACILITY_RISK_LANE_B_ROUTES_ENABLED=1 \
+            -e FACILITY_RISK_LANE_B_RMP_DIRECTORY=/app/source-index/rmp \
+            -p 127.0.0.1:18765:8765 facilityrisk-epa-coordinator:test
+      - name: Verify running HTTP authentication, actual source counts and original program-ID lookup
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 50); do
+            code=$(curl -sS --max-time 2 -o /dev/null -w '%{http_code}' \
+              -H "Authorization: Bearer $CI_BEARER" \
+              http://127.0.0.1:18765/api/epa/lane-b/status || true)
+            if [ "$code" = 200 ]; then break; fi
+            sleep 2
+          done
+          test "$code" = "200"
+          anon=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18765/api/epa/lane-b/status)
+          test "$anon" = 401
+          curl -fsS -H "Authorization: Bearer $CI_BEARER" \
+             http://127.0.0.1:18765/api/epa/lane-b/status > "$RUNNER_TEMP/source_http_status.json"
+          id=$(sudo env RUNNER_TEMP="$RUNNER_TEMP" python - <<'PY'
+          import os,pathlib,sqlite3
+          path=pathlib.Path(os.environ["RUNNER_TEMP"])/"epa_source_rmp"/"rmp_frs_public.sqlite"
+          with sqlite3.connect(path) as con:
+              print(con.execute("SELECT program_id FROM rmp_frs_public LIMIT 1").fetchone()[0])
+          PY
+          )
+          curl -fsSG --data-urlencode "native_id=$id" \
+             -H "Authorization: Bearer $CI_BEARER" \
+             http://127.0.0.1:18765/api/epa/lane-b/rmp_public/identity \
+             > "$RUNNER_TEMP/source_http_identity.json"
+          denied=$(curl -sG -o /dev/null -w '%{http_code}' \
+             --data-urlencode "native_id=$id" --data-urlencode "include_raw=true" \
+             -H "Authorization: Bearer $CI_BEARER" \
+             http://127.0.0.1:18765/api/epa/lane-b/rmp_public/identity)
+          test "$denied" = 403
+          unavailable=$(curl -sG -o /dev/null -w '%{http_code}' \
+             --data-urlencode "native_id=UNKNOWN" -H "Authorization: Bearer $CI_BEARER" \
+             http://127.0.0.1:18765/api/epa/lane-b/echo/identity)
+          test "$unavailable" = 503
+          sudo env RUNNER_TEMP="$RUNNER_TEMP" python - <<'PY'
+          import json,os,pathlib
+          root=pathlib.Path(os.environ["RUNNER_TEMP"])
+          statuses=json.loads((root/"source_http_status.json").read_text())
+          identities=json.loads((root/"source_http_identity.json").read_text())
+          assert statuses["sources"]["rmp_public"]["state"]=="mounted_source_only"
+          assert statuses["sources"]["rmp_public"]["indexed_source_rows"]==21853
+          assert statuses["sources"]["echo"]["state"]=="not_configured"
+          assert identities["observations_available"]>0
+          assert identities["site_and_insured_loss_status"]=="UNASSESSED"
+          assert identities["records"][0]["location_verification"]=="NOT_REVIEWED"
+          assert "reported_attributes" not in identities["records"][0]
+          manifest=json.loads((root/"epa_source_rmp"/"rmp_frs_public.manifest.json").read_text())
+          receipt={"status":"PASS_ACTUAL_OFFICIAL_SOURCE_IN_NONROOT_DOCKER",
+              "source":"EPA_PUBLIC_FRS_RMP","official_source_rows":21853,
+              "indexed_in_temporary_readonly_container":21853,
+              "source_original_sha256":manifest["raw_jsonl_sha256"],
+              "index_sha256":manifest["index_sha256"],
+              "authenticated_http_200":True,"anonymous_http_401":True,
+              "raw_disclosure_http_403":True,"unmounted_source_http_503":True,
+              "approved_insured_site_matches":0,"persistent_production_deployed_rows":0}
+          (root/"epa_docker_http_qa.json").write_text(json.dumps(receipt,indent=2)+"\n")
+          print("ACTUAL_EPA_SOURCE_IN_PRIVATE_DOCKER",json.dumps(receipt))
+          PY
+      - name: Remove running container and temporary actual source files
+        if: always()
+        run: |
+          docker logs facilityrisk-epa-smoke --tail 120 2>/dev/null || true
+          docker rm -f facilityrisk-epa-smoke || true
+          sudo rm -rf "$RUNNER_TEMP/epa_source_rmp" "$RUNNER_TEMP/epa_source_original"
+          test ! -e "$RUNNER_TEMP/epa_source_rmp"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coordinator-epa-private-docker-actual-source-http-audit
+          path: ${{ runner.temp }}/epa_docker_http_qa.json
+          if-no-files-found: warn
+          retention-days: 14

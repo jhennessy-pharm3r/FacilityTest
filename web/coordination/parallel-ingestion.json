@@ -88,7 +88,7 @@
       "id": "B",
       "name": "Environmental compliance",
       "pr_url": "https://github.com/jhennessy-pharm3r/FacilityTest/pull/76",
-      "gate": "Validated real-source national source-only QA and independent ECHO/RCRA database artifact replay; no durable private host, approved physical-site crosswalk, or service deployment. Restricted RMP/OCA documents are outside public scope.",
+      "gate": "Lane B verified official source ingestion merged into main (PR #76); actual ECHO/RCRA/TRI/public RMP private read-only install and authenticated HTTP QA passed. Coordinator integration PR #82 supplies disabled-by-default private API/UI. No durable host, approved physical-site crosswalk, or production records deployed; restricted RMP/OCA excluded.",
       "sources": [
         {
           "id": "epa_echo",
@@ -104,7 +104,7 @@
           "valid_coordinates": 3146109,
           "run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39973733592",
           "source_sha256": "116f6e53117b52f7891c6d2466d662f4ee5e29946b065fdb7b97eaf095615899",
-          "notes": "21,303 source rows rejected for missing REGISTRY_ID; FAC_LAT/FAC_LONG corrected and 3,146,109 pairs validated. Complete ECHO index artifact replay also passed run 39985749332."
+          "notes": "21,303 source rows rejected for missing REGISTRY_ID; FAC_LAT/FAC_LONG corrected and 3,146,109 pairs validated. Complete ECHO index artifact replay also passed run 39985749332. Complete native-ID source install and full 21,303 quarantine replay passed run 39999518064. Lane B ingestion code merged PR #76; production source mount remains absent."
         },
         {
           "id": "epa_rcra",
@@ -120,7 +120,7 @@
           "valid_coordinates": 1522387,
           "run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39984660816",
           "source_sha256": "babf48b1e2388b7f27cfc186cb1e9eb0ecfa26f53476fc81908712e41dfe09f3",
-          "notes": "Original six-table rows and read-only index integrity independently verified. 11,212 event/NAICS foreign-key candidates are left unresolved; native ID_NUMBER + ACTIVITY_LOCATION matter."
+          "notes": "Original six-table rows and read-only index integrity independently verified. 11,212 event/NAICS foreign-key candidates are left unresolved; native ID_NUMBER + ACTIVITY_LOCATION matter. Full official RCRA private install and six-table native ID lookup passed run 39998734713; not persistently deployed."
         },
         {
           "id": "epa_tri",
@@ -136,7 +136,7 @@
           "valid_coordinates": null,
           "run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39988067337",
           "source_sha256": null,
-          "notes": "3,218,093 per-chemical reporting rows, not facilities. 33 historical 1987–2019 vintages independently SHA-reconciled; the 2025 public Basic URL returned HTTP 404, not a zero-report finding."
+          "notes": "3,218,093 per-chemical reporting rows, not facilities. 33 historical 1987–2019 vintages independently SHA-reconciled; the 2025 public Basic URL returned HTTP 404, not a zero-report finding. Actual 2024 snapshot private install and exact native-ID API tested; all 38 years separately source-indexed, NOT durably mounted."
         },
         {
           "id": "epa_rmp_public",
@@ -151,8 +151,8 @@
           "verified_insured_sites": 0,
           "valid_coordinates": 21853,
           "run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39981171808",
-          "source_sha256": "a2ae6195b1e20096b8b21faed57e4ed840fcc753f6775624aadb292e0d3a4272",
-          "notes": "21,853 program-interest rows, not 21,853 independent physical sites. Restricted RMP plans and off-site consequence analyses are NOT included."
+          "source_sha256": "c86acb52b94cac31b0e3c725591e345743c0193261b7f22ac03a18339c162d76",
+          "notes": "21,853 public program-interest rows and 21,567 FRS source IDs. Matching Oct 23 publisher JSONL/index SHA validated by run 39981171808; private Docker source-only API tested run 40004791507. Restricted RMP plans and offsite-consequence analyses are NOT included; 0 production deployed."
         }
       ]
     },
@@ -369,7 +369,7 @@
     "private_backend": "not_provisioned",
     "production_source_rows_deployed": 0,
     "approved_insured_physical_site_links": 0,
-    "worker_prs": "draft_unmerged",
+    "worker_prs": "lane_a_lane_b_merged_other_lanes_open",
     "missing_gates": [
       "durable encrypted authenticated source-index installation with backup and scheduled refresh",
       "review-only physical-site geocoding/identity and source-to-location crosswalk",
