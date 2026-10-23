@@ -19,7 +19,7 @@ from .intelligence import is_reviewed_site_coordinate
 SCHEMA = "facility_risk_usda_whp2023_full_six_raster_release_v1"
 ROOT_ENV = "FACILITY_RISK_WHP2023_RASTER_ROOT"
 # Updated exclusively after a full verified original public USDA archive run.
-PINNED_SOURCE_ARCHIVE_SHA256 = "__PENDING_INDEPENDENT_WHP2023_FULL_ARCHIVE_AUDIT__"
+PINNED_SOURCE_ARCHIVE_SHA256 = "7f10f1f8dd97551b8be1458fe0ec924df60b2cea7ece2d1af4c3c1166d1895ab"
 PRODUCTS = tuple("whp2023_" + kind + "_" + region + ".tif"
                  for kind in ("cls","cnt") for region in ("conus","ak","hi"))
 CLASS_CODES = {1:"Very low",2:"Low",3:"Moderate",4:"High",5:"Very high",
