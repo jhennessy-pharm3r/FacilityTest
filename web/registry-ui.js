@@ -16,6 +16,31 @@
  const cache=new Map();
  let debounce=null, searchGeneration=0;
  function normalize(v){return String(v||'').normalize('NFKD').toLowerCase();}
+
+ function readRegistryRoute(){
+   const p=new URL(window.location.href).searchParams;
+   const index=Number(p.get('p')||'1');
+   return {query:(p.get('q')||'').slice(0,200),sector:(p.get('sector')||'').slice(0,80),
+     source:(p.get('source')||'').slice(0,160),country:(p.get('country')||'').slice(0,2).toUpperCase(),
+     page:Number.isSafeInteger(index)&&index>=1&&index<=100000?index:1,
+     record:(p.get('record')||'').slice(0,200)};
+ }
+ function writeRegistryRoute(method='push'){
+   window.FacilityRiskRouter?.patch({page:'registry',q:query,sector,source,country,
+     p:page>0?String(page+1):null,record:selected?.id||null},method);
+ }
+ async function restoreRoute(){
+   const root=document.getElementById('registry-root');if(!root)return;
+   const route=readRegistryRoute();
+   query=route.query;sector=route.sector;source=route.source;country=route.country;
+   for(const [id,value] of [['registry-query',query],['registry-sector',sector],
+       ['registry-source',source],['registry-country',country]]){
+     const input=document.getElementById(id);if(input)input.value=value;
+   }
+   clearTimeout(debounce);
+   await search(route.page,route.record);
+ }
+
  function catalog(){
    if(!catalogPromise){
      catalogPromise=(async()=>{
@@ -138,7 +163,7 @@
    if(!result.length)return `<div class="empty">${meta?.rows?.length?'No matching identities in the available regulatory source catalogs.':'The downloadable registry has not been populated.'} Absence is not evidence the facility does not exist. Try another name, official lookup, or create a research entry.</div>`;
    return `<div class="registry-count">${fmt(result.length)} matched source identities · showing ${fmt(page*perPage+1)}–${fmt(Math.min(result.length,(page+1)*perPage))}</div><div class="registry-list">${result.slice(page*perPage,(page+1)*perPage).map(rowCard).join('')}</div><div class="registry-pagination"><button class="btn tiny" id="registry-prev" ${page===0?'disabled':''}>← Previous</button><span>Page ${page+1} of ${Math.ceil(result.length/perPage)}</span><button class="btn tiny" id="registry-next" ${(page+1)*perPage>=result.length?'disabled':''}>Next →</button></div>`;
  }
- async function search(){
+ async function search(requestedPage=1,record=''){
    const root=document.getElementById('registry-results');if(!root)return;
    const generation=++searchGeneration;
    if(query.trim().length===1){result=[];page=0;root.innerHTML='<div class="empty">Use at least two characters to search, or clear the field to browse every entry.</div>';return;}
@@ -160,7 +185,12 @@
        if(!q)return rankSource(a)-rankSource(b)||a.name.localeCompare(b.name);
        const rank=x=>normalize(x.fei)===q?0:normalize(x.registration_number)===q?0:normalize(x.name).startsWith(q)?1:normalize(x.company).startsWith(q)?2:3;
        return rank(a)-rank(b)||rankSource(a)-rankSource(b)||a.name.localeCompare(b.name);
-     });page=0;root.innerHTML=resultsHTML();updateStatus();
+     });
+    page=Math.min(Math.max(0,requestedPage-1),Math.max(0,Math.ceil(result.length/perPage)-1));
+    selected=null;
+    const detail=document.getElementById('registry-detail-container');if(detail)detail.innerHTML='';
+    root.innerHTML=resultsHTML();updateStatus();
+    if(record)showDetail(record,false);
      if(!rows.length&&query.trim().length>=2)await liveFallback();
    }catch(e){error='Catalog not yet available: '+e.message+'. Official live lookup is being attempted.';updateStatus();await liveFallback();}
  }
@@ -196,8 +226,9 @@
      <div class="registry-risk-warning">Registration or licensing does not verify the property boundary, active manufacturing status, environmental compliance, hazard exposure, or insurance loss likelihood. These require independent source matching and location review.</div>
      <div class="registry-actions"><button class="btn primary" id="registry-assess">Assess insurance exposure →</button><a class="btn" target="_blank" rel="noopener noreferrer" href="${esc(sourceLink(r))}">View official source ↗</a><button class="btn primary" id="registry-track" data-reg-track="${esc(r.id)}">Add to research workspace</button></div>
     </div></section>`;}
- function showDetail(id){selected=result.find(r=>r.id===id)||null;const root=document.getElementById('registry-detail-container');if(!root)return;
-   root.innerHTML=selected?detailHTML(selected):'';if(selected)root.scrollIntoView({block:'nearest',behavior:'smooth'});
+ function showDetail(id,scroll=true){selected=result.find(r=>r.id===id)||null;const root=document.getElementById('registry-detail-container');if(!root)return;
+   root.innerHTML=selected?detailHTML(selected):(id?'<div class="registry-risk-warning">This source identity is unavailable within the currently published catalog and filters. Missing does not mean low risk.</div>':'');
+   if(selected&&scroll)root.scrollIntoView({block:'nearest',behavior:'smooth'});
  }
  async function track(data){
    if(window.PublicRiskAPI?.addFacility){
@@ -238,11 +269,11 @@
    root.insertAdjacentHTML('beforeend','<div id="registry-detail-container"></div>');
    root.addEventListener('click',async e=>{
      const id=e.target.closest('[data-reg-id]')?.dataset.regId;
-     if(id){showDetail(id);return;}
-     if(e.target.closest('#registry-search-button')){query=(document.getElementById('registry-query')?.value||'').trim();sector=document.getElementById('registry-sector')?.value||'';source=document.getElementById('registry-source')?.value||'';country=(document.getElementById('registry-country')?.value||'').trim().toUpperCase();await search();return;}
-     if(e.target.closest('#registry-prev')){page=Math.max(0,page-1);document.getElementById('registry-results').innerHTML=resultsHTML();return;}
-     if(e.target.closest('#registry-next')){page=Math.min(Math.ceil(result.length/perPage)-1,page+1);document.getElementById('registry-results').innerHTML=resultsHTML();return;}
-     if(e.target.closest('#registry-close-detail')){selected=null;document.getElementById('registry-detail-container').innerHTML='';return;}
+     if(id){showDetail(id);if(selected)writeRegistryRoute();return;}
+     if(e.target.closest('#registry-search-button')){query=(document.getElementById('registry-query')?.value||'').trim();sector=document.getElementById('registry-sector')?.value||'';source=document.getElementById('registry-source')?.value||'';country=(document.getElementById('registry-country')?.value||'').trim().toUpperCase();page=0;selected=null;writeRegistryRoute();await search();return;}
+     if(e.target.closest('#registry-prev')){page=Math.max(0,page-1);selected=null;document.getElementById('registry-detail-container').innerHTML='';document.getElementById('registry-results').innerHTML=resultsHTML();writeRegistryRoute();return;}
+     if(e.target.closest('#registry-next')){page=Math.min(Math.ceil(result.length/perPage)-1,page+1);selected=null;document.getElementById('registry-detail-container').innerHTML='';document.getElementById('registry-results').innerHTML=resultsHTML();writeRegistryRoute();return;}
+     if(e.target.closest('#registry-close-detail')){selected=null;document.getElementById('registry-detail-container').innerHTML='';writeRegistryRoute();return;}
      if(e.target.closest('#registry-assess')&&selected){
        window.dispatchEvent(new CustomEvent('facilityrisk:assess-site',{detail:{...selected,source_url:sourceLink(selected)}}));return;
      }
@@ -254,9 +285,9 @@
    root.addEventListener('input',e=>{if(e.target.id!=='registry-query')return;
      clearTimeout(debounce);debounce=setTimeout(()=>{if(root.isConnected)root.querySelector('#registry-search-button')?.click();},600);
    });
-   try{await catalog();updateStatus();await search();}
+   try{await catalog();updateStatus();await restoreRoute();}
    catch(e){error='Full FDA catalog download has not completed: '+e.message;updateStatus();}
  }
  const pages={registry:true};
- window.RegistryUI={render:()=>`<div id="registry-root">${render()}</div>`,mount,pages};
+ window.RegistryUI={render:()=>`<div id="registry-root">${render()}</div>`,mount,restoreRoute,pages};
 })();
