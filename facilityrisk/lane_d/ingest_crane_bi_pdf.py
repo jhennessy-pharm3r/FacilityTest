@@ -191,7 +191,9 @@ def fetch_pdf(case:dict):
         raise ValueError("Not an approved Crane original issuer financial PDF")
     with urlopen(Request(url,headers={"User-Agent":USER_AGENT,"Accept":"application/pdf"}),timeout=75) as response:
         if response.status!=200 or response.geturl()!=url:
-            raise ValueError("Changed issuer document redirect/status")
+            final=urlparse(response.geturl())
+            raise ValueError("Issuer original document redirected: HTTP "+str(response.status)
+                             +" final_host="+str(final.hostname)+" final_path_suffix="+final.path[-80:])
         raw=response.read(MAX_PDF_BYTES+1)
     return inspect_pdf(case,raw)
 
