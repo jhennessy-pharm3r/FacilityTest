@@ -60,3 +60,21 @@ Official `CY25.xlsx`, `INCIDENT_COMMONS` source table, immutable source ID `SEQN
 - Verified run: https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39971717294
 
 Rows are **source-reported NRC notifications**, initially unverified. A zero duplicate count applies to that exact workbook master table, not to cross-year or cross-agency real-world event de-duplication.
+
+## Validated real NRC and CSB source cohorts — GitHub Actions 39972783353
+
+**Real 2026-10-23 publisher fetch and deterministic per-source staging** (no fake examples):
+
+| Official cohort | Observed data rows | Accepted | Rejected | Duplicate source IDs | Valid reported coordinates | Normalized SHA-256 |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| NRC CY2025: joined CALLS/INCIDENT_COMMONS/INCIDENT_DETAILS on SEQNOS | 21,533 | **21,533** | **0** | **0** | **3,999**; missing 17,534 | `4fd46177b17751b656b90ff351b8b35962696e71e67db2c249db4d738c3a07b2` |
+| CSB 2026-09-01 quarterly Accidental Release Events, Public sheet row 2 headers | 675 | **674** | **1** (missing incident date) | **0** | **0** in provided source fields | `74819c26dce16997bbca349961cadaa6732be194e4896172242b974f9b246df6` |
+| PHMSA hazardous liquid pipeline | unavailable | **not tested** | **not tested** | **not tested** | **not tested** | No raw bytes — HTTP 403 |
+
+Real validation logs: https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39972783353.
+NRC native 2025 workbook includes exactly 21,533 source SEQNOS keys consistently found in all three joined 21,533-row tabs, **zero missing cross-table linkages**, **zero invalid/missing incident dates**; recovered 3,999 source-reported DMS positions (these are NOT known facility coordinates). NRC reported severity is unverified notification content. CSB 2026-09-01 `Number` is only known to be a unique identifier *within this release*; immutable cross-vintage identity and report status require further review. The CSB field `Substantial Property Damage` is not assumed to be a dollar amount, and any report-status flags require official interpretation. No candidate record has been cross-linked to a confirmed physical site, no verified property losses or insured claims are asserted.
+
+**Important stage distinction:** download and reproducible source-content normalization pass for NRC and CSB; **indexed = not completed; served via private backend = not completed; deployed in app = not completed**. The network-capable runner still reports 403 for the official PHMSA pipeline ZIP. PHMSA hazmat has not yet been downloaded; a reported transport incident is not a physical insured site. All industries remain in scope for later linkage, while each federal source has its own reporting universe.
+
+### Current CI gate
+The repository's standard Python CI was green at commit `61d339e8` ([run 39972790290](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39972790290)). The lane's live-source probe is intentionally a **failed overall gate** because PHMSA's official publisher denies HTTP 403; its source-specific NRC and CSB subtasks both passed and the aggregate QA artifact is uploaded. The coordinator must not merge or label production-ready while external source coverage is incomplete.
