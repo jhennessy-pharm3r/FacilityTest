@@ -126,8 +126,8 @@ def stage_sources(root, *, artifact_paths=(), source_root=None):
                 # diagnostics. Ignore those, but never import outside owned
                 # source indexes or silently accept arbitrary foreign content.
                 # Check path traversal even for intentionally skipped files.
-                if (entry.filename.startswith("/") or "\\\\" in entry.filename or
-                        "\\x00" in entry.filename or
+                if (entry.filename.startswith("/") or "\\" in entry.filename or
+                        "\x00" in entry.filename or
                         ".." in pathlib.PurePosixPath(entry.filename).parts):
                     raise ValueError("Unsafe source artifact path")
                 if (pathlib.PurePosixPath(entry.filename).parts[0]
