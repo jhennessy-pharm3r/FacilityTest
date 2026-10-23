@@ -53,11 +53,16 @@ def verify(original_zip, indexed_directory):
     con = sqlite3.connect("file:" + str((indexed_directory / m["source_only_index_filename"]).resolve()) + "?mode=ro", uri=True)
     try:
         quick = con.execute("PRAGMA quick_check").fetchone()[0]
-        indexed = con.execute("SELECT COUNT(*) FROM whp2023_geography").fetchone()[0]
+        geography_indexed = con.execute("SELECT COUNT(*) FROM whp2023_geography").fetchone()[0]
+        management_indexed = con.execute("SELECT COUNT(*) FROM whp2023_management").fetchone()[0]
+        management_totals = con.execute(
+            "SELECT COUNT(*) FROM whp2023_management WHERE is_grand_total=1").fetchone()[0]
+        indexed = geography_indexed + management_indexed
         missing = con.execute(
             "SELECT COUNT(*) FROM whp2023_geography WHERE coverage_state='UNKNOWN_NO_AREA_VALUES'"
         ).fetchone()[0]
         stored_geo = dict(con.execute("SELECT geography_type,COUNT(*) FROM whp2023_geography GROUP BY 1"))
+        stored_geo["management_jurisdiction"] = management_indexed
         dupes = con.execute(
             "SELECT COUNT(*) FROM (SELECT geography_type,native_geographic_id,COUNT(*) c "
             "FROM whp2023_geography GROUP BY 1,2 HAVING c>1)").fetchone()[0]
@@ -65,6 +70,8 @@ def verify(original_zip, indexed_directory):
         con.close()
     if (quick != "ok" or dupes or indexed != emitted or
             indexed != m["normalized_records"] or
+            management_totals != m["management_grand_total_rows"] or
+            management_indexed != m["source_only_indexed_management"] or
             missing != noncovered or missing != m["source_coverage_missing"] or
             stored_geo != by_geography or
             m["source_records_read"] != m["normalized_records"] + m["rejected_records"] or
@@ -76,7 +83,11 @@ def verify(original_zip, indexed_directory):
         "normalized_gzip_sha256_verified": m["normalized_gzip_sha256"],
         "source_rows_read": m["source_records_read"], "normalized": emitted,
         "rejected": m["rejected_records"], "unknown_raster_coverage": missing,
-        "sqlite_indexed": indexed, "by_geography": stored_geo,
+        "sqlite_indexed": indexed,
+        "geographic_indexed": geography_indexed,
+        "management_indexed": management_indexed,
+        "management_grand_total": management_totals,
+        "by_geography": stored_geo,
         "sqlite_integrity": quick,
         "full_national_270m_raster": False, "insurer_site_matches": 0,
     }
