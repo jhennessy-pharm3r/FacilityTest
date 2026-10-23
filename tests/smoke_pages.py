@@ -183,6 +183,8 @@ with sync_playwright() as pw:
     ledger=json.loads((Path(__file__).resolve().parents[1]/'web/coordination/parallel-ingestion.json').read_text())
     source_streams=[x for lane in ledger['lanes'] for x in lane['sources']]
     expect(page.locator('.si-inventory-row:visible')).to_have_count(len(source_streams),timeout=20000)
+    if any(item['id']=='usfs_whp2023_six_national_tiffs' for item in source_streams):
+        expect(page.locator('.si-inventory-row[data-si-source="usfs_whp2023_six_national_tiffs"]')).to_be_visible(timeout=15000)
     expect(page.locator('.si-inventory')).to_contain_text('0 deployed / 0 approved insured-site links')
     page.locator('#si-inventory-family').select_option('Industrial incidents')
     expect(page.locator('.si-inventory-row:visible')).to_have_count(4)

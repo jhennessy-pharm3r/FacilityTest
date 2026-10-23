@@ -45,7 +45,7 @@ const PRODUCTS=[
 ].map(([id,name,category,trigger,questions])=>({id,name,category,trigger,questions}));
 const TYPES=new Map(PRODUCTS.map(p=>[p.id,p]));
 const SOURCE_RESEARCH={
-  flood:['fema_nfhl'],wind:[],quake:[],fire:['usfs_whp_aggregates','usfs_whp'],
+  flood:['fema_nfhl'],wind:[],quake:[],fire:['usfs_whp2023_six_national_tiffs','usfs_whp_aggregates','usfs_whp'],
   storm:[],freeze:['eia861'],heat:['eia861'],landslide:[],
   industrial:['uscg_nrc','csb','epa_rmp_public','epa_tri'],
   power:['eia861','pnnl_outages','odin_county'],water:['epa_echo'],
@@ -55,6 +55,7 @@ const SOURCE_RESEARCH={
 const SOURCE_SHORT={
   fema_nfhl:'FEMA flood polygon samples',usfs_whp:'USDA wildfire pixels',
   usfs_whp_aggregates:'USDA wildfire regional summaries',
+  usfs_whp2023_six_national_tiffs:'WHP2023 full native 270m raster source (CI only)',
   eia861:'EIA electric reliability',pnnl_outages:'DOE/PNNL county outages',
   odin_county:'ORNL ODIN outage snapshot',odin_feeds:'ORNL feed status',
   epa_echo:'EPA ECHO',epa_tri:'EPA TRI',epa_rmp_public:'Public EPA RMP',
