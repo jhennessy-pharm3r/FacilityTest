@@ -13,7 +13,7 @@ import sys
 
 def file_receipt(root, receipt):
     raw_file = receipt.get("raw_file")
-    sha = receipt.get("raw_sha256") or receipt.get("response_sha256")
+    sha = receipt.get("raw_sha256") or receipt.get("response_sha256") or receipt.get("sha256")
     if raw_file is None:
         if sha is not None:
             raise ValueError("Receipt has checksum but no retained raw file")
@@ -102,6 +102,59 @@ def verify_dir(root):
             "preserved_source_response_count": len(retained),
             "source_response_hashes": retained,
             "tables": tables,
+        }
+    paged = root / "paged_windows"
+    manifest_path = paged / "manifest.json"
+    if manifest_path.exists():
+        m = json.loads(manifest_path.read_text(encoding="utf-8"))
+        entries = []
+        if m.get("source_metadata"):
+            entries.append(m["source_metadata"])
+        for w in m.get("windows", {}).values():
+            for k in ("source_ids_receipt", "source_count_receipt"):
+                if k in w:
+                    entries.append(w[k])
+            entries.extend(w.get("chunks", []))
+        retained = [receipt for r in entries
+                    if (receipt := file_receipt(paged, r)) is not None]
+        db = sqlite3.connect(paged / "fema-window-index.sqlite")
+        try:
+            if db.execute("PRAGMA quick_check").fetchone()[0] != "ok":
+                raise ValueError("FEMA paged SQLite integrity failed")
+            queries = {
+                "source_features": "fema_source_features",
+                "source_feature_bounds": "fema_source_bounds",
+                "window_membership": "fema_window_membership",
+            }
+            actual = {k: db.execute("SELECT COUNT(*) FROM " + table).fetchone()[0]
+                      for k, table in queries.items()}
+            expected = {
+                "source_features": m.get("source_feature_count"),
+                "source_feature_bounds": m.get("rtree_index_count"),
+                "window_membership": m.get("window_membership_count"),
+            }
+            # If metadata is unavailable the ingester explicitly fails closed;
+            # it must not pretend an index was completely verified.
+            if m.get("source_feature_count") is not None and actual != expected:
+                raise ValueError("FEMA paged source-only SQLite count mismatch")
+            for name, w in m.get("windows", {}).items():
+                row_count = db.execute(
+                    "SELECT COUNT(*) FROM fema_window_membership WHERE window=?", (name,)
+                ).fetchone()[0]
+                if row_count != w["retrieved_ids"]:
+                    raise ValueError("FEMA window membership count mismatch: " + name)
+                if w["status"] == "COMPLETE_WITHIN_WINDOW":
+                    if w["id_count"] != w["server_count"] or w["id_count"] != row_count:
+                        raise ValueError("FEMA complete-window enumerated ID discrepancy: " + name)
+        finally:
+            db.close()
+        report["total_preserved_source_responses"] += len(retained)
+        report["source_directories"]["paged_windows"] = {
+            "preserved_source_response_count": len(retained),
+            "source_response_hashes": retained,
+            "indexed": actual, "reported_indexed": expected,
+            "successful_windows": m.get("successful_windows"),
+            "all_requested_windows_complete": m.get("all_requested_windows_complete"),
         }
     if not report["source_directories"]:
         raise ValueError("No Lane A source manifests to verify")
