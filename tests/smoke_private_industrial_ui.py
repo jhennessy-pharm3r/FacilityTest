@@ -43,15 +43,28 @@ def smoke():
         reviewer_pass=secrets.token_urlsafe(30)
         from facilityrisk.security import make_password_hash
         from facilityrisk.universal_registry import import_records
+        from facilityrisk.db import initialize
         workspace=location/"workspace.sqlite"
         with sqlite3.connect(workspace) as c:
             c.row_factory=sqlite3.Row
+            initialize(c)
             import_records(c,"EPA_FRS",[{
               "source_identifier":"110000000001","name":"Example Industries Test Plant",
               "company":"Example Industries","city":"Test City 1",
               "state":"TX","country":"US","industry":"Manufacturing",
               "address":"123 Synthetic Test Road","latitude":29.01,"longitude":-95.01
             }],"https://www.epa.gov/frs",vintage="synthetic-browser-test-2026")
+            site_id=c.execute("""SELECT site_id FROM universal_source_records
+              WHERE source_key='EPA_FRS' AND source_identifier='110000000001'""").fetchone()[0]
+            c.execute("""INSERT INTO facilities(id,name,company,address,country,origin,last_imported)
+                         VALUES(?,?,?,?,?,?,?)""",(
+                "synthetic-insured-research-case",
+                "Example Industries Research Case",
+                "Example Industries","123 Synthetic Test Road, Test City 1, TX",
+                "US","analyst_research_unverified","2026-10-23"))
+            c.execute("""INSERT INTO universal_research_links(site_id,research_facility_id)
+                         VALUES(?,?)""",(site_id,"synthetic-insured-research-case"))
+            c.commit()
         env=os.environ.copy()
         env.update({
             "FACILITY_RISK_DB":str(workspace),
@@ -132,6 +145,20 @@ def smoke():
                     "reviewer investigation required",timeout=18000)
                 expect(page.locator('#uf-industrial-results')).to_contain_text(
                     "NO confirmed site attribution",timeout=18000)
+                # Existing research-case drawer must also read the exact
+                # linked publisher site identity (never infer from the
+                # company's headquarters address).
+                page.locator('[data-page="facilities"]').click()
+                expect(page.locator('#facility-cards [data-site]')).to_have_count(1,timeout=20000)
+                page.locator('#facility-cards [data-site]').first.click()
+                expect(page.locator('#detail-drawer')).to_be_visible(timeout=12000)
+                page.locator('#detail-drawer [data-tab="risk"]').click()
+                expect(page.locator('#industrial-research-case-check')).to_be_visible(timeout=15000)
+                page.locator('#industrial-research-case-check').click()
+                expect(page.locator('#industrial-research-case-results')).to_contain_text(
+                    "source-report candidates",timeout=18000)
+                expect(page.locator('#industrial-research-case-results')).to_contain_text(
+                    "none independently attributed to the insured site",timeout=18000)
                 assert not errors,errors
                 shot=Path("/tmp/lane-e-private-industrial-synthetic-smoke.png")
                 page.screenshot(path=str(shot),full_page=True)

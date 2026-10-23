@@ -8,6 +8,8 @@ on:
       - 'facilityrisk/industrial_source_indices.py'
       - 'facilityrisk/app.py'
       - 'scripts/verify_lane_e_industrial_api.py'
+      - 'scripts/verify_private_host_industrial.py'
+      - 'facilityrisk/industrial_facility_screen.py'
       - 'tests/test_industrial_private_api.py'
       - '.github/workflows/lane-e-industrial-api-real.yml'
   workflow_dispatch:
@@ -62,6 +64,42 @@ jobs:
             --incidents-root "$RUNNER_TEMP/private-industrial/nrc-csb-root" \
             --wms-root "$RUNNER_TEMP/private-industrial/wms-root" \
             --output output/restarted-process-summary.json
+      - name: Serve ACTUAL official indexes via a running authenticated loopback FastAPI process and restart
+        run: |
+          set -eu
+          export FACILITY_RISK_LANE_C_ROOT="$RUNNER_TEMP/private-industrial/nrc-csb-root"
+          export FACILITY_RISK_PHMSA_WMS_ROOT="$RUNNER_TEMP/private-industrial/wms-root"
+          export FACILITY_RISK_DB="$RUNNER_TEMP/private-industrial/acceptance-workspace.sqlite"
+          export FACILITY_RISK_REQUIRE_AUTH=1
+          export FACILITY_RISK_ENABLE_WRITES=0
+          export FACILITY_RISK_AUTH_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
+          for pass in 1 2; do
+            python -m uvicorn facilityrisk.app:app --host 127.0.0.1 --port 8768 --no-access-log \
+              > "$RUNNER_TEMP/private-industrial/uvicorn-validation.log" 2>&1 &
+            pid=$!
+            trap 'kill "$pid" 2>/dev/null || true' EXIT
+            for attempt in $(seq 1 45); do
+              if curl -fsS http://127.0.0.1:8768/api/health > /dev/null 2>&1; then break; fi
+              if ! kill -0 "$pid" 2>/dev/null; then
+                echo "Loopback private API failed to start"
+                exit 1
+              fi
+              sleep 1
+            done
+            if [ "$pass" = 1 ]; then
+              output="output/actual-http-server-qa.json"
+            else
+              output="output/actual-http-server-restart-qa.json"
+            fi
+            python scripts/verify_private_host_industrial.py \
+              --base http://127.0.0.1:8768 \
+              --expected-observations 429796 \
+              --expected-wms-cases 5089 \
+              --output "$output"
+            kill "$pid"
+            wait "$pid" 2>/dev/null || true
+            trap - EXIT
+          done
       - name: Remove all unredacted official-source originals, normalized rows and SQLite
         if: always()
         run: |
@@ -76,6 +114,8 @@ jobs:
           path: |
             output/api-verification-summary.json
             output/restarted-process-summary.json
+            output/actual-http-server-qa.json
+            output/actual-http-server-restart-qa.json
             output/nrc-csb/*audit*.json
             output/phmsa-wms/*.json
           retention-days: 14

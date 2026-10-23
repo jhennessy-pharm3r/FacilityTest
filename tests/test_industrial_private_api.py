@@ -301,3 +301,55 @@ def test_real_universal_site_identity_review_only_incident_screen(installed,monk
         assert reviewer.get(endpoint,params={"radius_km":70}).status_code==422
         assert reviewer.get("/api/universal-facilities/no-such-site/industrial-screen").status_code==404
 
+
+def test_tracked_research_case_requires_explicit_linked_source_site_identity(installed,monkeypatch):
+    from facilityrisk.db import initialize
+    from facilityrisk.universal_registry import import_records
+    workspace=Path(__import__("os").environ["FACILITY_RISK_DB"])
+    tracked="synthetic-tracked-site-001"
+    bare="synthetic-no-linked-site-002"
+    with sqlite3.connect(workspace) as conn:
+        conn.row_factory=sqlite3.Row
+        initialize(conn)
+        for rid in (tracked,bare):
+            conn.execute("""INSERT INTO facilities
+                 (id,name,company,address,country,origin,last_imported)
+                 VALUES(?,?,?,?,?,?,?)""",(
+                rid,"Example Industries Test Plant","Example Industries",
+                "123 Synthetic Test Road, Test City 1, TX","United States",
+                "manual_research_unverified","2026-10-23"))
+        import_records(conn,"EPA_FRS",[{
+            "source_identifier":"110000000002",
+            "name":"Example Industries Test Plant",
+            "company":"Example Industries",
+            "city":"Test City 1","state":"TX","country":"US",
+            "industry":"Industrial manufacturing",
+            "latitude":29.01,"longitude":-95.01,
+            "address":"123 Synthetic Test Road"
+        }],"https://www.epa.gov/frs",vintage="synthetic-test-only")
+        site_id=conn.execute("""SELECT site_id FROM universal_source_records
+             WHERE source_key='EPA_FRS' AND source_identifier='110000000002'""").fetchone()[0]
+        conn.execute("""INSERT INTO universal_research_links(site_id,research_facility_id)
+                        VALUES(?,?)""",(site_id,tracked))
+        conn.commit()
+    reviewer_pass="synthetic-individual-reviewer-password"
+    monkeypatch.setenv("FACILITY_RISK_USERS_JSON",json.dumps({
+        "realreviewer":{"role":"reviewer","password_hash":make_password_hash(reviewer_pass)}
+    }))
+    reviewer_header="Basic "+base64.b64encode(("realreviewer:"+reviewer_pass).encode()).decode()
+    with TestClient(app,headers={"Authorization":"Bearer "+"Z"*44}) as bearer:
+        assert bearer.get("/api/facilities/"+tracked+"/industrial-screen").status_code==403
+    with TestClient(app,headers={"Authorization":reviewer_header}) as reviewer:
+        missing=reviewer.get("/api/facilities/"+bare+"/industrial-screen")
+        assert missing.status_code==200
+        assert missing.json()["state"]=="NOT_SCREENED_NO_LINKED_PUBLISHER_SITE_IDENTITY"
+        assert missing.json()["candidate_rows_before_display_limit"] is None
+        matches=reviewer.get("/api/facilities/"+tracked+"/industrial-screen",params={"radius_km":2})
+        assert matches.status_code==200,matches.text
+        report=matches.json()
+        assert report["research_facility_id"]==tracked
+        assert report["candidate_rows_before_display_limit"]>=2
+        assert report["source_site_link_status"]=="ORIGINAL_REGISTRY_LINK_ONLY_NOT_PHYSICAL_INSURED_APPROVAL"
+        assert report["verified_insured_matches"]==0
+        assert report["verified_losses"]==0
+        assert reviewer.get("/api/facilities/no-such-case/industrial-screen").status_code==404
