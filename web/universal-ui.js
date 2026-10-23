@@ -3,7 +3,7 @@
 'use strict';
 const esc=v=>String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const https=u=>typeof u==='string'&&/^https:\/\/[^\s/]+/i.test(u)?u:'';
-let q='',country='',industry='',source='',page=0,selected=null,wired=false;
+let q='',country='',industry='',source='',page=0,selected=null,wired=false,sourceInitialized=false;
 function render(){
 return '<div class="page-heading"><div><div class="eyebrow">ALL INDUSTRIES / SOURCE-REPORTED FACILITIES</div><h1>Universal facility discovery</h1>'+
  '<p class="subhead">Search cross-industry source identities before investigating insurance exposure. An EPA, FDA, NPRI or place record is not automatically a verified building or insured property.</p></div></div>'+
@@ -14,7 +14,7 @@ return '<div class="page-heading"><div><div class="eyebrow">ALL INDUSTRIES / SOU
  '<input id="uf-q" class="field registry-search" value="'+esc(q)+'" placeholder="Facility name, company, source ID or location" aria-label="Facility search terms"/>'+
  '<input id="uf-country" class="field" value="'+esc(country)+'" maxlength="8" placeholder="Country ISO (optional)" aria-label="Country ISO filter"/>'+
  '<input id="uf-industry" class="field" value="'+esc(industry)+'" maxlength="120" placeholder="Industry / NAICS exact code" aria-label="Industry or NAICS exact filter"/>'+
- '<select id="uf-source" class="select" aria-label="Source authority"><option value="">All source authorities</option></select>'+
+ '<select id="uf-source" class="select" aria-label="Source data catalog"><option value="">Private workspace sources</option></select>'+
  '<button class="btn primary" type="submit">Search all indexed sources</button><button class="btn" id="uf-clear" type="button">Clear</button></form>'+
  '<div id="uf-status" class="registry-status" role="status">Checking private indexed records...</div>'+
  '<div id="uf-results"></div><div id="uf-detail"></div></section>');
@@ -22,28 +22,39 @@ return '<div class="page-heading"><div><div class="eyebrow">ALL INDUSTRIES / SOU
 function optionText(value){return String(value||'').replace(/_/g,' ')}
 function fillSources(stats){
  const s=document.getElementById('uf-source');if(!s)return;
- s.innerHTML='<option value="">All source authorities</option>'+
+ s.innerHTML='<option value="">Private workspace source identities</option>'+
   (stats.sources||[]).map(row=>'<option value="'+esc(row.source_key)+'"'+
-   (source===row.source_key?' selected':'')+'>'+esc(optionText(row.source_key))+
+   (source===row.source_key?' selected':'')+'>'+
+   esc(row.source_key==='EPA_FRS'&&row.storage==='readonly_national_index'?'EPA FRS national source index':optionText(row.source_key))+
    ' ('+Number(row.records||0).toLocaleString()+')</option>').join('');
 }
 async function load(){
  const results=document.getElementById('uf-results');if(!results)return;
  const status=document.getElementById('uf-status');
  if(status)status.textContent='Searching the private source index...';
- const params=new URLSearchParams({q,country,industry,source,limit:'50',offset:String(page*50)});
  try{
- const [r,s]=await Promise.all([
-   fetch('/api/universal-facilities?'+params,{cache:'no-store'}),
-   fetch('/api/universal-facilities/stats',{cache:'no-store'})]);
- if(!r.ok||!s.ok)throw Error('Private indexed facility API unavailable or requires authentication');
- const data=await r.json(),stats=await s.json();
+ const s=await fetch('/api/universal-facilities/stats',{cache:'no-store'});
+ if(!s.ok)throw Error('Private facility statistics unavailable or require authentication');
+ const stats=await s.json();
+ if(!sourceInitialized){
+   sourceInitialized=true;
+   if(!source&&['ready_full','ready_partial'].includes(stats.national_index?.state)){
+     source='EPA_FRS';
+   }
+ }
  fillSources(stats);
+ const params=new URLSearchParams({q,country,industry,source,limit:'50',offset:String(page*50)});
+ const r=await fetch('/api/universal-facilities?'+params,{cache:'no-store'});
+ if(!r.ok)throw Error('Selected source index is not mounted, validated or accessible');
+ const data=await r.json();
  selected=null;const detail=document.getElementById('uf-detail');if(detail)detail.innerHTML='';
+ const national=data.index==='EPA_FRS'&&stats.national_index;
  if(status)status.textContent=Number(data.total||0).toLocaleString()+
-  ' matching source-site candidates · '+Number(stats.site_candidates||0).toLocaleString()+
-  ' total source-site candidates · '+Number(stats.source_identities||0).toLocaleString()+
-  ' source identities across '+(stats.sources||[]).length+' indexed authorities. None is assumed to be insured or geocode-verified.';
+  ' matching source-site candidates · '+
+  Number(national?stats.national_index.site_candidates:stats.site_candidates||0).toLocaleString()+
+  (national?' EPA national reporting identities':' workspace source-site candidates')+
+  ' · Snapshot scope: '+(national?'EPA FRS U.S. reported sites':'imported private workspace sources')+
+  '. Records are neither a complete world facility census nor insured/geocode-verified properties.';
  const rows=(data.items||[]).map(x=>
   '<article class="registry-record" style="display:block"><div class="label-row"><strong>'+
   esc(x.name)+'</strong><span class="small-muted">'+esc(x.coordinate_quality||'unassessed')+'</span></div>'+

@@ -1,0 +1,116 @@
+name: Validate private source-index APIs with full real artifacts
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'facilityrisk/source_sidecars.py'
+      - '.github/workflows/validate-mounted-source-apis.yml'
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: source-index-api-real-data
+  cancel-in-progress: false
+jobs:
+  source-api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install API and HTTP client dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Resolve latest successful EPA and NOAA validated official-source runs
+        id: source_runs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          EPA_RUN=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/validate-frs-index.yml/runs?status=success&per_page=30" --jq '[.workflow_runs[] | select(.conclusion=="success" and .head_branch=="main")][0].id // empty')
+          NOAA_RUN=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/build-noaa-storm-events.yml/runs?status=success&per_page=30" --jq '[.workflow_runs[] | select(.conclusion=="success" and .head_branch=="main")][0].id // empty')
+          test -n "$EPA_RUN" && test -n "$NOAA_RUN"
+          echo "epa_run=$EPA_RUN" >> "$GITHUB_OUTPUT"
+          echo "noaa_run=$NOAA_RUN" >> "$GITHUB_OUTPUT"
+          echo "Official source-run IDs: EPA $EPA_RUN, NOAA $NOAA_RUN"
+      - name: Download matching EPA FRS indexed database and QA
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ steps.source_runs.outputs.epa_run }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          name: epa-frs-indexed-registry
+          path: data
+      - name: Download NOAA source-only indexed database and source manifest
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ steps.source_runs.outputs.noaa_run }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          name: noaa-storm-events-national-2023-2026
+          path: data/noaa
+      - name: Authenticate and query private API against both full real source indexes
+        run: |
+          python - <<'PY'
+          import json,os,secrets
+          from pathlib import Path
+          from fastapi.testclient import TestClient
+          root=Path.cwd()
+          frs=root/'data/full-frs-index.sqlite'
+          qa_file=root/'data/full-frs-index-qa.json'
+          noaa=root/'data/noaa/storm-only.sqlite'
+          manifest_file=root/'data/noaa/storm-events-manifest.json'
+          for path in (frs,qa_file,noaa,manifest_file):
+              assert path.is_file(),f'Missing validated source: {path.name}'
+          os.environ['FACILITY_RISK_DB']=str(root/'data/api-smoke-workspace.sqlite')
+          os.environ['FACILITY_RISK_FRS_INDEX_PATH']=str(frs)
+          os.environ['FACILITY_RISK_FRS_INDEX_QA']=str(qa_file)
+          os.environ['FACILITY_RISK_NOAA_INDEX_PATH']=str(noaa)
+          os.environ['FACILITY_RISK_NOAA_INDEX_MANIFEST']=str(manifest_file)
+          os.environ['FACILITY_RISK_REQUIRE_AUTH']='1'
+          token=secrets.token_urlsafe(50)
+          os.environ['FACILITY_RISK_AUTH_TOKEN']=token
+          from facilityrisk.app import app
+          from facilityrisk.source_sidecars import frs_connection
+          with TestClient(app) as unauthenticated:
+              assert unauthenticated.get('/api/source-indices/status').status_code==401
+          qa=json.loads(qa_file.read_text())
+          manifest=json.loads(manifest_file.read_text())
+          with TestClient(app,headers={'Authorization':'Bearer '+token}) as client:
+              response=client.get('/api/source-indices/status')
+              assert response.status_code==200,response.text
+              facts=response.json()
+              assert facts['frs']['state']=='ready_full',facts['frs']
+              assert facts['frs']['source_identities']==qa['unique_source_identifiers']
+              assert facts['frs']['site_candidates']==qa['site_candidates']
+              assert facts['noaa']['state']=='ready_partial',facts['noaa']
+              assert facts['noaa']['records']==manifest['total_events']
+              stats=client.get('/api/universal-facilities/stats').json()
+              assert stats['national_index']['source_identities']==qa['unique_source_identifiers']
+              assert stats['site_candidates']==0,'No silent merge of national source index into client workspace'
+              warehouse=client.get('/api/universal-facilities',params={'source':'EPA_FRS','q':'warehouse','limit':5})
+              assert warehouse.status_code==200,warehouse.text
+              assert warehouse.json()['total']>0
+              assert warehouse.json()['index']=='EPA_FRS'
+              assert all(row['site_status']=='source_observation' for row in warehouse.json()['items'])
+              site=warehouse.json()['items'][0]['id']
+              detail=client.get('/api/universal-facilities/'+site)
+              assert detail.status_code==200,detail.text
+              assert detail.json()['risk_status']=='unassessed'
+              assert detail.json()['insured_coverage_status']=='unknown'
+              assert detail.json()['source_identities'][0]['source_key']=='EPA_FRS'
+              with frs_connection() as conn:
+                  sample=conn.execute('SELECT source_identifier FROM universal_source_records LIMIT 1').fetchone()[0]
+              exact=client.get('/api/universal-facilities',params={'source':'EPA_FRS','q':sample,'limit':3})
+              assert exact.status_code==200 and exact.json()['total']>0
+              assert client.post('/api/universal-facilities/'+site+'/track').status_code==403
+              for year in manifest['requested_years']:
+                  response=client.get('/api/noaa/storm-events',params={'year':year,'limit':1})
+                  assert response.status_code==200,response.text
+                  assert response.json()['total']>0
+              assert client.get('/api/noaa/storm-events/status').json()['records']==manifest['total_events']
+              assert client.get('/api/universal-facilities?q=warehouse').json()['total']==0
+              print('Full real-source private API PASS:',facts['frs']['source_identities'],
+                    'EPA FRS identities;',facts['noaa']['records'],'NOAA events.',
+                    'Auth, exact ID, warehouse, provenance, isolated workspace, annual lookups passed.')
+          PY
