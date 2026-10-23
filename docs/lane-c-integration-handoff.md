@@ -108,7 +108,7 @@ For authorized PHMSA enforcement replay:
 python -m pytest -q tests/test_phmsa_enforcement.py tests/test_lane_c_enforcement_install.py
 python scripts/probe_lane_c_phmsa_enforcement.py --output /srv/facility-risk/ingest-qa/phmsa
 ```
-**PHMSA WMS case-only private installation is also source-tested.** [Official complete source-to-private-install run 40000504152](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/40000504152) PASS with [aggregate-only artifact 12521941166](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/40000504152/artifacts/12521941166): 5,089 actual enforcement cases normalized, SHA-audited and privately packaged, 5,089 case rows installed into a SEPARATE temporary read-only SQLite, SQL query count PASS, 403 typed report references, five tests PASS, installed index SHA-256 `022307edfd6707b11fa421faf6835a16d3e74c936ded0a81d190916994ef281f`, and temporary unredacted files cleaned. **This is not production deployment.**
+**PHMSA WMS case-only private installation is also source-tested.** [Official complete source-to-private-install run 40000504152](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/40000504152) PASS with [aggregate-only artifact 12521941166](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/40000504152/artifacts/12521941166): 5,089 actual enforcement cases normalized, SHA-audited and privately packaged, 5,089 case rows installed into a SEPARATE temporary read-only SQLite, SQL query count PASS, 403 typed report references, five tests PASS including immutable-release rollback, installed index SHA-256 `022307edfd6707b11fa421faf6835a16d3e74c936ded0a81d190916994ef281f`, and temporary unredacted files cleaned. **This is not production deployment.**
 
 On the authorized private host, obtain the source as above (or use the existing reproducible ingestion in `probe_lane_c_phmsa_enforcement.py`) with explicit protected locations:
 
@@ -124,6 +124,9 @@ python scripts/lane_c_enforcement_install.py install \
   --root /srv/facility-risk/phmsa-wms --release-id phmsa-wms-20261023
 python scripts/lane_c_enforcement_install.py query \
   --root /srv/facility-risk/phmsa-wms --operator-id 123 --page 1 --page-size 25
+# An immutable earlier WMS release can be reinstated without overwriting it:
+python scripts/lane_c_enforcement_install.py rollback \
+  --root /srv/facility-risk/phmsa-wms --release-id phmsa-wms-previous-verified
 ```
 
 The optional `--install-test-root` probe flag can replay the private installation/query gate against real data on a temporary 0700 private mount. `lane_c_enforcement_install.py` never joins PHMSA case IDs to NRC `SEQNOS` automatically; its CLI does **not** expose raw enforcement free text. Lane E must independently deploy a durable authenticated service, verify storage across restarts and preserve role-restricted access. The app-deployed/production-indexed count remains **0**. **Do not add 5,089 case rows to the 429,796 NRC/CSB observations as though they were 5,089 accidents.**
