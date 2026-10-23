@@ -170,3 +170,31 @@ textarea:focus-visible{outline:2px solid var(--terra);outline-offset:3px}
 .wb-coverage-cta p{font-size:12px;color:#627a71;line-height:1.6;margin:6px 0 0}
 .wb-coverage-cta button{white-space:nowrap}
 @media(max-width:800px){.wb-coverage-cta{flex-direction:column;align-items:flex-start}.wb-coverage-cta button{white-space:normal}}
+
+/* Separate private EPA source-identity evidence; absent indexes never render a false risk score. */
+.epa-evidence-page{display:grid;gap:18px}
+.epa-mount-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;padding:20px}
+.epa-mount-item{display:flex;flex-direction:column;gap:6px;padding:16px;border:1px solid #d5e2dc;border-radius:12px;background:#f7faf8}
+.epa-mount-title{color:#355f58;font-size:12px;font-weight:650}
+.epa-mount-item strong{font-size:24px;color:#244b48;font-variant-numeric:tabular-nums}
+.epa-mount-item small{line-height:1.5;color:#6e8179}
+.epa-state{font-size:12px;color:#ac6649;font-weight:650}
+.epa-query{display:grid;grid-template-columns:minmax(180px,1fr) minmax(240px,2fr) minmax(140px,1fr) auto;align-items:end;gap:12px;padding:20px}
+.epa-query label{display:flex;flex-direction:column;gap:7px;font-size:12px;color:#536c62;font-weight:650}
+.epa-query input,.epa-query select{height:40px;padding:9px 11px;min-width:0;width:100%;border:1px solid #cddfd5;border-radius:7px;background:#fff;color:#243c36;font:inherit}
+.epa-query [hidden]{display:none}
+.epa-query button{height:40px;white-space:nowrap}
+.epa-query button:disabled{opacity:.5;cursor:not-allowed}
+.epa-unavailable{margin:14px 20px;padding:15px;border:1px solid #d9e2dc;border-radius:9px;background:#f7faf8;color:#526a61;font-size:13px;line-height:1.6}
+.epa-result-intro{display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;margin:0 20px;padding:15px 0;border-top:1px solid #e1e8e4;font-size:13px;color:#4b685f}
+.epa-observation{margin:0 20px 13px;padding:15px;background:#fafcfb;border:1px solid #e2e9e5;border-radius:10px;overflow-wrap:anywhere}
+.epa-obs-head{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;color:#285f57;font-size:13px}
+.epa-evidence-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px 20px;margin:14px 0}
+.epa-evidence-field{display:flex;flex-direction:column;gap:3px;min-width:0}
+.epa-evidence-field span{text-transform:capitalize;font-size:11px;color:#668076}
+.epa-evidence-field strong{font-size:12px;font-weight:600;color:#314b43}
+.epa-observation p{font-size:11px;color:#72867c}
+.epa-observation code{font-size:10px;word-break:break-all}
+.epa-evidence-page #epa-query-result>.small-muted{display:block;margin:12px 20px 20px}
+@media(max-width:950px){.epa-query{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){.epa-query{grid-template-columns:1fr}.epa-evidence-grid{grid-template-columns:1fr}}
