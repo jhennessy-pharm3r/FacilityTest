@@ -44,7 +44,7 @@ def import_public(output,fetch=request,page_size=100):
                 data=fetch({"objectIds":",".join(str(x) for x in group),"outFields":"*","returnGeometry":"true"})
                 records=data.get("features")
                 if not isinstance(records,list):raise AssertionError("Absent feature array in EPA response")
-                for rec in records:
+                for rec in sorted(records,key=lambda item:int((item.get("attributes") or {}).get("OBJECTID") or -1)):
                     a=rec.get("attributes") or {}
                     key=a.get("OBJECTID")
                     if not isinstance(key,int) or key not in group or key in observed:raise AssertionError("Unrequested/duplicate EPA object ID")
