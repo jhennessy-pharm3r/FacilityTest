@@ -11,7 +11,7 @@ import sqlite3
 import pytest
 
 from scripts.lane_c_install import (
-    active_status, install, query, rollback, verify_bundle, _readonly_db
+    active_status, install, query, rollback, verify_bundle, source_health, _readonly_db
 )
 from scripts.lane_c_private_handoff import private_bundle, sha
 
@@ -70,6 +70,13 @@ def test_verified_bundle_installs_and_readonly_source_query(tmp_path):
     assert result["durable_production_indexed"]==0
     assert active_status(root,repo_root=repo)["active_release_id"]=="official-2025-a"
     assert (root/"releases/official-2025-a/indexes/lane-c-source.sqlite").exists()
+    health=source_health(root,repo_root=repo)
+    assert health["indexed_private_file_rows"]==2
+    assert health["source_namespaces"]==1
+    assert health["sources"][0]["namespace"]=="nrc_2025"
+    assert health["sources"][0]["accepted_rows"]==2
+    assert health["live_app_deployed_rows"]==0
+    assert health["sources"][0]["authenticated_serving_verified"] is False
     page=query(root,source="nrc_2025",page_size=1,repo_root=repo)
     assert page["total"]==2
     assert len(page["items"])==1
