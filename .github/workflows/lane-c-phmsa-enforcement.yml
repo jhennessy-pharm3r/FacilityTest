@@ -1,0 +1,27 @@
+name: Lane C PHMSA official enforcement source audit
+on:
+  push:
+    branches:
+      - 'ingest/industrial-events-nrc-csb-phmsa-*'
+    paths:
+      - 'scripts/probe_lane_c_phmsa_enforcement.py'
+      - '.github/workflows/lane-c-phmsa-enforcement.yml'
+  workflow_dispatch:
+jobs:
+  official-phmsa-enforcement-inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests
+      - name: Download PHMSA official enforcement raw data and inventory linked report IDs
+        run: python scripts/probe_lane_c_phmsa_enforcement.py --output output
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lane-c-phmsa-official-enforcement-inventory
+          path: output/*.json
+          retention-days: 14
