@@ -109,7 +109,8 @@ def init_db(path):
       objectid INTEGER NOT NULL, dfirm_id TEXT,
       fld_ar_id TEXT, flood_zone TEXT, zone_subtype TEXT,
       sfha_tf TEXT, source_cit TEXT, version_id TEXT,
-      feature_json TEXT NOT NULL, first_seen_utc TEXT NOT NULL
+      feature_json TEXT NOT NULL, first_seen_utc TEXT NOT NULL,
+      original_reply_sha256 TEXT NOT NULL, geometry_tolerance_degrees REAL NOT NULL
     );
     CREATE UNIQUE INDEX IF NOT EXISTS fema_native_objectid ON
       fema_source_features(objectid);
@@ -172,17 +173,15 @@ def run(outdir, fetch=query_http, windows=None, *, max_ids_per_window=250,
                                         "published_effective_dates_not_in_this_schema": True}
     except (RuntimeError, ValueError, KeyError) as exc:
         manifest["metadata_error"] = str(exc)
-    if manifest["source_metadata"] is None:
-        # No reliable source schema: do not report a complete successful ingestion.
-        (outdir / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
-        db.close()
-        return manifest
+    # A transient metadata failure does not prevent collecting independently
+    # verifiable source rows; it DOES block the final schema-complete gate.
 
     for name, bbox in samples.items():
         win = {"bbox_wgs84": list(bbox), "status": "FAILED",
                "id_count": None, "server_count": None,
                "accepted_count": 0, "rejected_count": 0, "duplicated_ids": 0,
-               "retrieved_ids": 0, "source_citations": {}, "chunks": []}
+               "retrieved_ids": 0, "source_citations": {}, "chunks": [],
+               "simplified_geometry_records": 0, "attempt_errors": []}
         manifest["windows"][name] = win
         try:
             geometry = envelope(bbox)
@@ -215,58 +214,102 @@ def run(outdir, fetch=query_http, windows=None, *, max_ids_per_window=250,
                                  " != " + str(len(ids)))
             win["server_count"] = server_count
             observed = set()
-            for k in range(0, len(ids), batch_size):
-                subset = ids[k:k + batch_size]
-                qparams = {
+
+            def iter_completed_batches(ids_subset, suffix, *, tolerance=None):
+                # One oversized/failed geometry must not discard already
+                # downloaded sibling IDs. Original retries are explicitly logged.
+                params = {
                     "f": "json", "where": "1=1",
-                    "objectIds": ",".join(str(i) for i in subset),
+                    "objectIds": ",".join(str(i) for i in ids_subset),
                     "outFields": "*", "returnGeometry": "true", "outSR": 4326,
                 }
-                payload, chunk_receipt = capture(fetch, qparams,
-                    rawdir / (name + ".batch_" + str(k // batch_size).zfill(4) + ".json"))
-                chunk_receipt["requested_objectids"] = subset
-                chunk_receipt["response_feature_count"] = len(payload.get("features", []))
-                chunk_receipt["exceeded_transfer_limit"] = bool(payload.get("exceededTransferLimit"))
-                win["chunks"].append(chunk_receipt)
-                if payload.get("exceededTransferLimit"):
-                    raise ValueError("Official batch transfer limit; reduce batch_size")
-                if payload.get("geometryType") not in ("esriGeometryPolygon", None):
-                    raise ValueError("Unexpected geometry type")
-                spatial_ref = payload.get("spatialReference", {})
-                if spatial_ref and spatial_ref.get("wkid") not in (4326, 4269):
-                    raise ValueError("Official query did not return expected WGS84 CRS")
-                feats = payload.get("features")
-                if not isinstance(feats, list):
-                    raise ValueError("Official batch missing feature list")
-                actual = {f.get("attributes", {}).get("OBJECTID") for f in feats}
-                if actual != set(subset):
-                    raise ValueError("Missing/extra OBJECTIDs in batch: expected " +
-                                     repr(subset) + " got " + repr(sorted(actual)))
-                for feature in feats:
-                    attrs = feature["attributes"]
-                    key = source_key(attrs)
-                    bounds = geometry_bbox(feature)
-                    oid = attrs["OBJECTID"]
-                    if oid in observed:
-                        raise ValueError("Duplicate OBJECTID across chunk responses")
-                    observed.add(oid)
-                    packed = json.dumps(feature, separators=(",", ":"), sort_keys=True)
-                    stored = db.execute("SELECT feature_json FROM fema_source_features WHERE source_key=?", (key,)).fetchone()
-                    if stored is not None and stored[0] != packed:
-                        raise ValueError("Conflicting official geometry for same FEMA source key")
-                    if stored is None:
-                        cur = db.execute(
-                            "INSERT INTO fema_source_features VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-                            (key, oid, attrs.get("DFIRM_ID"), attrs.get("FLD_AR_ID"),
-                             attrs.get("FLD_ZONE"), attrs.get("ZONE_SUBTY"),
-                             attrs.get("SFHA_TF"), attrs.get("SOURCE_CIT"),
-                             attrs.get("VERSION_ID"), packed,
-                             datetime.now(timezone.utc).isoformat()))
-                        db.execute("INSERT INTO fema_source_bounds VALUES(?,?,?,?,?)",
-                                   (cur.lastrowid, bounds[0], bounds[2], bounds[1], bounds[3]))
-                    db.execute("INSERT OR IGNORE INTO fema_window_membership VALUES(?,?)", (name, key))
-                    citation = str(attrs.get("SOURCE_CIT") or "MISSING")
-                    win["source_citations"][citation] = win["source_citations"].get(citation, 0) + 1
+                if tolerance is not None:
+                    # FEMA-native source polygons, generalized server-side:
+                    # evidence is unsuitable for surveyed boundary decisions.
+                    params["maxAllowableOffset"] = tolerance
+                path_name = (name + ".batch_" + suffix +
+                             (".generalized_" + str(tolerance) if tolerance else "") + ".json")
+                try:
+                    payload, receipt = capture(fetch, params, rawdir / path_name)
+                    receipt.update({
+                        "requested_objectids": list(ids_subset),
+                        "geometry_tolerance_degrees": tolerance or 0,
+                        "response_feature_count": len(payload.get("features", []))
+                                                  if isinstance(payload.get("features"), list) else None,
+                        "exceeded_transfer_limit": bool(payload.get("exceededTransferLimit")),
+                    })
+                    win["chunks"].append(receipt)
+                    if payload.get("exceededTransferLimit"):
+                        raise RuntimeError("ArcGIS exceededTransferLimit for IDs " + str(ids_subset))
+                    if not isinstance(payload.get("features"), list):
+                        raise ValueError("FEMA batch does not contain features list")
+                    yield payload, receipt
+                    return
+                except (RuntimeError, ValueError) as exc:
+                    win["attempt_errors"].append({
+                        "requested_objectids": list(ids_subset),
+                        "tolerance_degrees": tolerance, "error": str(exc)[:500],
+                    })
+                    if len(ids_subset) > 1:
+                        mid = len(ids_subset) // 2
+                        yield from iter_completed_batches(ids_subset[:mid], suffix + "a")
+                        yield from iter_completed_batches(ids_subset[mid:], suffix + "b")
+                        return
+                    tolerances = (0.000005, 0.00005)
+                    if tolerance is None:
+                        yield from iter_completed_batches(ids_subset, suffix, tolerance=tolerances[0])
+                        return
+                    if tolerance == tolerances[0]:
+                        yield from iter_completed_batches(ids_subset, suffix, tolerance=tolerances[1])
+                        return
+                    raise
+
+            for k in range(0, len(ids), batch_size):
+                subset = ids[k:k + batch_size]
+                for payload, chunk_receipt in iter_completed_batches(
+                    subset, str(k // batch_size).zfill(4)
+                ):
+                    if payload.get("geometryType") not in ("esriGeometryPolygon", None):
+                        raise ValueError("Unexpected geometry type")
+                    spatial_ref = payload.get("spatialReference", {})
+                    if spatial_ref and spatial_ref.get("wkid") not in (4326, 4269):
+                        raise ValueError("Official query did not return expected WGS84 CRS")
+                    feats = payload.get("features")
+                    if not isinstance(feats, list):
+                        raise ValueError("Official batch missing feature list")
+                    actual = {f.get("attributes", {}).get("OBJECTID") for f in feats}
+                    if actual != set(subset):
+                        raise ValueError("Missing/extra OBJECTIDs in batch: expected " +
+                                         repr(subset) + " got " + repr(sorted(actual)))
+                    for feature in feats:
+                        attrs = feature["attributes"]
+                        key = source_key(attrs)
+                        bounds = geometry_bbox(feature)
+                        oid = attrs["OBJECTID"]
+                        if oid in observed:
+                            raise ValueError("Duplicate OBJECTID across chunk responses")
+                        observed.add(oid)
+                        packed = json.dumps(feature, separators=(",", ":"), sort_keys=True)
+                        stored = db.execute("SELECT feature_json FROM fema_source_features WHERE source_key=?", (key,)).fetchone()
+                        if stored is not None and stored[0] != packed:
+                            raise ValueError("Conflicting official geometry for same FEMA source key")
+                        if stored is None:
+                            cur = db.execute(
+                                "INSERT INTO fema_source_features VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                                (key, oid, attrs.get("DFIRM_ID"), attrs.get("FLD_AR_ID"),
+                                 attrs.get("FLD_ZONE"), attrs.get("ZONE_SUBTY"),
+                                 attrs.get("SFHA_TF"), attrs.get("SOURCE_CIT"),
+                                 attrs.get("VERSION_ID"), packed,
+                                 datetime.now(timezone.utc).isoformat(),
+                             chunk_receipt["sha256"],
+                             chunk_receipt["geometry_tolerance_degrees"]))
+                            db.execute("INSERT INTO fema_source_bounds VALUES(?,?,?,?,?)",
+                                       (cur.lastrowid, bounds[0], bounds[2], bounds[1], bounds[3]))
+                        db.execute("INSERT OR IGNORE INTO fema_window_membership VALUES(?,?)", (name, key))
+                    if chunk_receipt["geometry_tolerance_degrees"]:
+                        win["simplified_geometry_records"] += 1
+                        citation = str(attrs.get("SOURCE_CIT") or "MISSING")
+                        win["source_citations"][citation] = win["source_citations"].get(citation, 0) + 1
             win["retrieved_ids"] = len(observed)
             win["accepted_count"] = len(observed)
             if observed != set(ids):
@@ -284,12 +327,14 @@ def run(outdir, fetch=query_http, windows=None, *, max_ids_per_window=250,
                 raise ValueError("Rtree is missing indexed FEMA polygon candidates")
             win["rtree_candidate_count"] = rtree_candidates
             win["status"] = "COMPLETE_WITHIN_WINDOW"
+            win["all_geometry_native_resolution"] = win["simplified_geometry_records"] == 0
         except (RuntimeError, ValueError, KeyError, sqlite3.Error, TypeError) as exc:
             win["status"] = "INCOMPLETE"
             win["error"] = str(exc)[:800]
             win["retrieved_ids"] = db.execute(
                 "SELECT COUNT(*) FROM fema_window_membership WHERE window=?", (name,)
             ).fetchone()[0]
+            win["accepted_count"] = win["retrieved_ids"]
         finally:
             db.commit()
 
@@ -305,8 +350,13 @@ def run(outdir, fetch=query_http, windows=None, *, max_ids_per_window=250,
     manifest["sqlite_quick_check"] = db.execute("PRAGMA quick_check").fetchone()[0]
     manifest["successful_windows"] = sum(w["status"] == "COMPLETE_WITHIN_WINDOW" for w in manifest["windows"].values())
     manifest["requested_windows"] = len(manifest["windows"])
+    manifest["geometry_generalized_observations"] = sum(
+        w["simplified_geometry_records"] for w in manifest["windows"].values()
+    )
+    manifest["all_native_resolution"] = manifest["geometry_generalized_observations"] == 0
     manifest["all_requested_windows_complete"] = (
         manifest["successful_windows"] == manifest["requested_windows"]
+        and manifest["source_metadata"] is not None
         and manifest["rtree_index_count"] == manifest["source_feature_count"]
         and manifest["sqlite_quick_check"] == "ok"
     )
