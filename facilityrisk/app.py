@@ -23,6 +23,7 @@ from .coverage_review import (create_policy,save_term,propose_term_review,
 from .physical_assets import (create_asset,revise_asset,facility_assets as list_site_assets,
     propose_asset_review,asset_review_queue,decide_asset_review)
 from .bi_scenarios import save_scenario,facility_scenarios as get_bi_scenarios
+from .storm_events import status as noaa_status, search as noaa_search, nearby_reviewed_facility
 from .universal_registry import (search as universal_search, detail as universal_detail,
     statistics as universal_stats, track_for_research as universal_track)
 from .site_workspace import (SOURCES as REGULATOR_SOURCES, intake_site, search_external_registry,
@@ -52,6 +53,30 @@ def index():
 @app.get('/api/health')
 def health(c=Depends(conn_dependency)):
     return {'status':'ok','version':'0.8.0'}
+
+
+@app.get('/api/noaa/storm-events/status')
+def national_noaa_status(c=Depends(conn_dependency)):
+    return noaa_status(c)
+
+
+@app.get('/api/noaa/storm-events')
+def national_noaa_events(year:int|None=Query(None,ge=1950,le=2100),state:str='',
+                         event_type:str='',limit:int=Query(50,ge=1,le=100),
+                         offset:int=Query(0,ge=0),c=Depends(conn_dependency)):
+    try:return noaa_search(c,year=year,state=state[:90],
+                           event_type=event_type[:100],limit=limit,offset=offset)
+    except ValueError as exc:raise HTTPException(422,str(exc)) from exc
+
+
+@app.get('/api/facilities/{facility_id}/noaa-storm-events')
+def site_noaa_events(facility_id:str,radius_km:float=Query(50,ge=1,le=100),
+                     year:int|None=Query(None,ge=1950,le=2100),
+                     limit:int=Query(50,ge=1,le=100),
+                     c=Depends(conn_dependency)):
+    try:return nearby_reviewed_facility(c,facility_id,radius_km=radius_km,
+                                        year=year,limit=limit)
+    except ValueError as exc:raise HTTPException(404,str(exc)) from exc
 
 
 @app.get('/api/insurance/coverage-types')
