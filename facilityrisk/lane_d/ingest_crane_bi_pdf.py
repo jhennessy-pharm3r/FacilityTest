@@ -184,18 +184,40 @@ def inspect_pdf(case:dict,payload:bytes):
     return facts,receipt
 
 
+def validate_publisher_distribution_redirect(original_url: str, final_url: str, http_status: int) -> str:
+    """Allow only exact issuer-published original PDF or its known Q4 CDN distribution.
+
+    Actual public Crane IR links issue HTTP 302 to Q4 CDN partition 873006999,
+    preserving source path. This is ordinary publisher distribution, not SEC 403
+    evasion. Never allow arbitrary redirects, host/path tampering, or HTTP.
+    """
+    if http_status != 200:
+        raise ValueError("Issuer PDF download not HTTP 200")
+    if final_url == original_url:
+        return "ISSUER_HOST_ORIGINAL"
+    original=urlparse(original_url)
+    destination=urlparse(final_url)
+    if (original.scheme!="https" or original.hostname!="investors.craneco.com"
+        or destination.scheme!="https" or destination.hostname!="s21.q4cdn.com"
+        or destination.path!="/873006999"+original.path
+        or destination.query or destination.fragment):
+        raise ValueError("Unapproved issuer document distribution redirect: "+str(destination.hostname))
+    return "ISSUER_LINK_PUBLISHED_Q4_CDN_873006999"
+
+
 def fetch_pdf(case:dict):
     url=case["url"]
     parsed_url=urlparse(url)
     if parsed_url.scheme!="https" or parsed_url.hostname!="investors.craneco.com" or not parsed_url.path.lower().endswith(".pdf"):
         raise ValueError("Not an approved Crane original issuer financial PDF")
     with urlopen(Request(url,headers={"User-Agent":USER_AGENT,"Accept":"application/pdf"}),timeout=75) as response:
-        if response.status!=200 or response.geturl()!=url:
-            final=urlparse(response.geturl())
-            raise ValueError("Issuer original document redirected: HTTP "+str(response.status)
-                             +" final_host="+str(final.hostname)+" final_path_suffix="+final.path[-80:])
+        distribution=validate_publisher_distribution_redirect(url,response.geturl(),response.status)
+        actual_distribution_url=response.geturl()
         raw=response.read(MAX_PDF_BYTES+1)
-    return inspect_pdf(case,raw)
+    facts,receipt=inspect_pdf(case,raw)
+    receipt["publisher_distribution_method"]=distribution
+    receipt["original_issuer_link_redirected_to"]=actual_distribution_url
+    return facts,receipt
 
 
 def run(out:Path,cases:list[dict]|None=None,min_sources:int=2):
