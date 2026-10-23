@@ -128,7 +128,21 @@
       `<div class="intel-card-body"><strong>Deployment gate:</strong> no Lane A–D source has authenticated persistent serving, independently approved physical-site matching, or confirmed loss/claims linkage. Record grain differs by publisher; never sum these rows into a facility count.</div>`);
   }
   function feedsPage(src,checks,extended=[],ledger=[],generatedAt=null,runUrl='',mounted=null,parallel=null){
-    const mountRows=mounted?[
+    const laneA=mounted?.lane_a;
+    const laneARows=!laneA?'':laneA.state==='ready_partial'?[
+      ['FEMA NFHL — bounded flood polygons','fema_nfhl','Six limited city QA envelopes; original map effective dates unverified'],
+      ['USFS WHP 2023 — continuous QA pixels','usda_continuous','70 geographic raster QA pixels, not facility risk'],
+      ['USFS WHP 2023 — classified QA pixels','usda_classified','70 QA pixels; water/non-burnable masks remain distinct'],
+      ['USFS WHP 2023 — administrative aggregates','usda_summary','Countrywide publisher summary rows; not whole-country 270m raster']
+    ].map(([name,code,limitation])=>'<tr><td><strong>'+esc(name)+'</strong></td><td>Read-only · bounded source data</td><td>'+
+      Number(laneA.source_only_records?.[code]||0).toLocaleString()+'</td><td>'+
+      esc(code==='fema_nfhl'?'FEMA current-service QA; FIRM effective date unverified':'WHP2023; revised 2024-07-17')+'</td><td>'+
+      esc(limitation)+'<br><small>Release '+esc(laneA.release_id||'unknown')+' · 0 approved insured-site matches</small></td></tr>').join(''):
+      '<tr><td><strong>Lane A flood / wildfire source release</strong></td><td>'+
+      esc(String(laneA.state||'unavailable').replaceAll('_',' '))+
+      '</td><td>Not mounted</td><td>Unverified private server</td><td>'+
+      esc(laneA.notice||'Lane A source-only index unavailable; risk UNKNOWN')+'</td></tr>';
+    const mountRows=mounted?([
       ['EPA FRS source index',mounted.frs,'source_identities'],
       ['NOAA Storm Events index',mounted.noaa,'records'],
       ['NOAA IncidentNews selected responses',mounted.incidentnews,'records']
@@ -136,7 +150,7 @@
       esc(String(index?.state||'not_configured').replaceAll('_',' '))+'</td><td>'+
       (index?.[countKey]==null?'Not mounted':Number(index[countKey]).toLocaleString())+'</td><td>'+
       esc(index?.vintage||'No indexed vintage')+'</td><td>'+
-      esc(index?.notice||'No verified private source index')+'</td></tr>').join(''):'';
+      esc(index?.notice||'No verified private source index')+'</td></tr>').join('')+laneARows):'';
     const reportAge = generatedAt ? (Date.now()-Date.parse(generatedAt))/86400000 : Infinity;
     const aged = !Number.isFinite(reportAge)||reportAge>3;
     const statusText = generatedAt ? ('Last published public-source check: '+generatedAt+(aged?' (STALE, older than 72 hours)':'')) : 'No published public-source check available';
