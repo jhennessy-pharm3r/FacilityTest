@@ -13,8 +13,8 @@ from facilityrisk.lane_d.ingest_issuer_release import (
 def html(case=None, body=None):
     case = case or SOURCE_RECORDS[0]
     body = body or (
-        "Hurricane Helene caused significant flooding at the North Cove facility. "
-        "Operations at North Cove are closed for production while remediation progresses. "
+        "Hurricane Helene caused an event at the North Cove facility. "
+        "Operations at North Cove faced " + case["effect_terms"][0] + " while remediation progresses. "
         "Supply continuity and production capacity are being restored in phases. "
         "The company is reporting only anticipated financial implications; "
         "these are not completed loss adjustment claims or paid insurance policies. "
@@ -76,7 +76,7 @@ class IssuerReleaseTests(unittest.TestCase):
         for data in [
             html(case).replace(case["release_date"].encode(),b"August 8, 2019"),
             html(case).replace(b"Hurricane Helene",b"Hurricane Katrina"),
-            html(case).replace(b"closed for production",b"quiet"),
+            html(case).replace(b"closed for production",b"paused"),
         ]:
             with self.assertRaises(ValueError):
                 inspect_issuer_html(case, data, case["source_url"], 200)
