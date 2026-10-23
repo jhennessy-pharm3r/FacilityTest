@@ -41,7 +41,8 @@ def test_benchmark_rejects_empty_db_or_invalid_settings(tmp_path):
     with pytest.raises(FileNotFoundError):
         benchmark(tmp_path/'none.db')
     path=tmp_path/'empty.db'
-    c=connect(path);initialize(c);c.close()
+    from facilityrisk.universal_registry import initialize as init_universal
+    c=connect(path);initialize(c);init_universal(c);c.close()
     with pytest.raises(ValueError,match='No real EPA FRS identifier'):
         benchmark(path)
     with pytest.raises(ValueError,match='Bounded'):
