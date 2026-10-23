@@ -20,7 +20,7 @@ try:
     from scripts.index_lane_c_incidents import index_sources, search_source, audit_multiyear_source_coverage
     from scripts.lane_c_review_candidates import build_review_candidates
     from scripts.lane_c_private_handoff import private_bundle
-    from scripts.lane_c_install import install, active_status, query, source_health
+    from scripts.lane_c_install import install, active_status, query as private_index_query, source_health
 except ModuleNotFoundError:  # direct script
     from probe_lane_c_sources import download
     from build_nrc_enriched import stage_nrc
@@ -28,7 +28,7 @@ except ModuleNotFoundError:  # direct script
     from index_lane_c_incidents import index_sources, search_source, audit_multiyear_source_coverage
     from lane_c_review_candidates import build_review_candidates
     from lane_c_private_handoff import private_bundle
-    from lane_c_install import install, active_status, query, source_health
+    from lane_c_install import install, active_status, query as private_index_query, source_health
 
 URLS = {
     "nrc": "https://nrc.uscg.mil/FOIAFiles/CY25.xlsx",
@@ -242,7 +242,7 @@ def run(output,*,private_bundle_dir=None,install_test_root=None):
                         raise ValueError("Private release install count diverges from verified temporary source index")
                     query_summaries={}
                     for name,_,_ in inputs:
-                        sample=query(install_root,source=name,page_size=3,
+                        sample=private_index_query(install_root,source=name,page_size=3,
                                      repo_root=Path(__file__).resolve().parents[1])
                         if sample["total"]!=consolidated["sources"][name]["accepted_rows"] or len(sample["items"])!=3:
                             raise ValueError("Private installed source query failed: "+name)
