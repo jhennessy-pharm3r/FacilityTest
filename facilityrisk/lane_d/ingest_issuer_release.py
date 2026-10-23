@@ -108,6 +108,40 @@ def validate_case(case: dict):
     return case
 
 
+def extract_issuer_forecast(case: dict, content: str):
+    """A specifically anchored 2024-Q4 issuer SALES FORECAST, never a loss or paid claim.
+
+    For the Baxter Nov 8 2024 release, require the original source text to
+    assert a forecast and exact amount. It is a forecast for the whole COMPANY,
+    not actual site damage, insured BI loss or realized revenue.
+    """
+    if case["id"] != "baxter-north-cove-2024-11-08":
+        return None
+    matches=re.finditer(
+        r"as a result of (?:the )?hurricane.{0,350}?fourth-quarter sales.{0,170}?approximately\s*\$200\s*million",
+        content, flags=re.I,
+    )
+    for match in matches:
+        excerpt=content[max(0,match.start()-90):min(len(content),match.end()+160)]
+        if "negatively impacted" not in excerpt.lower():
+            continue
+        return {
+            "published_as_of_date":"2024-11-08",
+            "issuer":"Baxter International Inc.",
+            "scope":"TOTAL_COMPANY_Q4_2024",
+            "classification":"PROSPECTIVE_COMPANY_WIDE_SALES_DOWNSIDE_GUIDANCE",
+            "original_amount_currency":"USD",
+            "as_reported_approximate_amount":200000000,
+            "estimated_not_realized":True,
+            "not_facility_specific":True,
+            "not_covered_loss":True,
+            "not_paid_insurance":True,
+            "matched_source_excerpt_sha256":digest(excerpt.encode("utf-8")),
+            "source_snippet_for_review":excerpt[:300],
+        }
+    return None
+
+
 def inspect_issuer_html(case: dict, data: bytes, actual_url: str, http_code: int):
     case = validate_case(case)
     if http_code != 200 or actual_url != case["source_url"]:
@@ -164,6 +198,7 @@ def inspect_issuer_html(case: dict, data: bytes, actual_url: str, http_code: int
         "electrical_power_outage_verified": False,
         "actual_downtime_hours_verified": False,
         "reported_financial_impact_amount": None,
+        "issuer_prospective_sales_guidance": extract_issuer_forecast(case, text),
         "insured_business_interruption_loss_verified": False,
         "claims_paid_verified": False,
         "record_status": "ISSUER_REPORTED_SITE_INTERRUPTION_REVIEW_ONLY",
@@ -237,6 +272,9 @@ def run(output: Path, cases: list[dict] | None = None, min_success: int = 1):
         "attempted": len(cases), "downloaded": len(downloaded),
         "normalized": len(accepted), "rejected_or_blocked": len(failures),
         "indexed_local_staging": staged, "distinct_named_underlying_events": events,
+        "issuer_forecast_sales_guidance_observations": sum(r["issuer_prospective_sales_guidance"] is not None for r in accepted),
+        "verified_realized_profit_loss_amounts": 0,
+        "verified_paid_business_interruption_claims": 0,
         "downloaded_source_provenance": downloaded, "failed_sources": failures,
         "verified_insured_facility_ids": 0,
         "verified_meter_service_connections": 0,
