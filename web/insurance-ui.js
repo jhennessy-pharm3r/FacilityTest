@@ -27,11 +27,11 @@ const DEFAULT=[
 const COVERAGE_SOURCES={
   property:['fema_nfhl','usfs_whp_aggregates'],flood:['fema_nfhl'],
   earthquake:[],windstorm:[],wildfire:['usfs_whp2023_six_national_tiffs','usfs_whp_aggregates','usfs_whp'],
-  bi:['baxter_bi','pnnl_outages'],extra_expense:['baxter_bi'],
-  utility:['eia861','pnnl_outages','odin_county'],cbi:['baxter_bi'],
+  bi:['baxter_bi','ornl_eaglei_2025','pnnl_outages'],extra_expense:['baxter_bi'],
+  utility:['eia861','ornl_eaglei_2025','pnnl_outages','odin_county'],cbi:['baxter_bi'],
   civil_authority:[],non_damage_bi:['odin_county','baxter_bi'],
   equipment:['eia861'],parametric_wind:[],parametric_flood:['fema_nfhl'],
-  parametric_quake:[],parametric_outage:['odin_county','eia861'],
+  parametric_quake:[],parametric_outage:['odin_county','eia861','ornl_eaglei_2025'],
   parametric_wildfire:['usfs_whp2023_six_national_tiffs','usfs_whp_aggregates'],political:[],
   environmental:['epa_echo','epa_rcra','epa_tri','epa_rmp_public']
 };
@@ -39,7 +39,7 @@ const SOURCE_NAMES={
   fema_nfhl:'FEMA flood source (sample only)',usfs_whp:'USFS 270m wildfire sample',
   usfs_whp_aggregates:'USDA regional wildfire summaries',
   usfs_whp2023_six_national_tiffs:'WHP2023 six original georeferenced files (CI only)',baxter_bi:'Baxter disruption publications',
-  pnnl_outages:'DOE/PNNL county outage history',eia861:'EIA electric reliability',
+  pnnl_outages:'DOE/PNNL county outage history',ornl_eaglei_2025:'ORNL EAGLE-I 2025 readings; no insured outage validation',eia861:'EIA electric reliability',
   odin_county:'ORNL ODIN outage snapshot',epa_echo:'EPA ECHO',epa_rcra:'EPA RCRA',
   epa_tri:'EPA TRI reports',epa_rmp_public:'EPA public RMP program'
 };
