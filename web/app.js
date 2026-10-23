@@ -21,7 +21,10 @@ const ROUTE_TABS=new Set(['summary','risk','evidence','disclosures']);
 const ROUTE_KEYS=new Set(['page','facility','tab','q','country','source','sector','industry','domain','p','record']);
 function readRoute(){
   const params=new URL(window.location.href).searchParams;
-  const page=ROUTE_PAGES.has(params.get('page'))?params.get('page'):'workbench';
+  const wanted=params.get('page');
+  const privateOnly={reviews:false,'policy-review':Boolean(window.CoverageReviewUI),'bi-scenarios':Boolean(window.BIScenarioUI)};
+  const available=privateOnly[wanted]!==undefined?privateOnly[wanted]||wanted==='reviews'&&!window.PublicRiskAPI:true;
+  const page=ROUTE_PAGES.has(wanted)&&available?wanted:'workbench';
   const rawId=params.get('facility')||'';
   const facility=rawId.length>0&&rawId.length<=200?rawId:null;
   const tab=ROUTE_TABS.has(params.get('tab'))?params.get('tab'):'summary';
@@ -44,6 +47,7 @@ function patchRoute(changes,method='push'){
 }
 function navigateToPage(page){
   if(!ROUTE_PAGES.has(page))return;
+  if(window.PublicRiskAPI&&['reviews','policy-review','bi-scenarios'].includes(page))return;
   const url=new URL(window.location.href);
   url.search='';
   url.hash='';
