@@ -29,6 +29,7 @@ on:
       - 'tests/test_lane_a_fema_msc_bulk.py'
       - 'scripts/lane_a_whp_summaries_index.py'
       - 'tests/test_lane_a_whp_summaries_index.py'
+      - 'scripts/verify_lane_a_whp_index.py'
       - '.github/workflows/validate-lane-a-sources.yml'
 permissions:
   contents: read
@@ -61,6 +62,9 @@ jobs:
       - name: Normalize and index complete real USDA WHP2023 county, state and ZIP source summary records
         if: always()
         run: python -m scripts.lane_a_whp_summaries_index --source data/lane_a/whp_official_summary/whp2023_official_summaries.zip --out-dir data/lane_a/whp_official_index
+      - name: Independently verify official USDA original ZIP/XLSX, normalized NDJSON and SQLite provenance
+        if: always()
+        run: python -m scripts.verify_lane_a_whp_index --source data/lane_a/whp_official_summary/whp2023_official_summaries.zip --index-dir data/lane_a/whp_official_index
       - name: Probe documented FEMA Map Service Center official county NFHL product bulk download
         if: always()
         continue-on-error: true
