@@ -114,7 +114,8 @@ class OfficialUSDAAggregateIndexTests(unittest.TestCase):
         rows = list(sheet1_rows(book))
         self.assertEqual(rows[0][0], 3)
         self.assertEqual(rows[1][1][0], "00029")
-        self.assertEqual(rows[1][1][-1], None)
+        self.assertEqual(rows[1][1][2], "CA")
+        self.assertEqual(len(rows[1][1]), 3)  # XML omits trailing empty cells
 
 
 if __name__ == "__main__":
