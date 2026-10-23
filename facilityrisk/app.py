@@ -22,6 +22,7 @@ from .coverage_review import (create_policy,save_term,propose_term_review,
   list_reviews,decide_term_review,facility_policy_snapshot,compare_hazards_and_coverage)
 from .physical_assets import (create_asset,revise_asset,facility_assets as list_site_assets,
     propose_asset_review,asset_review_queue,decide_asset_review)
+from .bi_scenarios import save_scenario,facility_scenarios as get_bi_scenarios
 from .universal_registry import (search as universal_search, detail as universal_detail,
     statistics as universal_stats, track_for_research as universal_track)
 from .site_workspace import (SOURCES as REGULATOR_SOURCES, intake_site, search_external_registry,
@@ -174,6 +175,27 @@ async def approve_physical_asset_identity(review_id:str,request:Request,c=Depend
     try:return decide_asset_review(c,review_id,body.get('decision',''),
                                     request.state.actor,body.get('note',''))
     except (ValueError,TypeError) as error:raise HTTPException(422,str(error)) from error
+
+
+@app.get('/api/facilities/{facility_id}/interruption-scenarios')
+def site_interruption_scenarios(facility_id:str,c=Depends(conn_dependency)):
+    try:return get_bi_scenarios(c,facility_id)
+    except ValueError as error:raise HTTPException(404,str(error)) from error
+
+
+@app.post('/api/facilities/{facility_id}/interruption-scenarios')
+async def create_interruption_scenario(facility_id:str,request:Request,c=Depends(conn_dependency)):
+    _asset_review_write(request,'reviewer')
+    try:return save_scenario(c,facility_id,await request.json(),request.state.actor)
+    except (TypeError,ValueError) as error:raise HTTPException(422,str(error)) from error
+
+
+@app.patch('/api/facilities/{facility_id}/interruption-scenarios/{scenario_id}')
+async def revise_interruption_scenario(facility_id:str,scenario_id:str,request:Request,
+                                       c=Depends(conn_dependency)):
+    _asset_review_write(request,'reviewer')
+    try:return save_scenario(c,facility_id,await request.json(),request.state.actor,scenario_id)
+    except (TypeError,ValueError) as error:raise HTTPException(422,str(error)) from error
 
 
 @app.get('/api/universal-facilities/stats')
