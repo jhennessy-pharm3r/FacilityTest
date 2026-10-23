@@ -5,6 +5,8 @@ on:
     branches:
       - ingest/eia861-utility-bi-lane-d-20261023
     paths:
+      - facilityrisk/lane_d/install_source_index.py
+      - tests/test_lane_d_install_source_index.py
       - facilityrisk/lane_d/ingest_eia861.py
       - facilityrisk/lane_d/audit_eia861.py
       - facilityrisk/lane_d/query_eia_service_territory.py
@@ -168,6 +170,22 @@ jobs:
             /tmp/facility-lane-d/normalized/lane_d_eia861_staging.sqlite
             /tmp/facility-lane-d/normalized/coordinator_handoff.json
             /tmp/facility-lane-d/normalized/manifest.json
+      - name: Download source-index artifact for independent installation
+        uses: actions/download-artifact@v4
+        with:
+          name: lane-d-eia861-2025-readonly-staging-index
+          path: /tmp/lane-d-transfer
+      - name: Verify pinned 2025 EIA source before atomic private read-only install
+        run: |
+          python -m facilityrisk.lane_d.install_source_index install --bundle /tmp/lane-d-transfer --dest /tmp/lane-d-installed --dataset eia861_2025 --source-sha256 f59f6c732bf685fe0a1591b32227f5ce572dc0dfd26bb5caaeed128ac4e3a396
+          python -m facilityrisk.lane_d.install_source_index verify --dest /tmp/lane-d-installed --dataset eia861_2025
+          python -m facilityrisk.lane_d.install_source_index query --dest /tmp/lane-d-installed --dataset eia861_2025 --state WA --county Pierce --limit 25
+      - name: Retain installer acceptance receipt only (not production deployment)
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-d-eia-install-smoke
+          retention-days: 7
+          path: /tmp/lane-d-installed/eia861_2025/current.json
       - name: Publish safe manifest and schema inventory for peer validation
         if: always()
         uses: actions/upload-artifact@v4
