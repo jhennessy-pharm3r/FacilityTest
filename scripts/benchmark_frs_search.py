@@ -6,6 +6,7 @@ validate-frs-index.yml. Does not invent latency measurements or risk ratings.
 from __future__ import annotations
 
 import argparse
+from contextlib import closing
 from concurrent.futures import ThreadPoolExecutor
 import json
 import math
@@ -39,7 +40,7 @@ def benchmark(db_path,repeats=3,concurrency=4,*,cases=None):
     if not db_path.is_file():raise FileNotFoundError(db_path)
     if not (1<=int(repeats)<=20 and 1<=int(concurrency)<=8):
         raise ValueError('Bounded repeats (1-20) and concurrency (1-8) required')
-    with readonly_database(db_path) as conn:
+    with closing(readonly_database(db_path)) as conn:
         total_sites=conn.execute('SELECT COUNT(*) FROM universal_sites').fetchone()[0]
         total_identities=conn.execute('SELECT COUNT(*) FROM universal_source_records').fetchone()[0]
         candidate=conn.execute("""SELECT source_identifier FROM universal_source_records
@@ -58,7 +59,7 @@ def benchmark(db_path,repeats=3,concurrency=4,*,cases=None):
     def query(case):
         label,opts=case
         start=time.perf_counter()
-        with readonly_database(db_path) as c:
+        with closing(readonly_database(db_path)) as c:
             result=search(c,**opts)
         return label,round((time.perf_counter()-start)*1000,2),result['total'],len(result['items'])
     # Warm each lookup. These timings are excluded from the reported cold/warm
