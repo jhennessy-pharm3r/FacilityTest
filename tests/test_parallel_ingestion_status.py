@@ -84,7 +84,7 @@ def test_specific_official_workflow_counts_are_not_fabricated_or_summed_as_sites
         30482141,28509491,1972650,28509491)
     assert eaglei['source_sha256']=='4148a4a3b26e58024403cef98ccb324d1656f476613d6afff4451e33faf468c9'
     assert eaglei['run_url'].endswith('/40012114092')
-    assert '812,872 county/day' in eaglei['scope']
+    assert '812,872-row county/day' in eaglei['scope']
     assert '3,035' in eaglei['notes'] and 'ZERO production-host indexing' in eaglei['notes']
     assert 'NOT an outage-event or insured facility index' in eaglei['scope']
     assert eaglei['deployed']==eaglei['verified_insured_sites']==0
