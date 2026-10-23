@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 from facilityrisk.lane_d.ingest_crane_bi_pdf import (
-    SOURCE_DOCS, financial_facts, parse_pages, run, fetch_pdf
+    SOURCE_DOCS, financial_facts, parse_pages, run, fetch_pdf, validate_publisher_distribution_redirect
 )
 
 
@@ -99,6 +99,29 @@ class CranePDFTest(unittest.TestCase):
         self.assertEqual([x["accounting_period_or_window"] for x in fa+fb
                           if x["financial_metric_kind"]=="REMAINING_INSURANCE_RECEIVABLE"],
                          ["2024_12_31_BALANCE","2025_06_30_BALANCE"])
+
+    def test_only_verified_issuer_published_q4cdn_redirect_is_accepted(self):
+        for case in SOURCE_DOCS:
+            issuer=case["url"]
+            distribution=issuer.replace(
+                "https://investors.craneco.com/",
+                "https://s21.q4cdn.com/873006999/")
+            self.assertEqual(
+                validate_publisher_distribution_redirect(issuer,distribution,200),
+                "ISSUER_LINK_PUBLISHED_Q4_CDN_873006999")
+            self.assertEqual(
+                validate_publisher_distribution_redirect(issuer,issuer,200),
+                "ISSUER_HOST_ORIGINAL")
+            for bad in (
+                distribution.replace("s21.q4cdn.com","evil-cdn.example"),
+                distribution.replace("/873006999/","/000000000/"),
+                distribution.replace(".pdf",".htm"),
+                distribution.replace("https://","http://"),
+            ):
+                with self.assertRaises(ValueError):
+                    validate_publisher_distribution_redirect(issuer,bad,200)
+            with self.assertRaises(ValueError):
+                validate_publisher_distribution_redirect(issuer,distribution,403)
 
     def test_blocked_source_does_not_claim_success_or_durable_index(self):
         with tempfile.TemporaryDirectory() as t, patch(
