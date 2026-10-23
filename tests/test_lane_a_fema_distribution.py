@@ -5,6 +5,7 @@ import urllib.error
 from pathlib import Path
 
 from scripts.lane_a_fema_distribution import FEMA_LAYER, WFS, run, wfs_feature_types
+from scripts.verify_lane_a_fema_distribution import verify
 
 CAPS = b'''<?xml version="1.0"?>
 <wfs:WFS_Capabilities xmlns:wfs="http://www.opengis.net/wfs/2.0"
@@ -38,6 +39,19 @@ class FederalNFHLDistributionTests(unittest.TestCase):
             raw = (Path(temp) / "raw" / m["wfs_receipt"]["raw_file"]).read_bytes()
             self.assertEqual(hashlib.sha256(raw).hexdigest(), m["wfs_receipt"]["sha256"])
             self.assertEqual(m["rest_count_receipt"]["transport"]["http_method"], "POST")
+            check = verify(Path(temp))
+            self.assertTrue(check["count_response_verified"])
+            self.assertTrue(check["wfs_capabilities_verified"])
+            self.assertEqual(check["source_count_from_response"], 2030405)
+            self.assertEqual(check["national_fema_polygon_source_rows_downloaded"], 0)
+
+    def test_tampered_publisher_count_raw_fails_independent_sha(self):
+        with tempfile.TemporaryDirectory() as temp:
+            m = run(Path(temp), rest=fake_rest, wfs=fake_wfs)
+            rawfile = Path(temp) / "raw" / m["rest_count_receipt"]["raw_file"]
+            rawfile.write_bytes(b'{"count":999}')
+            with self.assertRaisesRegex(ValueError, "SHA mismatch"):
+                verify(Path(temp))
 
     def test_blocked_official_access_keeps_count_unknown(self):
         def unavailable(*args):
