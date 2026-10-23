@@ -2,7 +2,7 @@
 import argparse,csv,datetime,hashlib,io,json,re,sqlite3,tempfile,urllib.request,zipfile
 from pathlib import Path
 URLS={"echo":"https://echo.epa.gov/files/echodownloads/echo_exporter.zip","rcra":"https://echo.epa.gov/files/echodownloads/rcra_downloads.zip"}
-KEYS={"echo":("REGISTRY_ID","FRS_ID","FACILITY_ID"),"rcra":("HANDLER_ID","RCRA_ID","EPA_ID","RCRA_HANDLER_ID","PGM_SYS_ID","FACILITY_ID","RCRA_FACILITY_ID","EPA_ID_NUMBER"),"tri":("TRIFD","TRI_FACILITY_ID","FACILITY_ID")}
+KEYS={"echo":("REGISTRY_ID","FRS_ID","FACILITY_ID"),"rcra":("HANDLER_ID","RCRA_ID","EPA_ID","RCRA_HANDLER_ID","PGM_SYS_ID","FACILITY_ID","RCRA_FACILITY_ID","EPA_ID_NUMBER","ID_NUMBER"),"tri":("TRIFD","TRI_FACILITY_ID","FACILITY_ID")}
 def name(s): return re.sub("[^A-Z0-9]+","_",s.upper().strip()).strip("_")
 def coordinate(s,low,high):
     try:
@@ -36,8 +36,8 @@ def ingest(source,path,out,source_url=None,year=None):
                 if not identity:
                     inventory[member]={"state":"skipped_no_identity_column","observed_headers":keys[:70]}
                     continue
-                lat=next((k for k in ("LATITUDE","FAC_LATITUDE") if k in keys),None)
-                lon=next((k for k in ("LONGITUDE","FAC_LONGITUDE") if k in keys),None)
+                lat=next((k for k in ("LATITUDE","FAC_LATITUDE","LATITUDE83") if k in keys),None)
+                lon=next((k for k in ("LONGITUDE","FAC_LONGITUDE","LONGITUDE83") if k in keys),None)
                 rows=0
                 for n,row in enumerate(reader,2):
                     scanned+=1;rows+=1
