@@ -99,7 +99,9 @@ def select_headers(headers, source, overrides=None):
         raise ValueError("Source ID/date columns not resolved; supply --mapping JSON with id/date names; observed: " + repr(list(found)[:50]))
     return selected
 
-def rows_from_file(path, *, sheet=None, member=None, header_row=1):
+def rows_from_file(path, *, sheet=None, member=None, header_row=1, encoding="utf-8-sig"):
+    if encoding not in ("utf-8-sig", "cp1252", "latin-1"):
+        raise ValueError("Unsupported encoding; require verified publisher text encoding")
     path = Path(path)
     ext = path.suffix.lower()
     if ext == ".zip":
@@ -115,15 +117,12 @@ def rows_from_file(path, *, sheet=None, member=None, header_row=1):
                 raise ValueError("Choose a single CSV/TXT zip member with --member")
             name = choices[0].filename
             with archive.open(name) as binary:
-                data = io.TextIOWrapper(binary, encoding="utf-8-sig", errors="replace", newline="")
-                sample = data.read(8192)
-                # Zip streams are forward-only: retain the already-read prefix.
-                raw = sample + data.read()
-                dialect = csv.excel_tab if name.lower().endswith(".txt") else csv.excel
-                yield from enumerate(csv.DictReader(io.StringIO(raw), dialect=dialect), 2)
+                with io.TextIOWrapper(binary, encoding=encoding, errors="strict", newline="") as data:
+                    dialect = csv.excel_tab if name.lower().endswith(".txt") else csv.excel
+                    yield from enumerate(csv.DictReader(data, dialect=dialect), 2)
         return
     if ext in (".csv", ".txt"):
-        with path.open("r", encoding="utf-8-sig", errors="replace", newline="") as handle:
+        with path.open("r", encoding=encoding, errors="strict", newline="") as handle:
             dialect = csv.excel_tab if ext == ".txt" else csv.excel
             yield from enumerate(csv.DictReader(handle, dialect=dialect), 2)
         return
@@ -171,7 +170,7 @@ def number(value, *, bounds=None):
     return str(v)
 
 def stage(source, raw, normalized, manifest, *, source_url, sheet=None, member=None,
-          mapping=None, minimum_rows=1, header_row=1):
+          mapping=None, minimum_rows=1, header_row=1, encoding="utf-8-sig"):
     if source not in PUBLISHERS:
         raise ValueError("Unknown agency source")
     if not source_url.startswith("https://"):
@@ -191,7 +190,7 @@ def stage(source, raw, normalized, manifest, *, source_url, sheet=None, member=N
         with gzip_csv_writer(temp) as target:
             writer = csv.DictWriter(target, fieldnames=OUT_COLUMNS)
             writer.writeheader()
-            for row_num, row in rows_from_file(raw, sheet=sheet, member=member, header_row=header_row):
+            for row_num, row in rows_from_file(raw, sheet=sheet, member=member, header_row=header_row, encoding=encoding):
                 if selected is None:
                     selected = select_headers(row.keys(), source, mapping)
                 def get(field):
@@ -285,6 +284,7 @@ def main():
     parser.add_argument("--source-url", required=True)
     parser.add_argument("--sheet")
     parser.add_argument("--member")
+    parser.add_argument("--encoding", choices=("utf-8-sig","cp1252","latin-1"), default="utf-8-sig", help="Explicit reviewed official CSV/TXT encoding; never silently replace invalid bytes")
     parser.add_argument("--header-row", type=int, default=1)
     parser.add_argument("--mapping", type=Path, help="JSON field-name overrides for publisher drift")
     parser.add_argument("--min-rows", type=int, default=1)
@@ -292,7 +292,7 @@ def main():
     mapping = json.loads(opts.mapping.read_text()) if opts.mapping else None
     print(json.dumps(stage(opts.source, opts.raw, opts.normalized, opts.manifest,
         source_url=opts.source_url, sheet=opts.sheet, member=opts.member,
-        mapping=mapping, minimum_rows=opts.min_rows, header_row=opts.header_row), indent=2))
+        mapping=mapping, minimum_rows=opts.min_rows, header_row=opts.header_row, encoding=opts.encoding), indent=2))
 
 if __name__ == "__main__":
     main()
