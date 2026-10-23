@@ -6,14 +6,14 @@ Commands (Python 3.11+):
 
 ```bash
 python -m unittest scripts.lane_b_epa.test_ingest -v
-python -m scripts.lane_b_epa.ingest --source echo --output /private/echo_run
-python -m scripts.lane_b_epa.ingest --source rcra --output /private/rcra_run
+python -m scripts.lane_b_epa.ingest --source echo --raw-dir /private/epa_raw --output /private/echo_run
+python -m scripts.lane_b_epa.ingest --source rcra --raw-dir /private/epa_raw --output /private/rcra_run
 python -m scripts.lane_b_epa.ingest --source tri --year 2024 --input /private/official_tri_2024.csv --output /private/tri_run
 ```
 
 - Import only officially acquired datasets. TRI needs selected year + official source CSV/ZIP and native TRIFD. EPA ZIPs may contain auxiliary tables whose facility ID is not present. Such members are explicitly skipped, not counted as covered. Audit all archive members before treating coverage as complete.
 - Raw fields and native IDs remain distinct in a source-specific SQLite table; no automatic site/parcel or inter-source merges. Multiple rows for the same facility ID stay separate. Reports are not property losses and absent violations do not imply safety.
-- Manifest includes raw download SHA256, retrieved UTC, accepted/rejected/indexed counts, duplicate IDs, coordinate presence, and skipped archive members. Preserve original ZIP separately in private raw storage (URL fetch currently uses a disposable temp file). Publish aggregates only after source-level validation.
+- Manifest includes raw download SHA256, retrieved UTC, accepted/rejected/indexed counts, duplicate IDs, coordinate presence, and skipped archive members. Use --raw-dir on a secure durable host to retain each downloaded original ZIP. Without --raw-dir URL acquisition uses a disposable temp file; CI only publishes short-lived manifests. Publish aggregates only after source-level validation.
 - RMP offsite consequence analyses have controlled access. This importer explicitly refuses bulk RMP; obtain a lawful public non-OCA dataset and source-use review first.
 - All industries/facility types in scope, no pharma-only filter. Shared UI and Source Health remain coordinator-owned.
 
@@ -22,7 +22,7 @@ python -m scripts.lane_b_epa.ingest --source tri --year 2024 --input /private/of
 | Source | Live download | Validated indexed records | Deployed |
 | --- | --- | --- | --- |
 | ECHO | NOT TESTED in this runtime (DNS/network blocked) | Unknown | No |
-| RCRAInfo | NOT TESTED in this runtime (DNS/network blocked) | Unknown | No |
+| RCRAInfo | Official archive downloaded in GitHub Actions; initial schema runs rejected zero-row ingest; corrected ID_NUMBER mapping run pending | Unknown | No |
 | TRI | Official year-specific file not acquired in this runtime | Unknown | No |
 | RMP | Bulk download deliberately blocked by access constraints | 0 | No |
 
