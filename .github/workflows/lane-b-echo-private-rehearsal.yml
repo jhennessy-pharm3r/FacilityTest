@@ -1,0 +1,123 @@
+name: Lane B official ECHO private-snapshot handoff rehearsal
+on:
+  push:
+    branches: ['ingest/epa-echo-tri-echo-rmp-lane-b-20261023']
+    paths: ['.github/workflows/lane-b-echo-private-rehearsal.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  verify_private_staging:
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    env:
+      PRODUCER_RUN: '39982893655'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Independently download original EPA index manifests
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 39982893655
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          name: lane-b-echo-complete-manifests
+          path: ${{ runner.temp }}/lane_b_echo/meta
+      - name: Independently download official EPA original ZIP
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 39982893655
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          name: lane-b-echo-official-raw-zip
+          path: ${{ runner.temp }}/lane_b_echo/raw
+      - name: Independently download complete checksum-delimited SQLite chunks
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 39982893655
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: lane-b-echo-index-part-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/lane_b_echo/parts
+      - name: Verify official source snapshot installation and read-only native-ID querying
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/lane_b_private_test_only"
+          original=$(find "$RUNNER_TEMP/lane_b_echo/raw" -type f -name '*.zip' -print -quit)
+          test -n "$original"
+          test -s "$RUNNER_TEMP/lane_b_echo/meta/echo.manifest.json"
+          test -s "$RUNNER_TEMP/lane_b_echo/meta/chunk-manifest.json"
+          python -m scripts.lane_b_epa.install_snapshot \
+            --source echo \
+            --official-zip "$original" \
+            --manifest "$RUNNER_TEMP/lane_b_echo/meta/echo.manifest.json" \
+            --parts-dir "$RUNNER_TEMP/lane_b_echo/parts" \
+            --chunks-manifest "$RUNNER_TEMP/lane_b_echo/meta/chunk-manifest.json" \
+            --destination "$RUNNER_TEMP/lane_b_private_test_only/echo_source_20261023" \
+            > "$RUNNER_TEMP/lane_b_echo/real_install_receipt.json"
+          python - <<'PY'
+          import hashlib,json,os,pathlib,sqlite3
+          from scripts.lane_b_epa.read_index import source_status,lookup
+          root=pathlib.Path(os.environ["RUNNER_TEMP"])
+          location=root/"lane_b_private_test_only"/"echo_source_20261023"
+          db=location/"echo.sqlite"
+          manifest=location/"echo.manifest.json"
+          receipt=json.loads((location/"install-receipt.json").read_text())
+          status=source_status(db,manifest,"echo")
+          con=sqlite3.connect(db.as_uri()+"?mode=ro&immutable=1",uri=True)
+          members=con.execute("SELECT member, COUNT(*) FROM observation GROUP BY member ORDER BY member").fetchall()
+          assert len(members)==1,(len(members),members)
+          assert sum(n for _,n in members)==3208008
+          assert receipt["official_source_rows"]==receipt["normalized_accepted"]==receipt["indexed_staging_rows"]==3208008
+          assert receipt["rejected_quarantined"]==status["rejected_rows"]==21303
+          assert receipt["original_archive_sha256"]==status["source_archive_sha256"]=="116f6e53117b52f7891c6d2466d662f4ee5e29946b065fdb7b97eaf095615899"
+          assert receipt["source_sqlite_sha256"]==status["index_sha256"]=="047afef7a5efc13d61002f23742764bc708aaf2cd76f229bf1c98cc5940bf75c"
+          quarantined=con.execute("SELECT reason,COUNT(*) FROM rejected GROUP BY reason").fetchall()
+          assert quarantined==[("missing_native_id",21303)],quarantined
+          geocoded=con.execute("SELECT COUNT(*) FROM observation WHERE latitude IS NOT NULL AND longitude IS NOT NULL").fetchone()[0]
+          assert geocoded==3146109
+          ids=[]
+          for member,_ in members:
+              row=con.execute("SELECT source_id,activity_location,row_sha256 FROM observation WHERE member=? LIMIT 1",(member,)).fetchone()
+              assert row and len(row[2])==64,(member,row)
+              native=lookup(db,manifest,"echo",row[0],limit=3)
+              assert native["observations_available"]>=1 and native["physical_site_linkage"]=="NOT_REVIEWED"
+              assert all(r["source"]=="echo" for r in native["rows"])
+              ids.append(dict(member=member,id_sha256=hashlib.sha256(row[0].encode()).hexdigest(),
+                              query_row_count=native["observations_available"]))
+          con.close()
+          safe=dict(source="echo",producer_run_id=int(os.environ["PRODUCER_RUN"]),
+              official_source_rows=receipt["official_source_rows"],
+              accepted_normalized_rows=receipt["normalized_accepted"],
+              verified_private_staging_indexed_rows=receipt["indexed_staging_rows"],
+              rejected_rows=receipt["rejected_quarantined"],
+              authenticated_production_deployed_rows=0,
+              physical_site_matches_approved=0,
+              original_archive_sha256=receipt["original_archive_sha256"],
+              source_sqlite_sha256=receipt["source_sqlite_sha256"],
+              native_member_counts=dict(members),
+              accepted_reported_coordinate_pairs=geocoded,
+              quarantined_native_key_reason_counts=dict(quarantined),
+              private_staging_readonly_lookup_sha_evidence=ids,
+              result="COMPLETE_OFFICIAL_SOURCE_PRIVATE_TEMP_STAGING_VALIDATED_NOT_DEPLOYED",
+              safety_notice="This is an isolated, short-lived CI rehearsal, not a production backend")
+          (root/"lane_b_echo"/"private_staging_qa.json").write_text(json.dumps(safe,indent=2)+"\n")
+          print("REAL_ECHO_PRIVATE_SNAPSHOT_REHEARSAL_PASS",json.dumps(safe))
+          PY
+      - name: Remove temporary raw sources, indexes and chunks
+        if: always()
+        run: |
+          set -euo pipefail
+          rm -rf "$RUNNER_TEMP/lane_b_private_test_only" "$RUNNER_TEMP/lane_b_echo/raw" "$RUNNER_TEMP/lane_b_echo/parts"
+          test ! -e "$RUNNER_TEMP/lane_b_private_test_only"
+          test ! -e "$RUNNER_TEMP/lane_b_echo/raw"
+          test ! -e "$RUNNER_TEMP/lane_b_echo/parts"
+          echo "TEMPORARY_PRIVATE_SOURCE_BYTES_CLEANED"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lane-b-echo-real-temporary-private-snapshot-audit-only
+          path: ${{ runner.temp }}/lane_b_echo/private_staging_qa.json
+          if-no-files-found: warn
+          retention-days: 14
