@@ -15,6 +15,14 @@ class LaneBTests(unittest.TestCase):
             self.assertEqual((m["scanned_rows"],m["indexed_rows"],m["rejected_rows"]),(3,2,1))
             self.assertEqual(m["duplicate_member_ids"],1)
             self.assertEqual(m["valid_coordinate_pairs"],1)
+    def test_official_numbered_tri_basic_header(self):
+        with tempfile.TemporaryDirectory() as d:
+            x=Path(d);p=x/"official_tri.csv"
+            p.write_text("1. YEAR,2. TRIFD,12. LATITUDE,13. LONGITUDE,37. CHEMICAL,50. UNIT OF MEASURE\n2024,12000ABCDE,41,-72,CHLORINE,Pounds\n")
+            m=ingest("tri",p,x/"out",year=2024)
+            self.assertEqual(m["indexed_rows"],1)
+            self.assertEqual(m["valid_coordinate_pairs"],1)
+            self.assertEqual(m["archive_members"]["official_tri.csv"]["identity_column"],"2_TRIFD")
     def test_rcra_archive_skip(self):
         with tempfile.TemporaryDirectory() as d:
             x=Path(d);p=x/"rcra.zip"
