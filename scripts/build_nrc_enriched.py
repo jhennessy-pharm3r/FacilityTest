@@ -98,6 +98,9 @@ def stage_nrc(raw, output, manifest, *, year, minimum_rows=1000):
         if not ids <= set(calls) or not ids <= set(details):
             raise ValueError("NRC report linkage missing cross-sheet SEQNOS")
         geo, bad_dates = 0, 0
+        missing_raw_dms, invalid_raw_dms = 0, 0
+        state_counts = Counter()
+        dates = []
         with gzip_csv_writer(temp) as stream:
             writer = csv.DictWriter(stream, FIELDS)
             writer.writeheader()
@@ -109,6 +112,13 @@ def stage_nrc(raw, output, manifest, *, year, minimum_rows=1000):
                 except ValueError:
                     when, precision = "", "missing_or_invalid"
                     bad_dates += 1
+                if when:
+                    dates.append(when)
+                state_counts[str(row.get("LOCATION_STATE") or "").strip() or "<missing>"] += 1
+                dms_parts = tuple(row.get(part) for part in (
+                    "LAT_DEG","LAT_MIN","LAT_SEC","LAT_QUAD",
+                    "LONG_DEG","LONG_MIN","LONG_SEC","LONG_QUAD"))
+                no_raw_dms = any(value is None or str(value).strip()=="" for value in dms_parts)
                 lat = dms(row.get("LAT_DEG"), row.get("LAT_MIN"), row.get("LAT_SEC"),
                           row.get("LAT_QUAD"), latitude=True)
                 lon = dms(row.get("LONG_DEG"), row.get("LONG_MIN"), row.get("LONG_SEC"),
@@ -117,6 +127,10 @@ def stage_nrc(raw, output, manifest, *, year, minimum_rows=1000):
                     lat = lon = ""
                 if lat:
                     geo += 1
+                elif no_raw_dms:
+                    missing_raw_dms += 1
+                else:
+                    invalid_raw_dms += 1
                 writer.writerow(dict(zip(FIELDS, (
                     seqno, when, precision, str(call.get("RESPONSIBLE_COMPANY") or "").strip(),
                     str(row.get("INCIDENT_LOCATION") or "").strip(),
@@ -146,6 +160,11 @@ def stage_nrc(raw, output, manifest, *, year, minimum_rows=1000):
             "missing_cross_table_links": 0,
             "coordinate_records": geo, "missing_coordinates": len(ids) - geo,
             "invalid_or_missing_incident_dates": bad_dates,
+            "earliest_incident_date": min(dates) if dates else None,
+            "latest_incident_date": max(dates) if dates else None,
+            "state_counts": dict(sorted(state_counts.items())),
+            "missing_raw_coordinate_components": missing_raw_dms,
+            "invalid_or_sentinel_publisher_coordinates": invalid_raw_dms,
             "accepted_rows": len(ids), "rejected_rows": 0,
             "evidence_status": "unverified_report_not_confirmed_loss",
             "physical_facility_matches": 0, "deployment": "NOT_DEPLOYED",
