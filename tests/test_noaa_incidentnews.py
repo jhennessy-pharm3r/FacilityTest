@@ -43,7 +43,7 @@ def fixture_csv(duplicate=False,wrong_schema=False,actual_headers=False):
          "max_ptl_release_gallons":"","posts":"0",
          "description":"Selected assistance case"},
         {"id":103,"open_date":"","name":"Old Unknown", "location":"Offshore",
-         "lat":"43.60","lon":"","threat":"Other","tags":"",
+         "lat":"43.60","lon":"999.0","threat":"Other","tags":"",
          "commodity":"","is_measure_skim":"","is_measure_shore":"",
          "is_measure_bio":"","is_measure_disperse":"","is_measure_burn":"",
          "max_ptl_release_gallons":"","posts":"","description":"Site not known"}
@@ -90,6 +90,7 @@ def test_official_source_staged_and_publisher_limited(tmp_path):
     raw,normalized,manifest,published,data=source(tmp_path)
     assert data["records"]==3
     assert data["coordinate_records"]==1
+    assert data["excluded_coordinate_rows"]==1
     assert data["missing_notification_dates"]==1
     assert data["threat_counts"]=={"Chemical":1,"Oil":1,"Other":1}
     assert data["earliest_notification_date"]=="2023-01-02"
