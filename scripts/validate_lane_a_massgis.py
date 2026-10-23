@@ -6,10 +6,11 @@ Never silently substitute it for the unavailable FEMA authoritative live service
 import argparse
 import json
 import pathlib
+import sqlite3
 import sys
 from datetime import datetime, timezone
 
-from validate_lane_a_sources import fetch_capture, parse_fema, setup_sqlite
+from scripts.validate_lane_a_sources import fetch_capture, parse_fema, setup_sqlite
 
 MASSGIS = ("https://services1.arcgis.com/7iJyYTjCtKsZS1LR/ArcGIS/rest/services/"
            "RZRP_StoryMap_100_Year_Flood_Zone/FeatureServer/303")
@@ -95,7 +96,7 @@ def collect(out_dir, fetch=None):
                         MASSGIS,
                         json.dumps(row["raw_feature"], sort_keys=True, separators=(",", ":")),
                     ))
-            except (ValueError, Exception) as exc:
+            except (ValueError, sqlite3.Error) as exc:
                 receipt["state"] = "DOWNLOADED_NOT_VALIDATED"
                 receipt["error"] = str(exc)[:500]
         manifest["sample_raw"] += receipt["raw_records"]
