@@ -13,6 +13,7 @@ import tempfile
 import zipfile
 import requests
 from openpyxl import load_workbook
+from build_industrial_incidents import stage
 
 SOURCES = {
     "nrc_2025": ("https://nrc.uscg.mil/FOIAFiles/CY25.xlsx", 60_000_000),
@@ -81,6 +82,25 @@ def main():
                 report["downloaded_bytes"], report["raw_sha256"] = download(url, limit, target)
                 report["content"] = zip_probe(target) if target.suffix == ".zip" else workbook_probe(target)
                 report["state"] = "DOWNLOADED_AND_INVENTORIED_NOT_NORMALIZED"
+                if name == "nrc_2025":
+                    try:
+                        result = stage("nrc", target, Path(work) / "nrc-normalized.csv.gz",
+                            args.output / "nrc-normalized-manifest.json", source_url=url,
+                            sheet="INCIDENT_COMMONS", mapping={
+                                "id": "SEQNOS", "date": "INCIDENT_DATE_TIME",
+                                "city": "LOCATION_NEAREST_CITY", "state": "LOCATION_STATE"},
+                            minimum_rows=10000)
+                        report["normalization"] = {
+                            "raw_rows": result["raw_rows"],
+                            "accepted_rows": result["accepted_rows"],
+                            "rejected_rows": result["rejected_rows"],
+                            "duplicate_source_ids": result["duplicate_source_ids"],
+                            "missing_coordinates": result["missing_coordinates"],
+                            "failure_reasons": result["failure_reasons"],
+                            "normalized_sha256": result["normalized_sha256"]}
+                        report["state"] = "STAGED_AND_CONTENT_VALIDATED_NOT_INDEXED"
+                    except Exception as error:
+                        report["normalization_blocker"] = type(error).__name__ + ": " + str(error)[:350]
             except Exception as error:
                 report["state"] = "BLOCKED"
                 report["error"] = type(error).__name__ + ": " + str(error)[:350]
@@ -94,7 +114,9 @@ def main():
                                          "headers": t.get("header", [])[:25]}
                                         for t in value.get("content", [])],
                             "sha256": value.get("raw_sha256"),
-                            "error": value.get("error")} for key, value
+                            "error": value.get("error"),
+                            "normalization": value.get("normalization"),
+                            "normalization_blocker": value.get("normalization_blocker")} for key, value
                       in manifest["sources"].items()}, indent=2))
     if any(item["state"] == "BLOCKED" for item in manifest["sources"].values()):
         raise SystemExit("One or more official-source downloads blocked; see artifact report")
