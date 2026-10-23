@@ -1,0 +1,96 @@
+name: Lane D - Genuine 2025 EAGLE-I public source byte schema and transfer gate
+
+on:
+  push:
+    branches:
+      - ingest/eia861-utility-bi-lane-d-20261023
+    paths:
+      - .github/workflows/lane-d-eaglei-2025-source-header.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  public-original-csv-header-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Require exact official Figshare release v4 2025 file and CC BY, then inspect genuine CSV bytes
+        shell: bash
+        run: |
+          mkdir -p /tmp/lane-d/eaglei-2025
+          python - <<'PY'
+          import csv,datetime,hashlib,io,json,pathlib
+          from urllib.request import Request,urlopen
+          source_api="https://api.figshare.com/v2/articles/24237376"
+          with urlopen(Request(source_api,headers={"User-Agent":"FacilityRiskLaneD/1.0 public ORNL release"}),timeout=50) as response:
+              assert response.status==200
+              meta_bytes=response.read(300000)
+          meta=json.loads(meta_bytes)
+          assert meta["id"]==24237376
+          assert meta["version"]==4
+          assert meta["license"]["name"]=="CC BY 4.0"
+          files=[x for x in meta["files"] if x.get("name")=="eaglei_outages_2025.csv"]
+          assert len(files)==1 and files[0]["id"]==62164877
+          file=files[0]
+          assert file["size"]==1402347695
+          url=file["download_url"]
+          assert url=="https://ndownloader.figshare.com/files/62164877"
+          request=Request(url,headers={
+              "User-Agent":"FacilityRiskLaneD/1.0 official publisher CSV prefix verification",
+              "Range":"bytes=0-16383",
+          })
+          with urlopen(request,timeout=80) as response:
+              original=response.read(16384)
+              metadata={
+                  "http_status":response.status,
+                  "content_type":response.headers.get("Content-Type"),
+                  "reported_content_length":response.headers.get("Content-Length"),
+                  "reported_content_range":response.headers.get("Content-Range"),
+                  "final_distribution_host":response.geturl().split("/")[2],
+              }
+          assert len(original)>500
+          assert b"\n" in original
+          first_lines=original.decode("utf-8-sig",errors="strict").splitlines()[:5]
+          fields=next(csv.reader([first_lines[0]]))
+          assert 3<=len(fields)<=40
+          rec={
+              "source":"ORNL_EAGLEI_2025_ORIGINAL_FIGSHARE_PREFIX_NOT_FULL_INGEST",
+              "official_release_url":source_api,
+              "figshare_release_version":meta["version"],
+              "official_license":meta["license"],
+              "original_full_csv_expected_bytes":file["size"],
+              "original_full_csv_publisher_md5":file["computed_md5"],
+              "original_full_csv_source_file_id":file["id"],
+              "original_full_csv_url":url,
+              "release_metadata_bytes":len(meta_bytes),
+              "release_metadata_sha256":hashlib.sha256(meta_bytes).hexdigest(),
+              "original_source_prefix_bytes_verified":len(original),
+              "source_prefix_sha256_not_full_file":hashlib.sha256(original).hexdigest(),
+              "source_csv_header":fields,
+              "source_csv_first_four_original_rows":[list(r) for r in csv.reader(first_lines[1:])][:4],
+              "public_download_transport":metadata,
+              "observed_utc":datetime.datetime.now(datetime.timezone.utc).isoformat(),
+              "full_csv_rows_downloaded":0,
+              "full_csv_rows_normalized":0,
+              "full_csv_rows_indexed":0,
+              "durable_backend_indexed":0,
+              "deployed":0,
+              "caveat":"Publisher says 1.4GB; this run intentionally reads a small verified real source prefix, no full-source ingestion counts or evidence of specific insured site outages.",
+          }
+          pathlib.Path("/tmp/lane-d/eaglei-2025/original_prefix_schema.json").write_text(json.dumps(rec,indent=2,ensure_ascii=False)+"\n")
+          print(json.dumps(rec,indent=2,ensure_ascii=False))
+          PY
+      - name: Upload original-publication prefix and schema receipt only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-d-eaglei-2025-original-public-csv-prefix-qa
+          retention-days: 7
+          if-no-files-found: warn
+          path: /tmp/lane-d/eaglei-2025/original_prefix_schema.json
