@@ -30,26 +30,50 @@ FIELDS = ("source_id", "incident_date", "date_precision", "company_as_reported",
           "site_link_status", "source_document")
 SOURCE = "https://nrc.uscg.mil/FOIAFiles/CY25.xlsx"
 
-def read_table(book, sheet):
+def read_table(book, sheet, *, child=False):
+    """Read NRC source-native SEQNOS without arbitrarily choosing ambiguous children.
+
+    An INCIDENT_COMMONS duplicate is ambiguous incident identity and fails closed.
+    A duplicate CALLS/INCIDENT_DETAILS key excludes child enrichment only, while
+    preserving the incident master record. Keep exact rejected counts in manifest.
+    """
     ws = book[sheet]
     rows = ws.iter_rows(values_only=True)
     header = [str(x or "").strip() for x in next(rows)]
     if "SEQNOS" not in header:
         raise ValueError(f"{sheet} missing native SEQNOS")
     table = {}
-    duplicates = 0
+    ambiguous = set()
+    blank_keys = 0
+    observed = 0
+    duplicate_rows = 0
     for index, values in enumerate(rows, 2):
         if not any(x is not None for x in values):
             continue
+        observed += 1
         data = dict(zip(header, values))
         key = str(data.get("SEQNOS") or "").strip()
-        if not key or key in table:
-            duplicates += 1
+        if not key:
+            blank_keys += 1
+            continue
+        if key in table or key in ambiguous:
+            duplicate_rows += 1
+            ambiguous.add(key)
             continue
         table[key] = data
-    if duplicates:
-        raise ValueError(f"{sheet} missing/duplicate source report keys: {duplicates}")
-    return table
+    if not child and (blank_keys or duplicate_rows):
+        raise ValueError(f"{sheet} master report identity invalid: blank={blank_keys}, duplicate={duplicate_rows}")
+    # A duplicated child ID has no deterministic one-to-one row. Never choose
+    # either version for reported injuries, fatalities, property damage, etc.
+    for key in ambiguous:
+        table.pop(key, None)
+    return table, {
+        "observed_rows": observed,
+        "valid_unambiguous_native_ids": len(table),
+        "blank_native_key_rows": blank_keys,
+        "duplicate_native_key_rows": duplicate_rows,
+        "ambiguous_native_ids": len(ambiguous),
+    }
 
 def dms(degree, minute, second, quad, *, latitude):
     if any(x is None or str(x).strip() == "" for x in (degree, minute, second, quad)):
@@ -93,10 +117,14 @@ def stage_nrc(raw, output, manifest, *, year, minimum_rows=1000):
         for sheet in SHEETS:
             if sheet not in book.sheetnames:
                 raise ValueError("NRC workbook missing required " + sheet)
-        calls, common, details = [read_table(book, name) for name in SHEETS]
+        calls, call_quality = read_table(book, "CALLS", child=True)
+        common, common_quality = read_table(book, "INCIDENT_COMMONS")
+        details, detail_quality = read_table(book, "INCIDENT_DETAILS", child=True)
         ids = set(common)
-        if not ids <= set(calls) or not ids <= set(details):
-            raise ValueError("NRC report linkage missing cross-sheet SEQNOS")
+        missing_call_links = len(ids - set(calls))
+        missing_detail_links = len(ids - set(details))
+        orphan_call_rows = len(set(calls) - ids)
+        orphan_detail_rows = len(set(details) - ids)
         geo, bad_dates = 0, 0
         missing_raw_dms, invalid_raw_dms = 0, 0
         state_counts = Counter()
@@ -105,8 +133,8 @@ def stage_nrc(raw, output, manifest, *, year, minimum_rows=1000):
             writer = csv.DictWriter(stream, FIELDS)
             writer.writeheader()
             for seqno, row in sorted(common.items(), key=lambda item: item[0]):
-                call = calls[seqno]
-                detail = details[seqno]
+                call = calls.get(seqno, {})
+                detail = details.get(seqno, {})
                 try:
                     when, precision = as_date(row.get("INCIDENT_DATE_TIME"))
                 except ValueError:
@@ -157,7 +185,19 @@ def stage_nrc(raw, output, manifest, *, year, minimum_rows=1000):
             "raw_sha256": digest(raw), "normalized_sha256": digest(output),
             "nrc_reports": len(ids), "source_calls": len(calls),
             "source_commons": len(common), "source_details": len(details),
-            "missing_cross_table_links": 0,
+            "observed_sheet_rows": {
+                "CALLS": call_quality, "INCIDENT_COMMONS": common_quality,
+                "INCIDENT_DETAILS": detail_quality
+            },
+            "missing_cross_table_links": missing_call_links + missing_detail_links,
+            "missing_calls_child_enrichment": missing_call_links,
+            "missing_details_child_enrichment": missing_detail_links,
+            "orphan_calls_native_ids": orphan_call_rows,
+            "orphan_details_native_ids": orphan_detail_rows,
+            "child_rows_dropped_as_ambiguous_or_blank": {
+                "CALLS": call_quality["blank_native_key_rows"] + call_quality["duplicate_native_key_rows"],
+                "INCIDENT_DETAILS": detail_quality["blank_native_key_rows"] + detail_quality["duplicate_native_key_rows"]
+            },
             "coordinate_records": geo, "missing_coordinates": len(ids) - geo,
             "invalid_or_missing_incident_dates": bad_dates,
             "earliest_incident_date": min(dates) if dates else None,
