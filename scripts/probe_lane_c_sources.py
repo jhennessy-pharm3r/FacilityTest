@@ -15,6 +15,7 @@ import zipfile
 import requests
 from openpyxl import load_workbook
 from build_industrial_incidents import stage
+from build_nrc_enriched import stage_nrc
 
 SOURCES = {
     "nrc_2025": ("https://nrc.uscg.mil/FOIAFiles/CY25.xlsx", 60_000_000),
@@ -97,6 +98,13 @@ def main():
                 report["state"] = "DOWNLOADED_AND_INVENTORIED_NOT_NORMALIZED"
                 if name == "nrc_2025":
                     try:
+                        rich = stage_nrc(target, Path(work) / "nrc-enriched.csv.gz",
+                            args.output / "nrc-enriched-manifest.json", year=2025,
+                            minimum_rows=10000)
+                        report["enriched_validation"] = rich
+                    except Exception as error:
+                        report["enriched_blocker"] = type(error).__name__ + ": " + str(error)[:350]
+                    try:
                         result = stage("nrc", target, Path(work) / "nrc-normalized.csv.gz",
                             args.output / "nrc-normalized-manifest.json", source_url=url,
                             sheet="INCIDENT_COMMONS", mapping={
@@ -132,6 +140,8 @@ def main():
                             "sha256": value.get("raw_sha256"),
                             "error": value.get("error"),
                             "normalization": value.get("normalization"),
+                            "enriched_validation": value.get("enriched_validation"),
+                            "enriched_blocker": value.get("enriched_blocker"),
                             "normalization_blocker": value.get("normalization_blocker")} for key, value
                       in manifest["sources"].items()}, indent=2))
     if any(item["state"] == "BLOCKED" for item in manifest["sources"].values()):
