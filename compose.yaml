@@ -16,6 +16,8 @@ services:
       FACILITY_RISK_NOAA_INDEX_MANIFEST: ${FACILITY_RISK_NOAA_INDEX_MANIFEST:-}
       FACILITY_RISK_INCIDENTNEWS_INDEX_PATH: ${FACILITY_RISK_INCIDENTNEWS_INDEX_PATH:-}
       FACILITY_RISK_INCIDENTNEWS_INDEX_MANIFEST: ${FACILITY_RISK_INCIDENTNEWS_INDEX_MANIFEST:-}
+      # Only an independently verified, installed immutable Lane A release; never a CI artifact path.
+      FACILITY_RISK_LANE_A_INDEX_ROOT: ${FACILITY_RISK_LANE_A_INDEX_ROOT:-}
       # Optional verified EPA Lane B source-only indexes; read-only mount below.
       # Routes are disabled until explicitly enabled after private hosting/auth review.
       FACILITY_RISK_LANE_B_ROUTES_ENABLED: ${FACILITY_RISK_LANE_B_ROUTES_ENABLED:-0}
