@@ -97,7 +97,7 @@ function restoreLocation(){
     window.RegistryUI?.restoreRoute?.();
   }else if(route.page==='universal'){
     window.UniversalUI?.restoreRoute?.();
-  }else if(['facilities','evidence','disclosures'].includes(route.page)){
+  }else if(['facilities','evidence','disclosures','sources','quality'].includes(route.page)){
     renderPage();
   }
   if(route.facility){
@@ -247,6 +247,8 @@ function renderPage(){const views={workbench:()=>window.WorkbenchUI.render(),ins
     feeds:()=>window.IntelligenceUI.render('feeds')};
   state.page=views[state.page]?state.page:'overview';
   ROOT.innerHTML=views[state.page]();
+  // Source status contextualization: QA cohorts are not insured site evidence.
+  window.SourceInsights?.mount(state.page,ROOT);
   $$('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.page===state.page));
   $('#breadcrumb-page').textContent=({workbench:'ASSESSMENT WORKBENCH',insurance:'INSURANCE OPTIONS','policy-review':'POLICY REVIEW','bi-scenarios':'INTERRUPTION SCENARIOS',universal:'UNIVERSAL FACILITIES',registry:'ALL FACILITIES',overview:'OVERVIEW',facilities:'RESEARCH CASES',evidence:'EVIDENCE SEARCH',disclosures:'SEC DISCLOSURES',sources:'DATA SOURCES',epa:'EPA REGULATORY EVIDENCE',quality:'DATA QUALITY',reviews:'APPROVAL QUEUE',methodology:'METHODOLOGY',cases:'CASE STUDIES',map:'HAZARD MAP',identity:'IDENTITY REVIEW',underwriting:'EXPOSURE PROFILES',feeds:'SOURCE STATUS'})[state.page];
   $('#side-facility-count').textContent=state.facilities.length;
