@@ -67,6 +67,8 @@ def build_assessment(conn,facility_id):
     stale_hazards=[h for h in regional_hazards if not h.get('valid_for_current_site_point')]
     loc=detail['location']
     point_verified=bool(loc and loc.get('review_valid_for_current_coordinates'))
+    from .hazard_coverage import build_peril_coverage
+    peril_coverage=build_peril_coverage(regional_hazards,point_verified)
     profile=detail['profile']
     source_evidence_total=one(conn,'SELECT COUNT(*) AS n FROM evidence WHERE facility_id=?',(facility_id,))['n']
     available_date_count=one(conn,'''SELECT COUNT(*) AS n FROM evidence
@@ -88,16 +90,22 @@ def build_assessment(conn,facility_id):
           'reason':str(asset_inventory['total_assets'])+' catalogued assets; '+
              str(asset_inventory['identity_corroborated_assets'])+
              ' independently identity-corroborated assets. Source points and parent assertions are not verified insured parcels/buildings'},
-       'natural_hazards':{'status':'screened' if current_hazards and point_verified else 'unassessed',
-          'reason':str(len(current_hazards))+' current property-point screenings; '+
-                  str(len(stale_hazards))+' stale or legacy screenings require refresh. '+
-                  'Mapped exposure is not insured property damage'},
+       'natural_hazards':{
+          'status':peril_coverage['status'],
+          'reason':str(len(peril_coverage['perils_source_screened']))+' of '+
+                  str(peril_coverage['peril_count'])+' defined catastrophe perils have source classifications at the current reviewed point; '+
+                  str(len(peril_coverage['perils_source_checked_unresolved']))+
+                  ' were queried but not classified; '+str(len(stale_hazards))+
+                  ' stale or legacy screenings excluded. No insured loss or all-peril clearance is inferred'},
        'operations_and_bi':{'status':'research_profile' if profile else 'unassessed',
           'reason':'Operations, protection and downtime exposures are not insured values unless documented'},
        'historical_outcomes':{'status':'retrospective_events' if events else 'unassessed',
           'reason':'Known cases are retrospective, not predictive validation; absence of cases is not absence of losses'},
        'insurance_terms':{'status':'document_reviewed_terms' if policy_snapshot['document_reviewed_current_terms_count'] else 'unassessed',
-          'reason':str(policy_snapshot['verified_current_coverage_count'])+' documented current-term decisions; no automatic assertion of payout'},
+          'reason':str(policy_snapshot['document_reviewed_current_terms_count'])+
+                  ' independently document-reviewed current policy terms, including '+
+                  str(policy_snapshot['verified_excluded_current_terms_count'])+
+                  ' exclusions; policy payout, conditions and insured-property applicability remain unverified'},
        'pre_event_visibility':{'status':'partially_documented' if available_date_count else 'unassessed',
           'reason':str(available_date_count)+' of '+str(source_evidence_total)+' evidence rows have separately verified public availability dates'}
     }
@@ -116,6 +124,10 @@ def build_assessment(conn,facility_id):
     if not profile:action_items.append('Collect construction, fire protection, water, power, BI values and recovery plans')
     if not asset_inventory['total_assets']:action_items.append('Identify separately insured buildings, campus structures, leased units and utility dependencies')
     if stale_hazards:action_items.append('Refresh or explicitly retire hazard overlays tied to an earlier or unreviewed site point')
+    if peril_coverage['perils_unassessed']:
+        action_items.append('Obtain suitable source screenings for currently unassessed catastrophe perils; do not assume absence or low hazard')
+    if peril_coverage['perils_source_checked_unresolved']:
+        action_items.append('Investigate catastrophe sources that returned no mapped classification; unknown is not no hazard')
     if not policy_snapshot['verified_current_coverage_count']:action_items.append('Review actual insurance declarations and location-specific terms with independent approver')
     if not events:action_items.append('Research documented disruptions and comparable non-event periods')
     if available_date_count<source_evidence_total:action_items.append('Verify source publication dates before any historical prediction tests')
@@ -134,6 +146,7 @@ def build_assessment(conn,facility_id):
       'coverage':coverage,
       'sections':sections,
       'hazards':regional_hazards,
+      'peril_coverage':peril_coverage,
       'physical_assets':asset_inventory,
       'insurance_policy_review':policy_snapshot,
       'hazard_coverage_crosswalk':coverage_crosswalk,
@@ -243,6 +256,10 @@ def render_assessment_html(report,*,private_backend=False):
              str(len(cover['terms']))+' matching current term entries; source '+
              link(h['hazard_source_url'])+'</td></tr>')
     crosswalk_table=''.join(crosswalk_rows) or '<tr><td colspan="4">No verified current-property hazard and policy crosswalk</td></tr>'
+    peril_rows=rows(report.get('peril_coverage',{}).get('perils',[]),
+        lambda x:'<tr><td>'+e(x['peril'])+'</td><td>'+e(x['status'])+
+             '</td><td>'+e(x['current_source_rows'])+'</td><td>'+
+             e(x['interpretation'])+'</td></tr>')
     asset_rows=rows(report.get('physical_assets',{}).get('assets',[]),
           lambda asset:'<tr><td>'+e(asset['asset_type'])+'</td><td>'+e(asset['name'])+
           '</td><td>'+e(asset['address'])+'</td><td>'+e(asset['status'])+
@@ -269,6 +286,9 @@ a{color:#245c61}section{break-inside:avoid}ul{line-height:1.65}
 '<h2>Physical site and building inventory</h2>'+
 '<p class="muted">Site source observations and reviewed asset identities are not verified building-level hazard geocodes or confirmed insured location schedules.</p>'+
 '<table><tr><th>Asset class</th><th>Reported name</th><th>Address</th><th>Identity / coordinate status</th></tr>'+asset_rows+'</table>'+
+'<h2>Catastrophe peril-by-peril evidence coverage</h2>'+
+'<p class="muted">One flood or earthquake lookup does not complete catastrophe assessment. Every unassessed/unmapped peril remains unknown.</p>'+
+'<table><tr><th>Peril</th><th>Source-screening status</th><th>Current source rows</th><th>Interpretation</th></tr>'+peril_rows+'</table>'+
 '<h2>Physical hazard screening</h2><table><tr><th>Peril</th><th>Status</th><th>Description</th><th>Reference</th></tr>'+hazards+'</table>'+
 '<h2>Insurance contracts and coverage review</h2>'+
 '<p class="muted">Independent wording review is not proof of payout or a coverage guarantee. Excluded terms do not count as available insurance protection. Review the scheduled insured location, exclusions and endorsements.</p>'+

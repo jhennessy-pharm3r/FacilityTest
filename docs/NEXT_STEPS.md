@@ -92,3 +92,21 @@ corporate ultimate parents, actual insurer schedules, insured interests,
 replacement values, loss probabilities or tenant-level production access.
 Complete those gates before claiming site-level underwriting readiness.
 See `docs/PHYSICAL_PROPERTY_IDENTITY.md`.
+
+
+## Catastrophe peril source-screening completeness
+
+Facility assessments now show 13 explicitly defined catastrophe-peril dimensions
+(flood, surge, wind/hurricane, wildfire, earthquake, tornado, convective/hail,
+extreme precipitation, heat, drought/water stress, winter storm, tsunami and
+landslide). Each is independently **source screened**, **source checked but
+unresolved**, or **unassessed**. A single completed FEMA or USGS query can
+only produce a **partial** source-screening summary; an unmapped FEMA lookup
+never becomes low risk. Changed or stale property coordinates remove old
+results from current-peril classifications. The source row's limitations,
+retrieval date and reference URL are preserved.
+
+These categories are a coverage audit, **not** a global catastrophe model,
+damage vulnerability assessment, probability, property insurance payout or
+proof that every source covers the site's country. Complete geographic provider
+integration and real property point reviews remain unresolved.
