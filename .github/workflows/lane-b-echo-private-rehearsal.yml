@@ -69,7 +69,9 @@ jobs:
           members=con.execute("SELECT member, COUNT(*) FROM observation GROUP BY member ORDER BY member").fetchall()
           assert len(members)==1,(len(members),members)
           assert sum(n for _,n in members)==3208008
-          assert receipt["official_source_rows"]==receipt["normalized_accepted"]==receipt["indexed_staging_rows"]==3208008
+          assert receipt["official_source_rows"]==3229311
+          assert receipt["normalized_accepted"]==receipt["indexed_staging_rows"]==3208008
+          assert receipt["official_source_rows"]==receipt["indexed_staging_rows"]+receipt["rejected_quarantined"]
           assert receipt["rejected_quarantined"]==status["rejected_rows"]==21303
           assert receipt["original_archive_sha256"]==status["source_archive_sha256"]=="116f6e53117b52f7891c6d2466d662f4ee5e29946b065fdb7b97eaf095615899"
           assert receipt["source_sqlite_sha256"]==status["index_sha256"]=="047afef7a5efc13d61002f23742764bc708aaf2cd76f229bf1c98cc5940bf75c"
