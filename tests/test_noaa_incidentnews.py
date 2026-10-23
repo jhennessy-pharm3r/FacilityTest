@@ -21,9 +21,11 @@ FIELDS=["id","open_date","name","location","lat","lon","threat","tags","commodit
         "is_measure_burn","max_ptl_release_gallons","posts","description"]
 
 
-def fixture_csv(duplicate=False,wrong_schema=False):
+def fixture_csv(duplicate=False,wrong_schema=False,actual_headers=False):
     handle=io.StringIO()
     fields=FIELDS[:-1] if wrong_schema else FIELDS
+    if actual_headers:
+        fields=[v.removeprefix("is_") for v in fields]
     writer=csv.DictWriter(handle,fieldnames=fields,extrasaction="ignore")
     writer.writeheader()
     examples=[
@@ -47,6 +49,8 @@ def fixture_csv(duplicate=False,wrong_schema=False):
          "max_ptl_release_gallons":"","posts":"","description":"Site not known"}
     ]
     for row in examples:
+        if actual_headers:
+            row={k.removeprefix("is_"):v for k,v in row.items()}
         writer.writerow(row)
     return handle.getvalue().encode()
 
@@ -203,3 +207,18 @@ def test_public_ledger_keeps_only_aggregate_for_selected_response_cases(tmp_path
     assert len(rows)==1 and rows[0]["records"]==314
     assert "insured_claims" not in rows[0]
     assert "private_notes" not in rows[0]
+
+
+
+def test_live_2026_publisher_measure_column_variant(tmp_path):
+    # Verified actual NOAA export headers: measure_*; documentation says
+    # is_measure_*. Preserve all five reported flags without guessing.
+    _,normalized,manifest,_,data=source(tmp_path,actual_headers=True)
+    assert data["records"]==3
+    import gzip
+    with gzip.open(normalized,"rt",encoding="utf-8") as stream:
+        rows=list(csv.DictReader(stream))
+    assert rows[0]["measure_skim"]=="1"
+    assert rows[0]["measure_shore"]=="0"
+    assert rows[1]["measure_shore"]=="1"
+    assert validate(normalized,data)
