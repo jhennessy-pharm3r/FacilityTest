@@ -85,6 +85,7 @@ jobs:
                               rec["native_names_samples"]=[v.get("names") for v in top[:2]]
                               rec["native_outagearea_kind_counts"]=dict(Counter((v.get("outageArea") or {}).get("outageAreaKind","NULL") for v in top))
 
+                              if top and isinstance(top[0],dict):
                                   rec["native_first_element_nested"]={
                                       k:{"type":type(v).__name__,
                                          "length":len(v) if isinstance(v,(list,dict)) else None,
