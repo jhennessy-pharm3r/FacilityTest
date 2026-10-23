@@ -57,6 +57,8 @@
     if(submit)submit.disabled=!ready(selected);
   }
   function setSource(source) {
+    // An in-flight lookup belongs to the previous source and must not be shown after selection changes.
+    generation++;
     selected=sources[source]?source:'echo';
     const act=document.querySelector('#epa-activity-label'),year=document.querySelector('#epa-year-label');
     if(act)act.hidden=selected!=='rcra';
