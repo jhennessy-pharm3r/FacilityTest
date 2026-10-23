@@ -5,6 +5,8 @@ on:
     branches:
       - ingest/eia861-utility-bi-lane-d-20261023
     paths:
+      - facilityrisk/lane_d/install_source_index.py
+      - tests/test_lane_d_install_source_index.py
       - facilityrisk/lane_d/ingest_odin_direct.py
       - facilityrisk/lane_d/query_staging.py
       - tests/test_lane_d_query_staging.py
@@ -96,6 +98,66 @@ jobs:
           print("ACTUAL ORNL county source-only query",fips,"raw",total,
                 "source-duplicate rows withheld",repeats,"returned",len(result["returned_findings"]))
           PY
+      - name: Build source-pinned private ODIN public-county SQLite handoff receipt
+        shell: bash
+        run: |
+          python - <<'PY'
+          import hashlib,json,pathlib,sqlite3
+          root=pathlib.Path("/tmp/lane-d/odin-direct")
+          source=(root/"odin_direct_original.json").read_bytes()
+          m=json.loads((root/"manifest.json").read_text())
+          dbpath=root/"odin_direct_county_staging.sqlite"
+          dbbytes=dbpath.read_bytes()
+          with sqlite3.connect(dbpath) as db:
+              assert db.execute("PRAGMA integrity_check").fetchone()[0]=="ok"
+              assert db.execute("SELECT COUNT(*) FROM source_observations").fetchone()[0]==m["normalized_accepted"]
+          assert hashlib.sha256(source).hexdigest()==m["original_raw_json_sha256"]
+          assert m["original_https_download"] is True
+          receipt={
+              "source_dataset":"odin_direct_public",
+              "original_json_sha256":hashlib.sha256(source).hexdigest(),
+              "staged_sqlite_sha256":hashlib.sha256(dbbytes).hexdigest(),
+              "staged_sqlite_bytes":len(dbbytes),
+              "indexed_source_rows":m["normalized_accepted"],
+              "deployed":0,
+              "publisher_use_review_required":True,
+          }
+          (root/"coordinator_handoff.json").write_text(json.dumps(receipt,indent=2)+"\n")
+          PY
+      - name: Install actual first-party ODIN snapshot read-only inside isolated runner
+        shell: bash
+        run: |
+          python - <<'PY'
+          import pathlib,json,hashlib,sqlite3
+          from facilityrisk.lane_d.install_source_index import install,verify_install,query_install
+          root=pathlib.Path("/tmp/lane-d/odin-direct")
+          raw=root/"odin_direct_original.json"
+          pinned=hashlib.sha256(raw.read_bytes()).hexdigest()
+          installed=pathlib.Path("/tmp/lane-d-odin-direct-private-install-smoke")
+          r=install(root,installed,"odin_direct_public",pinned)
+          assert r["verified_readonly_sqlite"] and not r["verified_application_deployment"]
+          m=json.loads((root/"manifest.json").read_text())
+          assert r["source_rows_accepted"]==m["normalized_accepted"]
+          assert r["exact_duplicate_rows_flagged"]==m["observations"]["exact_duplicate_source_rows_in_snapshot"]
+          db=root/"odin_direct_county_staging.sqlite"
+          with sqlite3.connect(db) as con:
+              fips=con.execute("SELECT native_county_fips FROM source_observations LIMIT 1").fetchone()[0]
+          q=query_install(installed,"odin_direct_public",fips=fips,limit=10)
+          assert q["data"]["candidate_counts"]["odin_firstparty_public_county_snapshot_raw_rows"]>=1
+          assert q["data"]["verified_insured_outages"]==0
+          assert q["deployed_to_live_facility_app"] is False
+          assert verify_install(installed,"odin_direct_public")["verified_readonly_sqlite"]
+          print("Official ORNL original JSON -> staged SQLite -> atomic read-only install -> indexed FIPS query PASS",
+                "accepted",r["source_rows_accepted"],"fingerprint",pinned)
+          PY
+      - name: Retain safe private-install acceptance pointer only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-d-odin-direct-private-install-smoke
+          retention-days: 7
+          if-no-files-found: warn
+          path: /tmp/lane-d-odin-direct-private-install-smoke/odin_direct_public/current.json
       - name: Publish first-party source provenance only, no raw external distributor material
         if: always()
         uses: actions/upload-artifact@v4
