@@ -18,6 +18,41 @@ class LaneACoordinatorHandoffTests(unittest.TestCase):
                                 and x["source_only_indexed"] is None
                                 for x in doc["source_sets"].values()))
 
+    def test_national_count_and_older_state_sample_not_merged_into_national_data(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            p = root / "fema_distribution"
+            p.mkdir()
+            (p / "manifest.json").write_text(json.dumps({
+                "rest_count_state": "DOWNLOADED_RESPONSE_ONLY",
+                "reported_current_service_feature_count": 5813220,
+                "checked_utc": "2026-10-23T16:30:02+00:00",
+                "wfs_state": "PROBED",
+                "wfs_error": "connection reset",
+                "rest_count_receipt": {"sha256": "a" * 64},
+            }))
+            p = root / "massgis_2025"
+            p.mkdir()
+            (p / "manifest.json").write_text(json.dumps({
+                "source_sample_validated": True,
+                "sample_accepted": 10, "sample_raw": 10, "sample_rejected": 0,
+                "indexed_observations": 10, "distinct_fema_native_keys": 10,
+                "source_data_vintage": "FEMA as of 2025-07-18",
+                "metadata": {"metadata_valid": True}, "samples": [],
+            }))
+            m = generate(root)
+            total = m["source_sets"]["fema_nfhl_count_only"]
+            self.assertEqual(total["state"], "PUBLISHER_COUNT_METADATA_ONLY")
+            self.assertEqual(total["publisher_reported_national_feature_count_not_downloaded"], 5813220)
+            self.assertEqual(total["real_downloaded_or_normalized"], 0)
+            self.assertEqual(total["source_only_indexed"], 0)
+            self.assertEqual(total["deployed"], 0)
+            state = m["source_sets"]["massgis_ma_nfhl_2025_state_archive"]
+            self.assertEqual(state["state"], "VERIFIED_DATED_STATE_SAMPLE")
+            self.assertEqual(state["source_only_indexed"], 10)
+            self.assertTrue(state["not_a_national_nfhl_replacement"])
+            self.assertEqual(state["deployed"], 0)
+
     def test_realistic_source_grain_counts_separate_from_deployment(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
