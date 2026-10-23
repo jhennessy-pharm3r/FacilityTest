@@ -233,3 +233,21 @@ def test_immutable_national_reader_rejects_uncheckpointed_wal(monkeypatch,tmp_pa
     assert frs_status()["state"]=="unavailable"
     wal.unlink()
     assert frs_status()["state"]=="ready_partial"
+
+
+
+def test_national_frs_does_not_add_redundant_correlated_source_filter(monkeypatch,tmp_path):
+    from facilityrisk import source_sidecars as indices
+    db,qa,_=_frs_index(tmp_path)
+    _set_source_env(monkeypatch,db,qa,"frs")
+    calls=[]
+    original=indices.universal_search
+    def traced(conn,**options):
+        calls.append(dict(options))
+        return original(conn,**options)
+    monkeypatch.setattr(indices,"universal_search",traced)
+    result=indices.frs_search(q="warehouse",limit=5)
+    assert result["total"]==1
+    assert calls and "source" not in calls[0],calls
+    assert all(x["name"]=="Mountain Warehouse" for x in result["items"])
+    assert result["index"]=="EPA_FRS"
