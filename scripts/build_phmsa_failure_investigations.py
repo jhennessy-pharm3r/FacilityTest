@@ -17,7 +17,7 @@ from pathlib import Path
 import re
 import sqlite3
 from urllib.parse import urljoin,urlsplit
-from bs4 import BeautifulSoup
+from html.parser import HTMLParser
 
 try:
     from scripts.build_industrial_incidents import digest
@@ -55,12 +55,50 @@ def official_detail_url(href):
         return ""
     return url
 
+class _CatalogHTMLParser(HTMLParser):
+    """Small dependency-free parser that preserves exact publisher table rows."""
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.tables=[]
+        self.table=None
+        self.row=None
+        self.cell=None
+
+    def handle_starttag(self,tag,attrs):
+        if tag=="table" and self.table is None:
+            self.table=[]
+        elif tag=="tr" and self.table is not None and self.row is None:
+            self.row=[]
+        elif tag in ("td","th") and self.row is not None and self.cell is None:
+            self.cell={"tag":tag,"text":[],"href":""}
+        elif tag=="a" and self.cell is not None and not self.cell["href"]:
+            self.cell["href"]=dict(attrs).get("href","")
+
+    def handle_data(self,data):
+        if self.cell is not None:
+            self.cell["text"].append(data)
+
+    def handle_endtag(self,tag):
+        if tag in ("td","th") and self.cell is not None:
+            self.row.append({
+                "tag":self.cell["tag"],
+                "text":" ".join(" ".join(self.cell["text"]).replace("\xa0"," ").split()),
+                "href":self.cell["href"]})
+            self.cell=None
+        elif tag=="tr" and self.row is not None:
+            self.table.append(self.row)
+            self.row=None
+        elif tag=="table" and self.table is not None:
+            self.tables.append(self.table)
+            self.table=None
+
 def extract_index(raw_html,snapshot,*,min_rows=20):
-    soup=BeautifulSoup(raw_html,"html.parser")
+    parser=_CatalogHTMLParser()
+    parser.feed(raw_html.decode("utf-8-sig",errors="strict"))
+    parser.close()
     table=None
-    for candidate in soup.find_all("table"):
-        th=[x.get_text(" ",strip=True) for x in candidate.find_all("tr")[0].find_all(["th","td"])] if candidate.find("tr") else []
-        if tuple(th[:len(COLUMN_NAMES)])==COLUMN_NAMES:
+    for candidate in parser.tables:
+        if candidate and tuple(c["text"] for c in candidate[0][:len(COLUMN_NAMES)])==COLUMN_NAMES:
             table=candidate
             break
     if table is None:
@@ -73,18 +111,18 @@ def extract_index(raw_html,snapshot,*,min_rows=20):
     system_types=Counter()
     cause_values=Counter()
     first_date=last_date=None
-    for source_row,tag in enumerate(table.find_all("tr")[1:],2):
-        cells=tag.find_all("td",recursive=False)
+    for source_row,cells in enumerate(table[1:],2):
+        cells=[c for c in cells if c["tag"]=="td"]
         if not cells:
             continue
         totals["source_table_nonempty_rows"]+=1
         if len(cells)!=len(COLUMN_NAMES):
             totals["rejected_invalid_column_count"]+=1
             continue
-        values=[" ".join(c.get_text(" ",strip=True).replace("\xa0"," ").split()) for c in cells]
+        values=[c["text"] for c in cells]
         operator,opid,system,cause,state,raw_failure,raw_posted=values
-        href=cells[0].find("a",href=True)
-        link=official_detail_url(href.get("href")) if href else ""
+        href=cells[0]["href"]
+        link=official_detail_url(href) if href else ""
         failure=agency_date(raw_failure)
         posted=agency_date(raw_posted)
         if not operator or not cause or not link or not failure:
