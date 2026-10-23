@@ -166,7 +166,7 @@
  async function search(requestedPage=1,record=''){
    const root=document.getElementById('registry-results');if(!root)return;
    const generation=++searchGeneration;
-   if(query.trim().length===1){result=[];page=0;root.innerHTML='<div class="empty">Use at least two characters to search, or clear the field to browse every entry.</div>';return;}
+   if(query.trim().length===1){result=[];page=0;selected=null;const detail=document.getElementById('registry-detail-container');if(detail)detail.innerHTML='';root.innerHTML='<div class="empty">Use at least two characters to search, or clear the field to browse every entry.</div>';return;}
    error='';root.innerHTML='<div class="empty">Opening official source records…</div>';
    try {
      const d=await catalog();
