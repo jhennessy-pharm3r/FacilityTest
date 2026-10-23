@@ -218,6 +218,64 @@ class VerifiedSourceInstallTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 query_install(installed,"odin_direct_public",fips="04013",year=2023)
 
+    def test_public_domain_oe417_installer_period_and_duplicate_fails_closed(self):
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td)
+            bundle=root/"synthetic-annual"
+            bundle.mkdir()
+            source=hashlib.sha256(b"SYNTHETIC_DOE_OE417_SOURCE_NOT_OFFICIAL_DATA").hexdigest()
+            dbpath=bundle/"oe417_annual_staging.sqlite"
+            with sqlite3.connect(dbpath) as db:
+                db.execute("""CREATE TABLE source_observations (
+                    source_row_key TEXT PRIMARY KEY,
+                    original_position INTEGER NOT NULL,
+                    event_date TEXT,restoration_date TEXT,
+                    source_area_text TEXT,source_event_type TEXT,
+                    source_nerc_region TEXT,source_alert_criteria TEXT,
+                    reported_customers INTEGER,reported_demand_mw_decimal TEXT,
+                    exact_duplicate_source INTEGER NOT NULL,
+                    duplicate_of_source_position INTEGER,
+                    original_row_sha256 TEXT NOT NULL,
+                    raw_json TEXT NOT NULL)""")
+                db.executemany("INSERT INTO source_observations VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",[
+                    ("e1",1,"2023-05-01",None,"Alabama","Severe Weather",
+                     "SERC","Loss of electric service",123,"40.0",0,None,"sha1","{}"),
+                    ("e2",2,"2023-05-01",None,"Alabama","Severe Weather",
+                     "SERC","Loss of electric service",123,"40.0",1,1,"sha1","{}"),
+                ])
+            digest=sha256_file(dbpath)
+            m={"source":"DOE_CESER_OE417_2023_ANNUAL_DISCOVERY",
+               "downloaded_original_export_sha256":source,
+               "normalized_accepted":2,"rejected":0,
+               "downloaded_official_original_json":True,
+               "metadata_declared_license":"Public Domain",
+               "statistics":{"exact_duplicate_source_rows":1},
+               "durable_backend_indexed":0,"deployed":0}
+            handoff={"original_json_sha256":source,
+                     "staged_sqlite_sha256":digest,
+                     "indexed_source_rows":2,
+                     "staged_sqlite_bytes":dbpath.stat().st_size,
+                     "deployed":0}
+            (bundle/"manifest.json").write_text(json.dumps(m))
+            (bundle/"coordinator_handoff.json").write_text(json.dumps(handoff))
+            installed=root/"private-smoke"
+            receipt=install(bundle,installed,"oe417_annual_public",source)
+            self.assertEqual(receipt["source_rows_accepted"],2)
+            self.assertEqual(receipt["exact_duplicate_rows_flagged"],1)
+            result=query_install(installed,"oe417_annual_public",year=2023,limit=20)
+            self.assertEqual(result["data"]["original_source_rows_total"],2)
+            self.assertEqual(result["data"]["exact_duplicate_original_rows_withheld"],1)
+            self.assertEqual(result["data"]["matching_content_distinct_source_rows"],1)
+            self.assertFalse(result["deployed_to_live_facility_app"])
+            ptr=(installed/"oe417_annual_public"/"current.json").read_bytes()
+            m["metadata_declared_license"]="unverified"
+            (bundle/"manifest.json").write_text(json.dumps(m))
+            with self.assertRaisesRegex(ValueError,"public-domain license"):
+                install(bundle,installed,"oe417_annual_public",source)
+            self.assertEqual((installed/"oe417_annual_public"/"current.json").read_bytes(),ptr)
+            with self.assertRaises(ValueError):
+                query_install(installed,"oe417_annual_public",fips="01001")
+
     def test_unauthorized_source_family_or_symlink_source_disallowed(self):
         with tempfile.TemporaryDirectory() as td:
             root=Path(td)
