@@ -74,6 +74,7 @@ def main():
     p.add_argument("--url")
     p.add_argument("--year",type=int)
     p.add_argument("--output",required=True)
+    p.add_argument("--raw-dir",type=Path,help="Private durable directory to retain original EPA archive downloaded via URL")
     a=p.parse_args()
     if a.source=="rmp":p.error("RMP non-OCA authorization must be reviewed; unrestricted bulk is disabled")
     if a.source=="tri" and not a.year:p.error("TRI requires a report year")
@@ -82,7 +83,12 @@ def main():
     with tempfile.TemporaryDirectory() as tmp:
         raw=a.input
         if raw is None:
-            raw=Path(tmp)/"official_archive"
+            if a.raw_dir:
+                a.raw_dir.mkdir(parents=True,exist_ok=True)
+                raw=a.raw_dir/(a.source+"_"+datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")+".zip")
+                if raw.exists():raise FileExistsError("Original archive already exists: "+str(raw))
+            else:
+                raw=Path(tmp)/"official_archive"
             with urllib.request.urlopen(urllib.request.Request(url,headers={"User-Agent":"FacilityRisk-LaneB/1.0"}),timeout=120) as response,raw.open("wb") as f:
                 import shutil;shutil.copyfileobj(response,f)
         print(json.dumps(ingest(a.source,raw,a.output,url,a.year),indent=2))
