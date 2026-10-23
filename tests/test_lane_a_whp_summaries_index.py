@@ -9,6 +9,7 @@ from pathlib import Path
 from xml.sax.saxutils import escape
 
 from scripts.lane_a_whp_summaries_index import ACRES, SHEETS, normalize, run, sheet1_rows
+from scripts.verify_lane_a_whp_index import verify
 
 
 def colref(i):
@@ -93,6 +94,9 @@ class OfficialUSDAAggregateIndexTests(unittest.TestCase):
             ).fetchone()[0], "00029")
             self.assertEqual(db.execute("PRAGMA quick_check").fetchone()[0], "ok")
             db.close()
+            independent = verify(source, output)
+            self.assertEqual(independent["sqlite_indexed"], 3)
+            self.assertEqual(independent["unknown_raster_coverage"], 1)
 
     def test_repeatable_normalized_sha_without_timestamp_in_rows(self):
         with tempfile.TemporaryDirectory() as d:
