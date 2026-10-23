@@ -88,7 +88,8 @@
   function feedsPage(src,checks,extended=[],ledger=[],generatedAt=null,runUrl='',mounted=null){
     const mountRows=mounted?[
       ['EPA FRS source index',mounted.frs,'source_identities'],
-      ['NOAA Storm Events index',mounted.noaa,'records']
+      ['NOAA Storm Events index',mounted.noaa,'records'],
+      ['NOAA IncidentNews selected responses',mounted.incidentnews,'records']
     ].map(([name,index,countKey])=>'<tr><td><strong>'+esc(name)+'</strong></td><td>'+
       esc(String(index?.state||'not_configured').replaceAll('_',' '))+'</td><td>'+
       (index?.[countKey]==null?'Not mounted':Number(index[countKey]).toLocaleString())+'</td><td>'+

@@ -1,0 +1,108 @@
+name: NOAA IncidentNews official selective spill ingestion
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '41 6 * * 4'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/build_noaa_incidentnews.py'
+      - 'facilityrisk/incident_news.py'
+      - '.github/workflows/build-noaa-incidentnews.yml'
+permissions:
+  contents: write
+concurrency:
+  group: incidentnews-source-staging
+  cancel-in-progress: false
+jobs:
+  stage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install runtime dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Download official response cases and validate completeness
+        run: |
+          python scripts/build_noaa_incidentnews.py \
+            --raw data/incidentnews/incidents.csv \
+            --output data/incidentnews/incidents.csv.gz \
+            --manifest data/incidentnews/manifest.json \
+            --summary web/ingestion/noaa-incidentnews.json \
+            --min-rows 100
+      - name: Verify official source hashes, normalized schema and scope
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from scripts.build_noaa_incidentnews import validate,sha256
+          m=json.load(open('data/incidentnews/manifest.json',encoding='utf-8'))
+          assert m['publisher']=='NOAA Office of Response and Restoration IncidentNews'
+          assert m['complete_publisher_snapshot'] is True
+          assert m['records']>=100
+          assert sum(m['threat_counts'].values())==m['records']
+          assert m['coordinate_records']<=m['records']
+          assert sha256(Path('data/incidentnews/incidents.csv'))==m['original_sha256']
+          assert validate(Path('data/incidentnews/incidents.csv.gz'),m)
+          p=json.load(open('web/ingestion/noaa-incidentnews.json',encoding='utf-8'))
+          assert p['records']==m['records'] and p['state']=='staged_source_artifact'
+          assert 'not all reported spills' in p['scope']
+          print('Official NOAA selected spill-response records verified:',m['records'])
+          PY
+      - name: Prove import and indexed source-only queries in disposable private SQLite
+        env:
+          FACILITY_RISK_DB: data/incidentnews/source-only.sqlite
+        run: |
+          python -m facilityrisk import-noaa-incidentnews \
+            data/incidentnews/incidents.csv.gz \
+            --manifest data/incidentnews/manifest.json \
+            > data/incidentnews/private-db-qa.json
+          python - <<'PY'
+          import json,sqlite3
+          from facilityrisk.incident_news import search,validate_manifest
+          m=json.load(open('data/incidentnews/manifest.json'))
+          qa=json.load(open('data/incidentnews/private-db-qa.json'))
+          assert qa['records']==m['records'] and qa['state']=='ready_partial'
+          db=sqlite3.connect('data/incidentnews/source-only.sqlite')
+          db.row_factory=sqlite3.Row
+          assert validate_manifest(db,m)['records']==m['records']
+          assert search(db,limit=2)['total']==m['records']
+          assert sum(search(db,threat=t,limit=1)['total'] for t in m['threat_counts'])==m['records']
+          assert db.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+          db.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+          db.close()
+          print('Source-only NOAA IncidentNews SQLite verified:',m['records'])
+          PY
+      - name: Archive raw official CSV, provenance and indexed source-only SQLite
+        uses: actions/upload-artifact@v4
+        with:
+          name: noaa-incidentnews-verified-source
+          path: |
+            data/incidentnews/incidents.csv
+            data/incidentnews/incidents.csv.gz
+            data/incidentnews/manifest.json
+            data/incidentnews/source-only.sqlite
+            data/incidentnews/private-db-qa.json
+          compression-level: 3
+          retention-days: 14
+          if-no-files-found: error
+      - name: Merge actual published ingestion into source-health ledger
+        run: |
+          python scripts/publish_source_status.py \
+            --merge-only --ingestion-dir web/ingestion \
+            --output web/source-status.json
+      - name: Commit sanitized public aggregate counts only
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add web/ingestion/noaa-incidentnews.json web/source-status.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Data: publish verified NOAA selected-response incident counts [skip ci]'
+          git restore --worktree .
+          git pull --rebase origin main
+          git push origin HEAD:main
