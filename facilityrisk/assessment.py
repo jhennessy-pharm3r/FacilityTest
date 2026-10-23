@@ -41,6 +41,8 @@ def build_assessment(conn,facility_id):
     facility=one(conn,'SELECT * FROM facilities WHERE id=?',(facility_id,))
     if facility is None:raise ValueError('Unknown facility')
     detail=get_intelligence(conn,facility_id)
+    from .physical_assets import facility_assets as list_property_assets
+    asset_inventory=list_property_assets(conn,facility_id)
     from .coverage_review import facility_policy_snapshot,compare_hazards_and_coverage
     policy_snapshot=facility_policy_snapshot(conn,facility_id)
     coverage_crosswalk=compare_hazards_and_coverage(conn,facility_id)
@@ -81,6 +83,11 @@ def build_assessment(conn,facility_id):
        'environmental':{'status':'source_observations' if any('environment' in
                         (e['risk_domain'] or '').lower() for e in source_evidence) else 'unassessed',
           'reason':'Source records may include regulatory observations; independently assess each program and date'},
+       'physical_asset_inventory':{
+          'status':'source_assets_observed' if asset_inventory['total_assets'] else 'unassessed',
+          'reason':str(asset_inventory['total_assets'])+' catalogued assets; '+
+             str(asset_inventory['identity_corroborated_assets'])+
+             ' independently identity-corroborated assets. Source points and parent assertions are not verified insured parcels/buildings'},
        'natural_hazards':{'status':'screened' if current_hazards and point_verified else 'unassessed',
           'reason':str(len(current_hazards))+' current property-point screenings; '+
                   str(len(stale_hazards))+' stale or legacy screenings require refresh. '+
@@ -107,6 +114,7 @@ def build_assessment(conn,facility_id):
     if pending_crosswalks:action_items.append('Resolve pending cross-agency site matching candidates')
     if observations:action_items.append('Review regulatory observations with unconfirmed FEI-to-site attribution')
     if not profile:action_items.append('Collect construction, fire protection, water, power, BI values and recovery plans')
+    if not asset_inventory['total_assets']:action_items.append('Identify separately insured buildings, campus structures, leased units and utility dependencies')
     if stale_hazards:action_items.append('Refresh or explicitly retire hazard overlays tied to an earlier or unreviewed site point')
     if not policy_snapshot['verified_current_coverage_count']:action_items.append('Review actual insurance declarations and location-specific terms with independent approver')
     if not events:action_items.append('Research documented disruptions and comparable non-event periods')
@@ -126,6 +134,7 @@ def build_assessment(conn,facility_id):
       'coverage':coverage,
       'sections':sections,
       'hazards':regional_hazards,
+      'physical_assets':asset_inventory,
       'insurance_policy_review':policy_snapshot,
       'hazard_coverage_crosswalk':coverage_crosswalk,
       'evidence':source_evidence,
@@ -234,6 +243,10 @@ def render_assessment_html(report,*,private_backend=False):
              str(len(cover['terms']))+' matching current term entries; source '+
              link(h['hazard_source_url'])+'</td></tr>')
     crosswalk_table=''.join(crosswalk_rows) or '<tr><td colspan="4">No verified current-property hazard and policy crosswalk</td></tr>'
+    asset_rows=rows(report.get('physical_assets',{}).get('assets',[]),
+          lambda asset:'<tr><td>'+e(asset['asset_type'])+'</td><td>'+e(asset['name'])+
+          '</td><td>'+e(asset['address'])+'</td><td>'+e(asset['status'])+
+          '; point '+e(asset['coordinate_quality'])+'</td></tr>')
     actions=''.join('<li>'+e(a)+'</li>' for a in report['recommended_actions']) or '<li>No additional actions listed</li>'
     cautions=''.join('<li>'+e(x)+'</li>' for x in report['interpretation'])
     return ('''<!doctype html><html lang="en"><head><meta charset="utf-8">
@@ -253,6 +266,9 @@ a{color:#245c61}section{break-inside:avoid}ul{line-height:1.65}
 ' · No loss probability or premium rating</p></header>'+
 '<h2>Evidence coverage</h2><table><thead><tr><th>Dimension</th><th>Status</th><th colspan="2">Basis</th></tr></thead><tbody>'+coverage+'</tbody></table>'+
 '<div class="columns">'+sections+'</div>'+
+'<h2>Physical site and building inventory</h2>'+
+'<p class="muted">Site source observations and reviewed asset identities are not verified building-level hazard geocodes or confirmed insured location schedules.</p>'+
+'<table><tr><th>Asset class</th><th>Reported name</th><th>Address</th><th>Identity / coordinate status</th></tr>'+asset_rows+'</table>'+
 '<h2>Physical hazard screening</h2><table><tr><th>Peril</th><th>Status</th><th>Description</th><th>Reference</th></tr>'+hazards+'</table>'+
 '<h2>Insurance contracts and coverage review</h2>'+
 '<p class="muted">Independent wording review is not proof of payout or a coverage guarantee. Excluded terms do not count as available insurance protection. Review the scheduled insured location, exclusions and endorsements.</p>'+

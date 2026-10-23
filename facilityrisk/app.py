@@ -20,6 +20,8 @@ from .research import start_research,research_history,run_source,SourceNotEligib
 from .insurance import taxonomy as insurance_taxonomy, facility_screening as insurance_screen
 from .coverage_review import (create_policy,save_term,propose_term_review,
   list_reviews,decide_term_review,facility_policy_snapshot,compare_hazards_and_coverage)
+from .physical_assets import (create_asset,revise_asset,facility_assets as list_site_assets,
+    propose_asset_review,asset_review_queue,decide_asset_review)
 from .universal_registry import (search as universal_search, detail as universal_detail,
     statistics as universal_stats, track_for_research as universal_track)
 from .site_workspace import (SOURCES as REGULATOR_SOURCES, intake_site, search_external_registry,
@@ -120,6 +122,58 @@ async def policy_review_decision(review_id:str,request:Request,c=Depends(conn_de
     data=await request.json()
     try:return decide_term_review(c,review_id,data.get('decision'),request.state.actor,data.get('note',''))
     except (ValueError,TypeError,AttributeError) as exc:raise HTTPException(422,str(exc)) from exc
+
+
+def _asset_review_write(request,role='reviewer'):
+    import os
+    if os.environ.get('FACILITY_RISK_ENABLE_WRITES')!='1' or not dual_review_enabled():
+        raise HTTPException(403,'Private asset reviews require independently authenticated accounts')
+    try:require_review_role(request,role)
+    except PermissionError as error:raise HTTPException(403,str(error)) from error
+
+
+@app.get('/api/facilities/{facility_id}/assets')
+def facility_physical_assets(facility_id:str,c=Depends(conn_dependency)):
+    try:return list_site_assets(c,facility_id)
+    except ValueError as error:raise HTTPException(404,str(error)) from error
+
+
+@app.post('/api/facilities/{facility_id}/assets')
+async def add_physical_asset(facility_id:str,request:Request,c=Depends(conn_dependency)):
+    _asset_review_write(request)
+    try:return create_asset(c,facility_id,await request.json(),request.state.actor)
+    except (ValueError,TypeError) as error:raise HTTPException(422,str(error)) from error
+
+
+@app.patch('/api/assets/{asset_id}')
+async def change_physical_asset(asset_id:str,request:Request,c=Depends(conn_dependency)):
+    _asset_review_write(request)
+    try:return revise_asset(c,asset_id,await request.json(),request.state.actor)
+    except (ValueError,TypeError) as error:raise HTTPException(422,str(error)) from error
+
+
+@app.post('/api/assets/{asset_id}/propose-review')
+async def submit_physical_asset_identity(asset_id:str,request:Request,c=Depends(conn_dependency)):
+    _asset_review_write(request)
+    try:return propose_asset_review(c,asset_id,await request.json(),request.state.actor)
+    except (ValueError,TypeError) as error:raise HTTPException(422,str(error)) from error
+
+
+@app.get('/api/asset-reviews')
+def pending_asset_reviews(status:str='pending',facility_id:str='',
+    limit:int=Query(100,ge=1,le=200),c=Depends(conn_dependency)):
+    try:return asset_review_queue(c,status,facility_id,limit)
+    except ValueError as error:raise HTTPException(422,str(error)) from error
+
+
+@app.post('/api/asset-reviews/{review_id}/decide')
+async def approve_physical_asset_identity(review_id:str,request:Request,c=Depends(conn_dependency)):
+    _asset_review_write(request,'approver')
+    body=await request.json()
+    if not isinstance(body,dict):raise HTTPException(422,'Expected independent review decision')
+    try:return decide_asset_review(c,review_id,body.get('decision',''),
+                                    request.state.actor,body.get('note',''))
+    except (ValueError,TypeError) as error:raise HTTPException(422,str(error)) from error
 
 
 @app.get('/api/universal-facilities/stats')
