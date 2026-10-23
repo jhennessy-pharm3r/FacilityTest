@@ -49,7 +49,18 @@ jobs:
           set -euo pipefail
           root="$RUNNER_TEMP/tri_history"
           for year in 2023 2024; do
-            gzip -dc "$root/tri_$year/tri.sqlite.gz" > "$root/tri_$year/tri.sqlite"
+            echo "Published year $year files:"
+            find "$root/tri_$year" -maxdepth 3 -type f -print
+            archive=$(find "$root/tri_$year" -name 'tri.sqlite.gz' -type f -print -quit)
+            meta=$(find "$root/tri_$year" -name 'tri.manifest.json' -type f -print -quit)
+            if [ -z "$archive" ] || [ -z "$meta" ]; then
+              echo "Required published source ZIP/manifests missing for $year" >&2
+              exit 1
+            fi
+            gzip -dc "$archive" > "$root/tri_$year/tri.sqlite"
+            if [ "$meta" != "$root/tri_$year/tri.manifest.json" ]; then
+              cp "$meta" "$root/tri_$year/tri.manifest.json"
+            fi
           done
           python - <<'PY'
           import hashlib,json,os,pathlib,sqlite3
