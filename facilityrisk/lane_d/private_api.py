@@ -20,6 +20,13 @@ from fastapi import APIRouter, HTTPException, Query
 from .install_source_index import (
     SPECS, resolve_current, verify_install, query_install,
 )
+from .install_issuer_financial import (
+    SPECS as FINANCIAL_SPECS,
+    resolve_current as finance_resolve_current,
+    verify_install as finance_verify_install,
+)
+from .query_issuer_bi_context import get_issuer_bi_context
+
 from ..db import get_db_path
 
 router = APIRouter(tags=["Lane D source context"])
@@ -156,7 +163,32 @@ def installed_status():
                 if (root / dataset / "current.json").exists():
                     item["state"] = "unavailable"
         rows[dataset] = item
+    financial = {}
+    for kind in FINANCIAL_SPECS:
+        financial[kind] = {
+            "state": "not_configured" if root is None else "not_installed",
+            "issuer": FINANCIAL_SPECS[kind]["issuer"],
+            "private_indexed_financial_statement_observations": 0,
+            "independently_insurer_confirmed_paid_claims": 0,
+            "verified_insured_sites": 0,
+            "public_pages_deployed": False,
+        }
+        if root_error is not None:
+            financial[kind]["state"] = "unavailable"
+        elif root is not None:
+            try:
+                verified = _finance_verified(kind)
+                financial[kind].update({
+                    "state": "verified_private_issuer_financial_context",
+                    "private_indexed_financial_statement_observations": verified["source_financial_records"],
+                    "source_original_publication_digest_set_sha256": verified["original_publication_digest_set_sha256"],
+                    "sqlite_sha256": verified["index_sha256"],
+                })
+            except LaneDSourceUnavailable:
+                if (root / "issuer_financial" / kind / "current.json").exists():
+                    financial[kind]["state"] = "unavailable"
     return {
+        "issuer_bi_financial_context": financial,
         "readiness": "PRIVATE_SOURCE_INDEX_STATUS_NOT_PHYSICAL_FACILITY_RISK",
         "source_index_mount_configured": root is not None,
         "datasets": rows,
@@ -197,6 +229,65 @@ def _query(dataset, **kwargs):
         "paid_insurer_business_interruption_claim_verified": False,
         "site_loss_amount_verified": False,
         "data": data["data"],
+    }
+
+
+def _finance_verified(kind):
+    """Only two specifically reviewed original-issuer publications may be served."""
+    if kind not in FINANCIAL_SPECS:
+        raise LaneDSourceUnavailable("Original issuer source has not been reviewed")
+    root = _root()
+    if root is None:
+        raise LaneDSourceUnavailable("Original issuer financial source index is not configured")
+    financial = root / "issuer_financial"
+    try:
+        index, _ = finance_resolve_current(financial, kind)
+        if not _is_wal_sealed(index):
+            raise ValueError("Issuer financial source database not sealed")
+        info = finance_verify_install(financial, kind)
+    except (ValueError, KeyError, OSError, sqlite3.DatabaseError) as exc:
+        raise LaneDSourceUnavailable("Original issuer financial source index unavailable or unverified") from exc
+    return info
+
+
+@router.get("/api/source-context/issuer-bi")
+def issuer_business_interruption_evidence(
+    issuer: str = Query(..., min_length=3, max_length=100),
+    event_key: str | None = Query(None, min_length=5, max_length=100),
+    limit: int = Query(25, ge=1, le=100),
+):
+    """Published issuer-recognized financial data only, not independently paid claims."""
+    issuer_map = {
+        "Crane Company": "crane",
+        "Pebblebrook Hotel Trust": "pebblebrook",
+    }
+    kind = issuer_map.get(issuer)
+    if kind is None:
+        raise HTTPException(422, "Only exact reviewed issuer original-source identities are permitted")
+    try:
+        info = _finance_verified(kind)
+        root = _root() / "issuer_financial"
+        index, _ = finance_resolve_current(root, kind)
+        rows = get_issuer_bi_context(
+            crane_db=index if kind == "crane" else None,
+            pebblebrook_db=index if kind == "pebblebrook" else None,
+            issuer=issuer, event_key=event_key, limit=limit)
+    except LaneDSourceUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except (sqlite3.DatabaseError, OSError) as exc:
+        raise HTTPException(503, "Validated issuer source finance index unavailable") from exc
+    return {
+        "original_issuer": issuer,
+        "issuer_first_party_publication_source_set_sha256": info["original_publication_digest_set_sha256"],
+        "source_financial_observations_installed": info["source_financial_records"],
+        "financial_data_grain": "PUBLISHED_ISSUER_ACCOUNTING_FACT_NOT_INSURER_CONFIRMED_PAID_CLAIM",
+        "physical_insured_site_or_outage_independently_verified": False,
+        "independent_carrier_claim_payment_verified": False,
+        "business_interruption_coverage_terms_verified": False,
+        "do_not_sum_quarter_included_in_annual_or_cumulative_amounts": True,
+        "data": rows,
     }
 
 
