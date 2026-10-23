@@ -111,7 +111,65 @@ def published_catalogs(directory: Path):
     return result
 
 
-def build(primary: Path, extended: Path, catalog_dir: Path, generated_at: str, run_url: str):
+PUBLIC_INGESTION_STATES = {"staged_source_artifact", "imported_private_backend", "published_source_catalog"}
+# Only independently reviewed, non-personal aggregate manifests are admitted.
+PUBLIC_INGESTION_SOURCES = {"NOAA Storm Events Details"}
+
+
+def published_external_ingestions(directory: Path):
+    """Read reviewed aggregate-only manifests from other source-ingest workflows.
+
+    Future source types may be added to the allowlist after a separate privacy
+    and domain-semantics review. No arbitrary JSON fields get copied to Pages.
+    """
+    if not directory.is_dir():
+        return []
+    found = {}
+    for path in sorted(directory.glob("*.json")):
+        data = json.loads(path.read_text(encoding="utf-8"))
+        name = data.get("source")
+        state = data.get("state")
+        if (data.get("schema_version") != "1.0" or
+                name not in PUBLIC_INGESTION_SOURCES or
+                state not in PUBLIC_INGESTION_STATES or
+                name in found):
+            raise ValueError(f"Invalid or duplicate public ingestion manifest: {path.name}")
+        count = data.get("records")
+        if not isinstance(count, int) or isinstance(count, bool) or count < 1:
+            raise ValueError(f"Nonpositive or missing published ingestion record count: {path.name}")
+        date = data.get("checked_at")
+        if not isinstance(date, str) or "T" not in date or not date.endswith(("+00:00", "Z")):
+            raise ValueError(f"Missing UTC source retrieval time: {path.name}")
+        link = data.get("artifact_run_url", "")
+        if link and not str(link).startswith("https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/"):
+            raise ValueError("Unexpected public artifact workflow reference")
+        found[name] = {
+            "source": name,
+            "state": state,
+            "records": count,
+            "checked_at": date,
+            "scope": str(data.get("scope", ""))[:260],
+            "details": str(data.get("details", ""))[:460],
+            "documentation": str(data.get("documentation", ""))[:400],
+            "artifact_run_url": link,
+        }
+    return list(found.values())
+
+
+def merge_existing_public_status(path: Path, ingestion_dir: Path):
+    """Update ingestion rows only, preserving actual prior probe timestamps."""
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if payload.get("schema_version") != "1.0" or not isinstance(payload.get("ingestions"), list):
+        raise ValueError("Cannot update unrecognized or missing public source-health report")
+    additions = published_external_ingestions(ingestion_dir)
+    known = {x["source"] for x in additions}
+    payload["ingestions"] = [x for x in payload["ingestions"] if x.get("source") not in known] + additions
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=True) + "\n",
+                    encoding="utf-8")
+    return additions
+
+
+def build(primary: Path, extended: Path, catalog_dir: Path, generated_at: str, run_url: str, ingestion_dir: Path | None = None):
     extended_meta = {name: {"documentation": spec["documentation"]}
                      for name, spec in EXTENDED_BY_NAME.items()}
     primary_meta = {name: {"documentation": docs}
@@ -123,7 +181,7 @@ def build(primary: Path, extended: Path, catalog_dir: Path, generated_at: str, r
         "meaning": "Connectivity and registered source-identity publication only. Not facility matching or peril screening.",
         "checks": checks_from_file(primary, primary_meta, PRIMARY_STATES, generated_at),
         "extended_checks": checks_from_file(extended, extended_meta, EXTENDED_STATES, generated_at),
-        "ingestions": published_catalogs(catalog_dir),
+        "ingestions": published_catalogs(catalog_dir) + published_external_ingestions(ingestion_dir or Path("web/ingestion")),
     }
 
 
@@ -133,12 +191,18 @@ def main():
     parser.add_argument("--extended", type=Path, default=Path("extended-source-report.json"))
     parser.add_argument("--catalog-dir", type=Path, default=Path("web/registry"))
     parser.add_argument("--output", type=Path, default=Path("web/source-status.json"))
+    parser.add_argument("--ingestion-dir", type=Path, default=Path("web/ingestion"))
+    parser.add_argument("--merge-only", action="store_true", help="Update ingestion metadata without implying a new probe")
     args = parser.parse_args()
+    if args.merge_only:
+        added = merge_existing_public_status(args.output, args.ingestion_dir)
+        print(f"Updated {len(added)} validated ingestion metadata record(s); probe timestamps unchanged")
+        return
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     repo = os.getenv("GITHUB_REPOSITORY", "jhennessy-pharm3r/FacilityTest")
     run_id = os.getenv("GITHUB_RUN_ID", "")
     run_url = f"https://github.com/{repo}/actions/runs/{run_id}" if run_id else ""
-    data = build(args.primary, args.extended, args.catalog_dir, now, run_url)
+    data = build(args.primary, args.extended, args.catalog_dir, now, run_url, args.ingestion_dir)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(data, indent=2, ensure_ascii=False, sort_keys=True) + "\n",
                            encoding="utf-8")

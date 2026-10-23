@@ -91,3 +91,55 @@ def test_status_rejects_unvalidated_import_count(tmp_path):
              {"fda_device": {"status": "imported"}})
     with pytest.raises(ValueError, match="claims import but has no cohort"):
         build(primary, extended, directory, "2026-10-23", "")
+
+
+
+def test_aggregated_noaa_manifest_can_join_public_health_without_publishing_raw_events(tmp_path):
+    from scripts.publish_source_status import (
+        published_external_ingestions, merge_existing_public_status,
+    )
+    directory = tmp_path / "ingestion"
+    directory.mkdir()
+    manifest = {
+        "schema_version": "1.0", "source": "NOAA Storm Events Details",
+        "state": "staged_source_artifact", "records": 777,
+        "checked_at": "2026-10-23T13:00:00+00:00", "scope": "NOAA regional events",
+        "details": "National reported occurrence observations only",
+        "documentation": "https://www.ncei.noaa.gov/pub/data/swdi/stormevents/csvfiles/",
+        "artifact_run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/123",
+        "private_raw_event_row": {"facility_address": "Never publish this"}
+    }
+    (directory / "noaa-storm-events.json").write_text(json.dumps(manifest))
+    rows = published_external_ingestions(directory)
+    assert rows[0]["records"] == 777
+    assert "private_raw_event_row" not in rows[0]
+    old = {"schema_version": "1.0", "generated_at": "2026-10-21",
+           "checks": [{"source": "USGS", "state": "reachable"}],
+           "ingestions": [{"source": "Some Registry", "records": 55}]}
+    status = tmp_path / "status.json"
+    status.write_text(json.dumps(old))
+    merge_existing_public_status(status, directory)
+    updated = json.loads(status.read_text())
+    assert updated["generated_at"] == "2026-10-21"
+    assert updated["checks"] == old["checks"]
+    assert len(updated["ingestions"]) == 2
+
+
+def test_public_ingest_metadata_fail_closed_on_unreviewed_sources_and_false_counts(tmp_path):
+    from scripts.publish_source_status import published_external_ingestions
+    folder = tmp_path / "ingestion"
+    folder.mkdir()
+    payload = {
+        "schema_version": "1.0", "source": "Private Insured Locations",
+        "state": "staged_source_artifact", "records": 3,
+        "checked_at": "2026-10-23T13:00:00Z",
+    }
+    output = folder / "bad.json"
+    output.write_text(json.dumps(payload))
+    with pytest.raises(ValueError, match="Invalid or duplicate"):
+        published_external_ingestions(folder)
+    payload["source"] = "NOAA Storm Events Details"
+    payload["records"] = -2
+    output.write_text(json.dumps(payload))
+    with pytest.raises(ValueError, match="Nonpositive"):
+        published_external_ingestions(folder)

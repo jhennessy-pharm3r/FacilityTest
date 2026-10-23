@@ -13,6 +13,7 @@ from .case_studies import seed_cases
 from .security import validate_private_bind
 from .registry_catalog import import_catalog
 from .source_extensions import probe_extensions, import_geo_csv, review_event_candidate
+from .storm_events import import_noaa_storm_events
 from .fei_api import lookup_fei
 from .assessment import export_assessment
 from .pilot import export_pilot_manifest
@@ -41,6 +42,9 @@ def main(argv=None) -> int:
     echo.add_argument('--registry-id',required=True,help='Operator-verified EPA FRS ID (not FDA FEI)')
     noaa=sub.add_parser('ingest-noaa-csv');noaa.add_argument('csv_gz')
     noaa.add_argument('--radius-km',type=float,default=40)
+    noaa_bulk=sub.add_parser('import-noaa-storm-events',help='Install checksum-verified regional NOAA source records into PRIVATE database')
+    noaa_bulk.add_argument('normalized_csv_gz')
+    noaa_bulk.add_argument('--manifest',required=True)
     frs=sub.add_parser('discover-frs');frs.add_argument('--facility',required=True);frs.add_argument('--name',required=True);frs.add_argument('--state',required=True)
     rv=sub.add_parser('review-frs');rv.add_argument('--candidate',required=True);rv.add_argument('--decision',choices=['accepted','rejected'],required=True);rv.add_argument('--reviewer',required=True);rv.add_argument('--source',required=True);rv.add_argument('--note',required=True)
     lookup=sub.add_parser('lookup-fda-fei',help='Use FDA-issued API credentials for an unverified FEI source observation')
@@ -133,6 +137,8 @@ def main(argv=None) -> int:
                 raise ValueError('ECHO refresh requires an accepted and audited EPA FRS identity match; use discover-frs and review-frs first')
             output=fetch_verified_echo(conn,args.facility)
         elif args.command=='ingest-noaa-csv':output=ingest_noaa_csv(conn,args.csv_gz,args.radius_km)
+        elif args.command=='import-noaa-storm-events':
+            output=import_noaa_storm_events(conn,args.normalized_csv_gz,args.manifest)
         elif args.command=='discover-frs':output=discover_frs(conn,args.facility,args.name,args.state)
         elif args.command=='review-frs':output=decide_candidate(conn,args.candidate,args.decision,args.reviewer,args.source,args.note)
         elif args.command=='lookup-fda-fei':output=lookup_fei(conn,args.facility,'local-cli')
