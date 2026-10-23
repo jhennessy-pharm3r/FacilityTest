@@ -9,6 +9,7 @@ import argparse
 import hashlib
 from html.parser import HTMLParser
 import json
+import tomllib
 import re
 from pathlib import Path
 from datetime import datetime, timezone
@@ -198,7 +199,7 @@ def main():
     p.add_argument("--user-agent")
     p.add_argument("--output", type=Path, required=True)
     args = p.parse_args()
-    index = json.loads(args.catalog.read_text(encoding="utf-8"))
+    index = tomllib.loads(args.catalog.read_text(encoding="utf-8"))
     cases = [c for c in index.get("cases", []) if c.get("case_id") == args.case]
     if len(cases) != 1:
         raise ValueError("Exactly one cataloged case ID is required")
