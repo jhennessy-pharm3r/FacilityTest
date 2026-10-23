@@ -144,16 +144,18 @@ async function decideReview(id,decision){
 }
 
 function renderPage(){const views={workbench:()=>window.WorkbenchUI.render(),insurance:()=>window.InsuranceUI.render(),'policy-review':()=>window.CoverageReviewUI.render(),'bi-scenarios':()=>window.BIScenarioUI.render(),universal:()=>window.UniversalUI.render(),registry:()=>window.RegistryUI.render(),overview:renderOverview,facilities:renderFacilities,evidence:renderGlobalPage,disclosures:renderDisclosures,reviews:renderApprovalQueue,sources:renderSources,quality:renderQuality,methodology:renderMethodology,
+    epa:()=>window.EPAEvidenceUI.render(),
     cases:()=>window.IntelligenceUI.render('cases'),map:()=>window.IntelligenceUI.render('map'),
     identity:()=>window.IntelligenceUI.render('identity'),underwriting:()=>window.IntelligenceUI.render('underwriting'),
     feeds:()=>window.IntelligenceUI.render('feeds')};
   state.page=views[state.page]?state.page:'overview';
   ROOT.innerHTML=views[state.page]();
   $$('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.page===state.page));
-  $('#breadcrumb-page').textContent=({workbench:'ASSESSMENT WORKBENCH',insurance:'INSURANCE OPTIONS','policy-review':'POLICY REVIEW','bi-scenarios':'INTERRUPTION SCENARIOS',universal:'UNIVERSAL FACILITIES',registry:'ALL FACILITIES',overview:'OVERVIEW',facilities:'RESEARCH CASES',evidence:'EVIDENCE SEARCH',disclosures:'SEC DISCLOSURES',sources:'DATA SOURCES',quality:'DATA QUALITY',reviews:'APPROVAL QUEUE',methodology:'METHODOLOGY',cases:'CASE STUDIES',map:'HAZARD MAP',identity:'IDENTITY REVIEW',underwriting:'EXPOSURE PROFILES',feeds:'SOURCE STATUS'})[state.page];
+  $('#breadcrumb-page').textContent=({workbench:'ASSESSMENT WORKBENCH',insurance:'INSURANCE OPTIONS','policy-review':'POLICY REVIEW','bi-scenarios':'INTERRUPTION SCENARIOS',universal:'UNIVERSAL FACILITIES',registry:'ALL FACILITIES',overview:'OVERVIEW',facilities:'RESEARCH CASES',evidence:'EVIDENCE SEARCH',disclosures:'SEC DISCLOSURES',sources:'DATA SOURCES',epa:'EPA REGULATORY EVIDENCE',quality:'DATA QUALITY',reviews:'APPROVAL QUEUE',methodology:'METHODOLOGY',cases:'CASE STUDIES',map:'HAZARD MAP',identity:'IDENTITY REVIEW',underwriting:'EXPOSURE PROFILES',feeds:'SOURCE STATUS'})[state.page];
   $('#side-facility-count').textContent=state.facilities.length;
   if(state.page==='evidence'&&!state.globalRecords)loadGlobalEvidence();
   if(state.page==='reviews')loadApprovalQueue();
+  if(state.page==='epa'&&window.EPAEvidenceUI)window.EPAEvidenceUI.mount();
   if(state.page==='registry'&&window.RegistryUI)window.RegistryUI.mount();
   if(state.page==='universal'&&window.UniversalUI)window.UniversalUI.mount();
   if(state.page==='insurance'&&window.InsuranceUI)window.InsuranceUI.mount();
