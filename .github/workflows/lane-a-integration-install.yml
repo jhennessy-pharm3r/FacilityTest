@@ -47,6 +47,30 @@ jobs:
           python -m scripts.lane_a_install --source-root original-official-source-artifact --destination '${{ runner.temp }}/facility-lane-a-installed' --require fema_nfhl --require usda_continuous --require usda_classified --require usda_summary
           python -m scripts.lane_a_installed_smoke --destination '${{ runner.temp }}/facility-lane-a-installed'
           python -c "import json,os,pathlib; d=pathlib.Path(os.environ['RUNNER_TEMP'])/'facility-lane-a-installed'; p=json.loads((d/'current.json').read_text()); assert len(list((d/'releases').iterdir()))==1; assert p['source_health_for_main_app']=='NOT_DEPLOYED_UNTIL_COORDINATOR_VERIFIES'; print('LANE_A_REINSTALL_STABLE_AND_NOT_DEPLOYED',p['release_id'])"
+      - name: Reinstall retained original GitHub artifact ZIP and prove identical release SHA/id
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile, ZIP_DEFLATED
+          src = Path("original-official-source-artifact")
+          with ZipFile("original_official_actions_source.zip", "w", ZIP_DEFLATED) as z:
+              for path in sorted(src.rglob("*")):
+                  if path.is_file():
+                      z.write(path, path.relative_to(src).as_posix())
+          PY
+          python -m scripts.lane_a_install --archive original_official_actions_source.zip --destination '${{ runner.temp }}/facility-lane-a-from-zip' --require fema_nfhl --require usda_continuous --require usda_classified --require usda_summary
+          python -m scripts.lane_a_installed_smoke --destination '${{ runner.temp }}/facility-lane-a-from-zip'
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          base=Path(os.environ["RUNNER_TEMP"])
+          a=json.loads((base/"facility-lane-a-installed/current.json").read_text())
+          b=json.loads((base/"facility-lane-a-from-zip/current.json").read_text())
+          assert a["release_id"] == b["release_id"], "Equivalent source artifacts must install byte-identically"
+          assert a["verified_source_only_rows"] == b["verified_source_only_rows"]
+          assert a["site_matches_verified"] == b["site_matches_verified"] == 0
+          print("LANE_A_ARTIFACT_ZIP_INSTALL_REPRODUCIBLE", a["release_id"])
+          PY
       - name: Archive complete verified read-only source release for coordinator import
         if: always()
         uses: actions/upload-artifact@v4
