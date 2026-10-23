@@ -18,8 +18,10 @@ from urllib.parse import urlsplit
 import requests
 try:
     from scripts.build_phmsa_enforcement import build,index_cases
+    from scripts.lane_c_enforcement_install import package as package_private,install as install_private,query as query_private
 except ModuleNotFoundError:
     from build_phmsa_enforcement import build,index_cases
+    from lane_c_enforcement_install import package as package_private,install as install_private,query as query_private
 
 URL = "https://primis.phmsa.dot.gov/enforcement-documents/PHMSA%20Pipeline%20Enforcement%20Raw%20Data.txt"
 SOURCE = "PHMSA Pipeline Enforcement Raw Data, Work Management System 2026-10-02"
@@ -115,7 +117,13 @@ def inspect(path):
 def main():
     p=argparse.ArgumentParser()
     p.add_argument("--output",type=Path,required=True)
+    p.add_argument("--private-bundle-dir",type=Path,
+        help="Private out-of-repository source bundle; never publish in CI artifact")
+    p.add_argument("--install-test-root",type=Path,
+        help="Precreated 0700 private dir; smoke-test real case source installer and bounded queries")
     args=p.parse_args()
+    if args.install_test_root and not args.private_bundle_dir:
+        raise ValueError("PHMSA case installation requires private source bundle")
     args.output.mkdir(parents=True,exist_ok=True)
     audit={"source":SOURCE,"url":URL,
            "retrieved_at":datetime.now(timezone.utc).isoformat(),
@@ -147,6 +155,27 @@ def main():
             audit["unparseable_opened_dates"]=staged["unparseable_or_missing_opened_dates"]
             audit["rejected_case_rows"]=staged["rejected_case_rows"]
             audit["ephemeral_enforcement_index"]=indexed
+            if args.private_bundle_dir:
+                bundle=package_private(path,normalized,manifest,
+                    Path(directory)/"phmsa-enforcement-index.sqlite",
+                    args.private_bundle_dir,repo_root=Path(__file__).resolve().parents[1])
+                audit["private_enforcement_handoff"]=bundle
+                if args.install_test_root:
+                    active=install_private(args.private_bundle_dir,args.install_test_root,
+                        "real-phmsa-wms-case-smoke",
+                        repo_root=Path(__file__).resolve().parents[1])
+                    page=query_private(args.install_test_root,page_size=5,
+                        repo_root=Path(__file__).resolve().parents[1])
+                    if page["total"]!=staged["accepted_case_rows"] or len(page["items"])!=5:
+                        raise ValueError("Real installed PHMSA WMS case index query count mismatch")
+                    audit["private_install_and_query_smoke"]={
+                        "state":"PASS_PRIVATE_TEMPORARY_CASE_INDEX_NOT_PRODUCTION",
+                        "indexed_case_rows":active["verified_case_rows"],
+                        "verified_report_references":staged["distinct_typed_report_references"],
+                        "index_sha256":active["index_sha256"],
+                        "readonly_query":"PASS",
+                        "authenticated_API_live":False,"app_deployed":0
+                    }
             audit["state"]="OFFICIAL_ENFORCEMENT_CASES_CONTENT_VALIDATED_INDEXED_EPHEMERAL_NOT_INCIDENT_CENSUS"
         except Exception as exc:
             audit["state"]="BLOCKED_OR_SCHEMA_UNVERIFIED"
