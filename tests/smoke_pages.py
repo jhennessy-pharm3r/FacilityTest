@@ -42,6 +42,8 @@ with sync_playwright() as pw:
     expect(page.locator('#wb-coverage-review')).to_contain_text('Parametric flood')
     expect(page.locator('#wb-coverage-review')).to_contain_text('Contingent BI')
     expect(page.locator('#wb-coverage-review')).to_contain_text('Utility service interruption')
+    expect(page.locator('#wb-summary')).to_contain_text('Official-source research to follow up')
+    expect(page.locator('#wb-summary')).to_contain_text('DOE/PNNL county outages')
     page.locator('#wb-coverage-flood').select_option('excluded')
     expect(page.locator('#wb-summary')).to_contain_text('1',timeout=15000)
     page.locator('[data-wb-field="days"]').fill('5')
@@ -51,6 +53,9 @@ with sync_playwright() as pw:
     assert assessment['facility']['name']=='Example Public Logistics Hub'
     assert assessment['financial_illustration']['gross_downtime_illustration_usd']==75000
     assert len(assessment['potential_coverages'])>=5
+    assert assessment['source_research_tasks']
+    assert all(task['site_evidence_status']=='not_verified' for task in assessment['source_research_tasks'])
+    assert any('pnnl_outages' in task['source_ids'] for task in assessment['source_research_tasks'])
     assert all(x['verified_coverage']=='unknown' for x in assessment['potential_coverages'])
     with page.expect_download() as transfer:
         page.locator('#wb-export').click()
@@ -63,6 +68,8 @@ with sync_playwright() as pw:
                for x in report['potential_coverages'])
     page.locator('[data-page="insurance"]').first.click()
     expect(page.locator('#view-root')).to_contain_text('Parametric flood',timeout=15000)
+    expect(page.locator('#insurance-coverage-results')).to_contain_text('EIA electric reliability',timeout=15000)
+    expect(page.locator('.si-context[data-si-panel="insurance"]')).to_contain_text('Data supporting coverage-trigger review',timeout=15000)
     page.locator('[data-page="workbench"]').first.click()
     expect(page.locator('[data-wb-field="facility"]')).to_have_value('Example Public Logistics Hub')
     page.locator('#wb-reset').click()
@@ -170,6 +177,45 @@ with sync_playwright() as pw:
             f"{selected['records']:,}",timeout=15000)
         expect(page.locator('#intel-content')).to_contain_text(
             'not all reported spills',timeout=15000)
+    # Full source catalog and contextual research evidence now serve the wider site.
+    page.locator('a.nav-item[data-page="sources"]').first.click()
+    expect(page.locator('.si-inventory')).to_be_visible(timeout=20000)
+    ledger=json.loads((Path(__file__).resolve().parents[1]/'web/coordination/parallel-ingestion.json').read_text())
+    source_streams=[x for lane in ledger['lanes'] for x in lane['sources']]
+    expect(page.locator('.si-inventory-row:visible')).to_have_count(len(source_streams),timeout=20000)
+    expect(page.locator('.si-inventory')).to_contain_text('0 deployed / 0 approved insured-site links')
+    page.locator('#si-inventory-family').select_option('Industrial incidents')
+    expect(page.locator('.si-inventory-row:visible')).to_have_count(4)
+    page.locator('#si-inventory-stage').select_option('access_blocked')
+    expect(page.locator('.si-inventory-row:visible')).to_have_count(1)
+    page.locator('#si-inventory-clear').click()
+    expect(page.locator('.si-inventory-row:visible')).to_have_count(len(source_streams))
+    page.goto(BASE+'?page=sources&record=epa_echo',wait_until='domcontentloaded',timeout=45000)
+    expect(page.locator('.si-inventory')).to_be_visible(timeout=20000)
+    expect(page.locator('.si-inventory-row:visible')).to_have_count(1,timeout=20000)
+    expect(page.locator('.si-inventory-row:visible')).to_contain_text('EPA ECHO national exporter')
+    page.locator('a.nav-item[data-page="overview"]').first.click()
+    expect(page.locator('.si-lens')).to_have_count(4,timeout=20000)
+    expect(page.locator('.si-overview')).to_contain_text('Four complementary evidence domains',timeout=20000)
+    page.locator('a.nav-item[data-page="map"]').first.click()
+    expect(page.locator('.si-context[data-si-panel="map"]')).to_contain_text('Hazard-layer coverage',timeout=20000)
+    expect(page.locator('.si-context[data-si-panel="map"]')).to_contain_text('sample polygon features')
+    page.locator('a.nav-item[data-page="identity"]').first.click()
+    expect(page.locator('.si-context[data-si-panel="identity"]')).to_contain_text('EPA RCRAInfo',timeout=20000)
+    page.locator('a.nav-item[data-page="underwriting"]').first.click()
+    expect(page.locator('.si-context[data-si-panel="underwriting"]')).to_contain_text('USCG',timeout=20000)
+    page.locator('a.nav-item[data-page="quality"]').first.click()
+    expect(page.locator('.si-quality')).to_contain_text('Source-to-site validation gates',timeout=20000)
+    expect(page.locator('.si-metric')).to_have_count(4)
+    page.locator('a.nav-item[data-page="feeds"]').first.click()
+    expect(page.locator('.si-mount')).to_have_count(0)
+    page.locator('a.nav-item[data-page="insurance"]').first.click()
+    expect(page.locator('.si-jump[data-si-source="fema_nfhl"]').first).to_be_visible(timeout=20000)
+    page.locator('.si-jump[data-si-source="fema_nfhl"]').first.click()
+    expect(page.locator('.si-inventory')).to_be_visible(timeout=20000)
+    expect(page.locator('.si-inventory-row:visible')).to_have_count(1,timeout=20000)
+    assert page.evaluate("new URL(location.href).searchParams.get('record')")=='fema_nfhl'
+    # Existing curated research case flow is not replaced by staged source rows.
     page.locator('[data-page="facilities"]').first.click()
     page.locator('.facility-card').first.click()
     expect(page.locator('#detail-drawer')).to_have_class('detail-drawer open',timeout=15000)
