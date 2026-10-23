@@ -71,6 +71,26 @@ jobs:
           assert a["site_matches_verified"] == b["site_matches_verified"] == 0
           print("LANE_A_ARTIFACT_ZIP_INSTALL_REPRODUCIBLE", a["release_id"])
           PY
+      - name: Prove tampered real publisher manifest cannot displace last good installed release
+        run: |
+          cp -a original-official-source-artifact "$RUNNER_TEMP/modified-official-source"
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          p=Path(os.environ["RUNNER_TEMP"])/"modified-official-source/whp_official_index/manifest.json"
+          m=json.loads(p.read_text())
+          m["source_zip_sha256"]="0"*64
+          p.write_text(json.dumps(m))
+          PY
+          before="$(sha256sum "$RUNNER_TEMP/facility-lane-a-installed/current.json" | cut -d' ' -f1)"
+          if python -m scripts.lane_a_install --source-root "$RUNNER_TEMP/modified-official-source" --destination "$RUNNER_TEMP/facility-lane-a-installed" --require fema_nfhl --require usda_continuous --require usda_classified --require usda_summary; then
+            echo "ERROR tampered source was accepted"
+            exit 1
+          fi
+          after="$(sha256sum "$RUNNER_TEMP/facility-lane-a-installed/current.json" | cut -d' ' -f1)"
+          test "$before" = "$after"
+          python -m scripts.lane_a_installed_smoke --destination "$RUNNER_TEMP/facility-lane-a-installed"
+          echo "LANE_A_REAL_SOURCE_TAMPER_REJECTED_CURRENT_RELEASE_UNCHANGED"
       - name: Archive complete verified read-only source release for coordinator import
         if: always()
         uses: actions/upload-artifact@v4
