@@ -13,6 +13,10 @@ import math
 from pathlib import Path
 from openpyxl import load_workbook
 try:
+    from scripts.industrial_incident_io import gzip_csv_writer
+except ModuleNotFoundError:  # direct scripts/ entrypoint
+    from industrial_incident_io import gzip_csv_writer
+try:
     from scripts.build_industrial_incidents import as_date, digest
 except ModuleNotFoundError:  # direct scripts/probe_lane_c_sources.py execution
     from build_industrial_incidents import as_date, digest
@@ -94,7 +98,7 @@ def stage_nrc(raw, output, manifest, *, year, minimum_rows=1000):
         if not ids <= set(calls) or not ids <= set(details):
             raise ValueError("NRC report linkage missing cross-sheet SEQNOS")
         geo, bad_dates = 0, 0
-        with gzip.open(temp, "wt", encoding="utf-8", newline="") as stream:
+        with gzip_csv_writer(temp) as stream:
             writer = csv.DictWriter(stream, FIELDS)
             writer.writeheader()
             for seqno, row in sorted(common.items(), key=lambda item: item[0]):
