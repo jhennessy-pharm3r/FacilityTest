@@ -170,3 +170,12 @@ textarea:focus-visible{outline:2px solid var(--terra);outline-offset:3px}
 .wb-coverage-cta p{font-size:12px;color:#627a71;line-height:1.6;margin:6px 0 0}
 .wb-coverage-cta button{white-space:nowrap}
 @media(max-width:800px){.wb-coverage-cta{flex-direction:column;align-items:flex-start}.wb-coverage-cta button{white-space:normal}}
+
+/* Private Lane A source-only FEMA query: no client-supplied coordinate or score. */
+.intel-map-source-query{display:grid;gap:9px;margin:18px 0 0}
+.intel-map-source-query label{font-size:12px;font-weight:700;color:var(--ink)}
+.intel-source-check-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.intel-source-check-controls select{flex:1 1 280px;min-width:180px;max-width:540px;min-height:40px;padding:9px 12px;border:1px solid var(--border);border-radius:9px;background:#fff;color:var(--ink);font-size:12px}
+.intel-source-check-controls .btn{min-height:40px;padding:9px 14px;font-weight:680;white-space:normal}
+.intel-source-check-result{margin-top:16px;padding:13px 15px;border:1px solid #dde9e4;border-radius:9px;background:#f5f9f7;color:#41635e;font-size:12px;line-height:1.65}
+@media(max-width:700px){.intel-source-check-controls{align-items:stretch;flex-direction:column}.intel-source-check-controls select{width:100%;flex:1 0 auto;min-width:0;max-width:none}.intel-source-check-controls .btn{width:100%}}
