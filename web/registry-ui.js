@@ -25,6 +25,7 @@
      page:Number.isSafeInteger(index)&&index>=1&&index<=100000?index:1,
      record:(p.get('record')||'').slice(0,200)};
  }
+ function routeParams(){return {q:query,sector,source,country,p:page>0?String(page+1):null,record:selected?.id||null};}
  function writeRegistryRoute(method='push'){
    window.FacilityRiskRouter?.patch({page:'registry',q:query,sector,source,country,
      p:page>0?String(page+1):null,record:selected?.id||null},method);
@@ -289,5 +290,5 @@
    catch(e){error='Full FDA catalog download has not completed: '+e.message;updateStatus();}
  }
  const pages={registry:true};
- window.RegistryUI={render:()=>`<div id="registry-root">${render()}</div>`,mount,restoreRoute,pages};
+ window.RegistryUI={render:()=>`<div id="registry-root">${render()}</div>`,mount,restoreRoute,routeParams,pages};
 })();
