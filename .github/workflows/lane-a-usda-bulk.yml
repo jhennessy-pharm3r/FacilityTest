@@ -1,0 +1,43 @@
+name: Lane A - official USDA 2023 WHP geographic source bulk index
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - ingest/fema-wildfire-lane-a-20261023
+    paths:
+      - 'scripts/lane_a_whp_official_summary.py'
+      - 'scripts/lane_a_whp_summaries_index.py'
+      - 'scripts/verify_lane_a_whp_index.py'
+      - 'tests/test_lane_a_whp_summary.py'
+      - 'tests/test_lane_a_whp_summaries_index.py'
+      - '.github/workflows/lane-a-usda-bulk.yml'
+permissions:
+  contents: read
+jobs:
+  usda-whp-bulk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run standalone source identity and normalization regressions
+        run: python -m unittest discover -s tests -p 'test_lane_a_whp_summar*.py' -v
+      - name: Retrieve real USDA Forest Service WHP2023 source ZIP
+        run: python -m scripts.lane_a_whp_official_summary --out-dir data/lane_a/whp_official_summary
+      - name: Normalize real county state ZIP code records and source-only SQLite index
+        run: python -m scripts.lane_a_whp_summaries_index --source data/lane_a/whp_official_summary/whp2023_official_summaries.zip --out-dir data/lane_a/whp_official_index
+      - name: Independently rehash ZIP XLSX gzip and query SQLite
+        run: python -m scripts.verify_lane_a_whp_index --source data/lane_a/whp_official_summary/whp2023_official_summaries.zip --index-dir data/lane_a/whp_official_index
+      - name: Archive real official source, normalized records, queries and manifests
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-a-usda-whp2023-official-bulk-qa
+          path: |
+            data/lane_a/whp_official_summary/
+            data/lane_a/whp_official_index/
+          retention-days: 7
+          if-no-files-found: warn
+          compression-level: 6
