@@ -1,4 +1,4 @@
-name: Lane B EPA public FRS-RMP complete indexed-source verification
+name: Lane B EPA reproducible public FRS-RMP complete-index verification
 on:
   push:
     branches: ['ingest/epa-echo-tri-rcra-rmp-lane-b-20261023']
