@@ -6,6 +6,8 @@ on:
       - ingest/eia861-utility-bi-lane-d-20261023
     paths:
       - facilityrisk/lane_d/ingest_odin_direct.py
+      - facilityrisk/lane_d/query_staging.py
+      - tests/test_lane_d_query_staging.py
       - tests/test_lane_d_odin_direct.py
       - .github/workflows/lane-d-odin-direct-ingestion.yml
   workflow_dispatch:
@@ -23,7 +25,9 @@ jobs:
         with:
           python-version: "3.12"
       - name: Strict source-native identity and duplication tests
-        run: python -m unittest discover -s tests -p test_lane_d_odin_direct.py -v
+        run: |
+          python -m unittest discover -s tests -p test_lane_d_odin_direct.py -v
+          python -m unittest discover -s tests -p test_lane_d_query_staging.py -v
       - name: Download official non-authenticated ORNL ODIN current county outages
         run: |
           python -m facilityrisk.lane_d.ingest_odin_direct \
@@ -64,6 +68,33 @@ jobs:
           print("Verified primary official ORNL feed:",len(official),"raw,",len(normalized),"accepted,",
                 len(rejected),"rejected; county codes",manifest["observations"]["distinct_native_county_fips"],
                 "native EIA utility identifiers",manifest["observations"]["distinct_source_eia_utility_ids"])
+          PY
+      - name: Read-only county lookup on actual first-party ODIN source index, de-duplicated
+        shell: bash
+        run: |
+          python - <<'PY'
+          import pathlib,sqlite3
+          from facilityrisk.lane_d.query_staging import get_county_context
+          db=pathlib.Path("/tmp/lane-d/odin-direct/odin_direct_county_staging.sqlite")
+          with sqlite3.connect(db) as con:
+              fips,total=con.execute(
+                  """SELECT native_county_fips,COUNT(*) FROM source_observations
+                     GROUP BY native_county_fips ORDER BY COUNT(*) DESC LIMIT 1""").fetchone()
+              repeats=con.execute(
+                  """SELECT COUNT(*) FROM source_observations
+                     WHERE native_county_fips=? AND is_exact_duplicate=1""",(fips,)).fetchone()[0]
+          result=get_county_context(fips,odin_direct_db=db,limit=100)
+          counts=result["candidate_counts"]
+          assert counts["odin_firstparty_public_county_snapshot_raw_rows"]==total
+          assert counts["odin_firstparty_exact_duplicate_rows_excluded"]==repeats
+          assert len(result["returned_findings"])==min(total-repeats,100)
+          assert all(x["publisher"]=="DOE/ORNL ODIN FIRST_PARTY" for x in result["returned_findings"])
+          assert all(x["insured_facility_outage_verified"] is False for x in result["returned_findings"])
+          assert all(x["site_utility_assignment_verified"] is False for x in result["returned_findings"])
+          assert result["verified_insured_outages"]==0
+          assert result["verified_business_interruption_claims"]==0
+          print("ACTUAL ORNL county source-only query",fips,"raw",total,
+                "source-duplicate rows withheld",repeats,"returned",len(result["returned_findings"]))
           PY
       - name: Publish first-party source provenance only, no raw external distributor material
         if: always()
