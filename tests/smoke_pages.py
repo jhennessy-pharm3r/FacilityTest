@@ -177,6 +177,73 @@ with sync_playwright() as pw:
     expect(page.locator('.drawer-body')).to_contain_text('Site and identity checks',timeout=15000)
     page.locator('#drawer-close').click()
     page.locator('[data-page="overview"]').first.click()
+    # Shareable query-string navigation, direct record links, and native Back/Forward.
+    from urllib.parse import urlencode
+    page.goto(BASE+'?page=feeds',wait_until='domcontentloaded',timeout=45000)
+    expect(page.locator('#view-root h1')).to_contain_text('Data source connectivity',timeout=15000)
+    assert page.locator('a.nav-item[data-page="quality"]').get_attribute('href')=='?page=quality'
+    expect(page.locator('#copy-view-link')).to_be_visible()
+    page.locator('a.nav-item[data-page="quality"]').click()
+    expect(page.locator('#view-root h1')).to_contain_text('Data quality',timeout=15000)
+    assert page.evaluate("new URL(location.href).searchParams.get('page')")=='quality'
+    page.go_back(wait_until='domcontentloaded')
+    expect(page.locator('#view-root h1')).to_contain_text('Data source connectivity',timeout=15000)
+    page.go_forward(wait_until='domcontentloaded')
+    expect(page.locator('#view-root h1')).to_contain_text('Data quality',timeout=15000)
+    page.reload(wait_until='domcontentloaded')
+    expect(page.locator('#view-root h1')).to_contain_text('Data quality',timeout=15000)
+
+    registry_link=BASE+'?'+urlencode({'page':'registry','q':'Acme Devices Galway',
+        'source':'FDA device registration / listing'})
+    page.goto(registry_link,wait_until='domcontentloaded',timeout=45000)
+    expect(page.locator('#registry-results')).to_contain_text('Acme Devices Galway',timeout=35000)
+    expect(page.locator('#registry-query')).to_have_value('Acme Devices Galway')
+    expect(page.locator('#registry-source')).to_have_value('FDA device registration / listing')
+    page.locator('[data-reg-id]').first.click()
+    expect(page.locator('#registry-detail-container')).to_contain_text('Not assessed',timeout=15000)
+    record_id=page.evaluate("new URL(location.href).searchParams.get('record')")
+    assert record_id,'Selecting a regulatory identity must create a record URL'
+    registry_detail_link=page.url
+    page.reload(wait_until='domcontentloaded',timeout=45000)
+    expect(page.locator('#registry-detail-container')).to_contain_text('Not assessed',timeout=35000)
+    assert page.evaluate("new URL(location.href).searchParams.get('record')")==record_id
+    page.go_back(wait_until='domcontentloaded')
+    expect(page.locator('#registry-results')).to_contain_text('Acme Devices Galway',timeout=35000)
+    expect(page.locator('#registry-detail-container')).to_be_empty(timeout=15000)
+    page.go_forward(wait_until='domcontentloaded')
+    expect(page.locator('#registry-detail-container')).to_contain_text('Not assessed',timeout=35000)
+    assert page.url==registry_detail_link
+
+    page.goto(BASE+'?page=facilities',wait_until='domcontentloaded',timeout=45000)
+    expect(page.locator('.facility-card').first).to_be_visible(timeout=15000)
+    facility_id=page.locator('.facility-card').first.get_attribute('data-site')
+    page.locator('.facility-card').first.click()
+    expect(page.locator('#detail-drawer')).to_have_class('detail-drawer open',timeout=15000)
+    assert page.evaluate("new URL(location.href).searchParams.get('facility')")==facility_id
+    page.locator('[data-tab="risk"]').first.click()
+    expect(page.locator('.drawer-body')).to_contain_text('Site and identity checks',timeout=15000)
+    assert page.evaluate("new URL(location.href).searchParams.get('tab')")=='risk'
+    facility_risk_link=page.url
+    page.go_back(wait_until='domcontentloaded')
+    expect(page.locator('#detail-drawer')).to_have_class('detail-drawer open',timeout=15000)
+    expect(page.locator('[data-tab="summary"]').first).to_have_attribute('aria-selected','true')
+    page.go_back(wait_until='domcontentloaded')
+    expect(page.locator('#detail-drawer')).not_to_have_class('detail-drawer open',timeout=15000)
+    page.go_forward(wait_until='domcontentloaded')
+    expect(page.locator('#detail-drawer')).to_have_class('detail-drawer open',timeout=15000)
+    page.go_forward(wait_until='domcontentloaded')
+    expect(page.locator('[data-tab="risk"]').first).to_have_attribute('aria-selected','true')
+    page.goto(facility_risk_link,wait_until='domcontentloaded',timeout=45000)
+    expect(page.locator('#detail-drawer')).to_have_class('detail-drawer open',timeout=15000)
+    expect(page.locator('[data-tab="risk"]').first).to_have_attribute('aria-selected','true')
+    page.locator('#drawer-close').click()
+    assert page.evaluate("new URL(location.href).searchParams.has('facility')") is False
+
+    # Private-only screens may not crash or disclose private state in the public viewer.
+    page.goto(BASE+'?page=policy-review',wait_until='domcontentloaded',timeout=45000)
+    expect(page.locator('#view-root h1')).to_contain_text('Facility exposure & coverage workbench',timeout=15000)
+    page.goto(BASE,wait_until='domcontentloaded',timeout=45000)
+
     # Test the real committed public catalog in addition to the synthetic fixture.
     public_catalog=json.loads((Path(__file__).resolve().parents[1]/'web/registry/catalog.json').read_text(encoding='utf-8'))
     if len(public_catalog.get('rows',[]))>1000:

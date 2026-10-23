@@ -12,6 +12,34 @@
 
 The hosted preview **is not a live government data feed**. It cannot run SQLite, server-side Python ingestion, monitoring jobs, or private authentication on GitHub Pages.
 
+## Shareable URLs and browser history
+
+Pages use same-document **query-string URLs**, which work from the GitHub Pages
+project path without a server rewrite. Sidebar items are actual links, so they
+can be opened in a new tab. The **Copy link** action copies the current view URL.
+Browser Back and Forward restore the selected page, public-source registry search
+and source record, and (for available source-backed research cases) the facility
+details drawer and selected risk/evidence tab. A refresh or newly opened tab can
+load the same public state.
+
+Examples:
+
+- Source health: `https://jhennessy-pharm3r.github.io/FacilityTest/?page=feeds`
+- Public registry search: `?page=registry&q=Pfizer`
+- Facility case detail: `?page=facilities&facility=public-baxter-north-cove&tab=risk`
+
+The public registry can also restore a selected `record` ID, source and
+country/sector filters, and pagination. The private universal search can restore
+source identity IDs and search filters **only for recipients already authorized
+to access that private backend**. The application will not assert a physical site
+match or a risk score merely from a shareable link.
+
+**Data safety:** Links do not include workbench-entered insured values,
+insurance policy terms, downloaded private datasets, or locally imported
+research findings. A browser-imported private snapshot is not available to
+another recipient and cannot be shared merely by copying its page URL.
+Sharing a source reference does not grant access to private server data.
+
 ## Load private analyst data without publishing it
 
 1. In the project root after ingesting the workbook, run
