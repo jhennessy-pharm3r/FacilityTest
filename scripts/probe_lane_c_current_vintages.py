@@ -82,11 +82,17 @@ def compare_quarters(old,current):
     overlap=old_ids & new_ids
     identical=sum(old[i]==current[i] for i in overlap)
     changed=len(overlap)-identical
+    field_names=("incident_date","reported_company","reported_city","reported_state")
+    changed_field_counts={name:sum(old[i][j]!=current[i][j] for i in overlap)
+                          for j,name in enumerate(field_names)}
+    any_multifield=sum(sum(a!=b for a,b in zip(old[i],current[i]))>1 for i in overlap)
     return {
         "old_release_rows":len(old),"new_release_rows":len(current),
         "reused_number_count":len(overlap),
         "unchanged_four_field_event_identity_for_same_number":identical,
         "changed_event_attributes_under_same_number":changed,
+        "changed_event_field_counts":changed_field_counts,
+        "same_number_with_multiple_fields_changed":any_multifield,
         "numbers_absent_in_new_release":len(old_ids-new_ids),
         "new_number_values":len(new_ids-old_ids),
         "safe_cross_vintage_id_assumption":False,
