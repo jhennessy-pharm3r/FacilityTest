@@ -28,7 +28,7 @@ def original_six_tiff_fixture(base, *, omitted=None, additional=None):
             data=np.full((400,400),pixel_value,dtype=dtype)
             data[0,0]=0
             domain=Path(name).stem.split("_")[-1]
-            origin={"conus":(-123,42),"ak":(-152,63),"hi":(-157,21)}[domain]
+            origin={"conus":(-123,41),"ak":(-152,63),"hi":(-157,21)}[domain]
             with rasterio.open(file,"w",driver="GTiff",height=400,width=400,
                                count=1,dtype=dtype,nodata=0,
                                crs="EPSG:4326",transform=from_origin(origin[0],origin[1],0.005,0.005)) as out:
@@ -51,7 +51,7 @@ def test_installs_all_six_source_rasters_atomic_and_audits_full_original_grid(tm
     assert manifest["zip_original_source"]["sha256"]==hashlib.sha256(source.read_bytes()).hexdigest()
     for name in r.PRODUCTS:
         profile=manifest["tiff_independent_grid_qa"][name]
-        expected_region={"conus":"pnw","ak":"alaska","hi":"hawaii"}[Path(name).stem.split("_")[-1]]
+        expected_region={"conus":"norcal","ak":"alaska","hi":"hawaii"}[Path(name).stem.split("_")[-1]]
         assert any(p["region"]==expected_region and
                    p["source_cell_value"] is not None
                    for p in profile["sampled_public_geographic_points"])
