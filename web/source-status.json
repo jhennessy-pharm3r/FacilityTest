@@ -1,0 +1,112 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-10-23T11:37:53Z",
+  "run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39947351597",
+  "meaning": "Initial snapshot from an archived successful October 23 source-probe run and documented registry counts; these are not newly executed tests or facility validations.",
+  "checks": [
+    {
+      "source": "EPA FRS",
+      "documentation": "https://www.epa.gov/frs/frs-api",
+      "checked_at": "2026-10-23T11:37:53Z",
+      "state": "reachable",
+      "details": "HTTP 200; JSON response parsed; schema and facility matches not verified",
+      "test_level": "documentation_or_connectivity_only"
+    },
+    {
+      "source": "EPA ECHO",
+      "documentation": "https://echo.epa.gov/tools/web-services",
+      "checked_at": "2026-10-23T11:37:53Z",
+      "state": "reachable",
+      "details": "HTTP 200; JSON response parsed; schema and facility matches not verified",
+      "test_level": "documentation_or_connectivity_only"
+    },
+    {
+      "source": "USGS",
+      "documentation": "https://earthquake.usgs.gov/fdsnws/event/1/",
+      "checked_at": "2026-10-23T11:37:53Z",
+      "state": "reachable",
+      "details": "HTTP 200; JSON response parsed; schema and facility matches not verified",
+      "test_level": "documentation_or_connectivity_only"
+    },
+    {
+      "source": "FEMA NFHL",
+      "documentation": "https://www.fema.gov/flood-maps/national-flood-hazard-layer",
+      "checked_at": "2026-10-23T11:37:53Z",
+      "state": "reachable",
+      "details": "HTTP 200; JSON response parsed; schema and facility matches not verified",
+      "test_level": "documentation_or_connectivity_only"
+    },
+    {
+      "source": "WRI Aqueduct",
+      "documentation": "https://www.wri.org/aqueduct",
+      "checked_at": "2026-10-23T11:37:53Z",
+      "state": "reachable",
+      "details": "HTTP 200; JSON response parsed; schema and facility matches not verified",
+      "test_level": "documentation_or_connectivity_only"
+    },
+    {
+      "source": "FDA inspections",
+      "documentation": "https://www.fda.gov/about-fda/performance-data/fda-data-dashboard",
+      "checked_at": "2026-10-23T11:37:53Z",
+      "state": "requires_file",
+      "details": "Manual/scheduled official dataset export",
+      "test_level": "documentation_or_connectivity_only"
+    },
+    {
+      "source": "NOAA storm events",
+      "documentation": "https://www.ncei.noaa.gov/access/storm-events-database/",
+      "checked_at": "2026-10-23T11:37:53Z",
+      "state": "requires_file",
+      "details": "Manual/scheduled official dataset export",
+      "test_level": "documentation_or_connectivity_only"
+    }
+  ],
+  "extended_checks": [],
+  "ingestions": [
+    {
+      "source": "FDA device registrations",
+      "state": "previously_reported_imported",
+      "records": 25890,
+      "checked_at": null,
+      "scope": "Previously recorded public regulatory/source identities; not physical properties",
+      "details": "FDA reported device source identities; not deduplicated verified physical property counts",
+      "documentation": ""
+    },
+    {
+      "source": "FDA drug establishments",
+      "state": "previously_reported_imported",
+      "records": 10068,
+      "checked_at": null,
+      "scope": "Previously recorded public regulatory/source identities; not physical properties",
+      "details": "FDA DECRS source identities; not independently reviewed physical properties",
+      "documentation": ""
+    },
+    {
+      "source": "Ireland EPA LEAP",
+      "state": "previously_reported_imported",
+      "records": 6694,
+      "checked_at": null,
+      "scope": "Previously recorded public regulatory/source identities; not physical properties",
+      "details": "Licensed regulatory identities; environmental compliance detail not ingested",
+      "documentation": ""
+    },
+    {
+      "source": "Canada NPRI",
+      "state": "previously_reported_imported",
+      "records": 7715,
+      "checked_at": null,
+      "scope": "Previously recorded public regulatory/source identities; not physical properties",
+      "details": "2024 reporting facilities only; pollutant exposure and current operation not verified",
+      "documentation": ""
+    },
+    {
+      "source": "EPA FRS national indexed registry",
+      "state": "private_index_not_deployed",
+      "records": null,
+      "checked_at": null,
+      "scope": "Previously recorded public regulatory/source identities; not physical properties",
+      "details": "5,354,716 national source identities indexed previously in a temporary workflow artifact; not hosted in Pages",
+      "documentation": ""
+    }
+  ]
+}
