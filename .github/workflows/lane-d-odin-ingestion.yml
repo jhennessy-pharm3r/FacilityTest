@@ -1,0 +1,67 @@
+name: Lane D - Official ORNL ODIN county outage snapshot ingestion
+
+on:
+  push:
+    branches:
+      - ingest/eia861-utility-bi-lane-d-20261023
+    paths:
+      - facilityrisk/lane_d/ingest_odin.py
+      - tests/test_lane_d_odin.py
+      - .github/workflows/lane-d-odin-ingestion.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  official-odin-county-snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run ODIN offline source integrity and fails-closed tests
+        run: python -m unittest discover -s tests -p test_lane_d_odin.py -v
+      - name: Download one official public ORNL snapshot and stage actual observations
+        run: |
+          python -m facilityrisk.lane_d.ingest_odin \
+            --output /tmp/lane-d/odin-public-snapshot
+      - name: Inspect original JSON against staged source rows and indexed keys
+        shell: bash
+        run: |
+          python - <<'PY'
+          import pathlib, json, hashlib, sqlite3
+          p=pathlib.Path("/tmp/lane-d/odin-public-snapshot")
+          raw=(p/"odin_official_snapshot.json").read_bytes()
+          data=json.loads(raw)
+          manifest=json.loads((p/"manifest.json").read_text())
+          assert isinstance(data,list) and len(data)>0
+          assert len(data)==manifest["downloaded_records"]
+          assert hashlib.sha256(raw).hexdigest()==manifest["raw_response_sha256"]
+          accepted=[json.loads(s) for s in (p/"accepted.jsonl").read_text().splitlines()]
+          rejected=[json.loads(s) for s in (p/"rejected.jsonl").read_text().splitlines()]
+          assert len(accepted)+len(rejected)==len(data)
+          assert len(accepted)==manifest["normalized_records"]
+          for r in accepted:
+              original=data[r["source_row_1based"]-1]
+              assert original==r["raw"]
+              fingerprint=hashlib.sha256(json.dumps(original,sort_keys=True,ensure_ascii=False,separators=(",",":")).encode()).hexdigest()
+              assert fingerprint==r["source_record_sha256"]
+              assert not r["facility_outage_verified"] and not r["business_interruption_verified"]
+          with sqlite3.connect(p/"odin_county_outage_staging.sqlite") as db:
+              assert db.execute("PRAGMA integrity_check").fetchone()[0]=="ok"
+              assert db.execute("select count(*) from source_observations").fetchone()[0]==len(accepted)
+              assert {row[0] for row in db.execute("select source_row_key from source_observations")}=={row["source_row_key"] for row in accepted}
+          print("ODIN actual publisher snapshot verified",len(data),"raw",len(accepted),"accepted",len(rejected),"rejected",
+                "counties",manifest["qa"]["distinct_county_fips"],"states",manifest["qa"]["distinct_state_values"])
+          PY
+      - name: Publish non-identifying actual source count and digest manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-d-odin-county-snapshot-qa
+          retention-days: 7
+          if-no-files-found: warn
+          path: /tmp/lane-d/odin-public-snapshot/manifest.json
