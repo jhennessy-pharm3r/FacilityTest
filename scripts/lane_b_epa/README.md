@@ -36,3 +36,7 @@ Next gates: network-enabled complete official run; verify real member schemas an
 ## Verified public RMP-linked source cohort (not restricted plan data)
 - Official public EPA GeoPlatform FRS RMP programme-interest layer: **21,853** object IDs fully paginated, indexed and reconciled; all 21,853 have native registry/program identifiers and valid reported coordinate pairs. Validated in [run 39971992625](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39971992625); ledger at `validation/rmp_frs_public_20261023.md`.
 - This is **not** a census of insurance properties, RMP plans, OCA, historical releases or hazards. Public FRS identities are separate from physical-site review; staging is not deployed.
+
+## Official TRI 2024 U.S. endpoint
+- EPA official page dynamically composes `https://data.epa.gov/efservice/downloads/tri/mv_tri_basic_download/2024_US/csv`; this is a **national, reporting-year-specific Basic dataset**, not a longitudinal release/violation census. The source discovery was validated in [Actions 39972350442](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39972350442).
+- Full official 2024 ingestion and native TRI header verification: [Actions 39972719201](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39972719201). Counts must not be declared until complete and reconciled. Historic yearly revisions and amounts/units need separate analysis before underwriting use.
