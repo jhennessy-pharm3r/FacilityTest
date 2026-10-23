@@ -16,7 +16,7 @@
   function validatedParallel(snapshot) {
     if (!snapshot || snapshot.schema_version !== '1.0' ||
         snapshot.review_status !== 'verified_source_qa_not_deployed' ||
-        !/^\\d{4}-\\d{2}-\\d{2}$/.test(snapshot.as_of||'') ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(snapshot.as_of||'') ||
         !Array.isArray(snapshot.lanes) || snapshot.lanes.length !== 4) return null;
     const laneIds = new Set();
     const sourceIds = new Set();
