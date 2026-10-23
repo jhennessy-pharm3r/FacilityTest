@@ -1,5 +1,8 @@
 name: Coordinator EPA actual-source private Docker API acceptance
 on:
+  push:
+    branches: ['integration/epa-lane-b-private-api-20261023']
+    paths: ['.github/workflows/epa-private-docker-qa.yml']
   pull_request:
     paths:
       - Dockerfile
