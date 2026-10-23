@@ -6,7 +6,33 @@ from pathlib import Path
 
 from facilityrisk.lane_a_geospatial import polygon_point_relation, query_fema_point
 from scripts.lane_a_nfhl_paged import run
-from tests.test_lane_a_nfhl_paged import responder
+
+def responder(params):
+    if params.get("where") == "1=0":
+        data = {"fields": [{"name": x} for x in (
+            "OBJECTID", "DFIRM_ID", "FLD_AR_ID", "FLD_ZONE", "SOURCE_CIT")],
+                "features": []}
+    elif params.get("returnIdsOnly") == "true":
+        data = {"objectIds": [11, 12, 13], "objectIdFieldName": "OBJECTID"}
+    elif params.get("returnCountOnly") == "true":
+        data = {"count": 3}
+    else:
+        ids = [int(v) for v in params["objectIds"].split(",")]
+        data = {"geometryType": "esriGeometryPolygon",
+                "spatialReference": {"wkid": 4326}, "features": []}
+        for oid in ids:
+            data["features"].append({
+                "attributes": {
+                    "OBJECTID": oid, "DFIRM_ID": "22071C",
+                    "FLD_AR_ID": "22071C_" + str(oid),
+                    "FLD_ZONE": "AE", "SOURCE_CIT": "STUDY"},
+                "geometry": {"rings": [[
+                    [-90.081, 29.948], [-90.080, 29.948],
+                    [-90.080, 29.949], [-90.081, 29.948]
+                ]]}
+            })
+    return data, json.dumps(data, sort_keys=True).encode(), "https://hazards.fema.gov/query"
+
 
 
 def square():
