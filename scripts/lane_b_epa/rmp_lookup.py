@@ -14,7 +14,7 @@ def _sha(path):
         for block in iter(lambda:file.read(1048576),b""):digest.update(block)
     return digest.hexdigest()
 @lru_cache(maxsize=8)
-def _facts(directory,dbsize,dbmtime,metamtime,rawmtime):
+def _facts(directory,dbdev,dbino,dbsize,dbmtime,dbctime,metadev,metaind,metasize,metamtime,metactime,rawdev,rawino,rawsize,rawmtime,rawctime):
     base=Path(directory)
     db=base/"rmp_frs_public.sqlite"
     raw=base/"rmp_frs_public.raw.jsonl"
@@ -53,8 +53,10 @@ def status(directory):
     if (base/"rmp_frs_public.sqlite-wal").is_file() and (
         base/"rmp_frs_public.sqlite-wal").stat().st_size:
         raise InvalidRMPIndex("Uncheckpointed WAL in source-only snapshot")
-    return _facts(str(base),files[0].stat().st_size,files[0].stat().st_mtime_ns,
-                  files[1].stat().st_mtime_ns,files[2].stat().st_mtime_ns)
+    def fingerprint(p):
+        st=p.stat()
+        return (st.st_dev,st.st_ino,st.st_size,st.st_mtime_ns,st.st_ctime_ns)
+    return _facts(str(base),*fingerprint(files[0]),*fingerprint(files[1]),*fingerprint(files[2]))
 def lookup(directory,program_id,limit=50):
     if not isinstance(program_id,str) or not 1<=len(program_id.strip())<=160:
         raise ValueError("Exact native public RMP program ID required")
