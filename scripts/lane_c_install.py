@@ -273,6 +273,57 @@ def active_status(store_root,*,repo_root=None):
             "authenticated_service_connected":False,
             "app_deployed_records":0}
 
+def source_health(store_root,*,repo_root=None):
+    """Sanitized machine-readable source status for Lane E (NOT live deployed)."""
+    report=active_status(store_root,repo_root=repo_root)
+    root=Path(store_root).resolve()
+    bundle=root/"releases"/report["active_release_id"]
+    sources=[]
+    for key,count in sorted(report["source_counts"].items()):
+        m=_read_json(_safe_file(bundle,"manifests/"+key+".json"))
+        vintage=str(m.get("year") or m.get("release") or "")
+        downloaded=m.get("raw_data_rows",m.get("nrc_reports"))
+        accepted=m.get("accepted_rows")
+        rejected=m.get("rejected_rows")
+        if accepted != count or (isinstance(downloaded,int) and
+                                 downloaded!=accepted+rejected):
+            raise ValueError("Public health/source row counts out of sync for "+key)
+        sources.append({
+            "namespace":key,"source_vintage":vintage,
+            "source_url":m.get("source_url") or m.get("url"),
+            "raw_sha256":m["raw_sha256"],
+            "normalized_sha256":m["normalized_sha256"],
+            "publisher_source_rows":downloaded,
+            "accepted_rows":accepted,
+            "rejected_rows":rejected,
+            "indexed_private_file_rows":count,
+            "coordinate_rows_as_reported":m.get("coordinate_records",0),
+            "missing_or_ambiguous_child_links":m.get("missing_cross_table_links",0),
+            "missing_or_invalid_incident_dates":m.get("invalid_or_missing_incident_dates",0),
+            "vintage_completeness":"PROVISIONAL_OPEN_YEAR" if key=="nrc_2026" else
+                                  ("LATEST_RELEASE_SNAPSHOT" if key=="csb" else "PUBLISHED_YEAR_SNAPSHOT"),
+            "source_index_state":"INSTALLED_ON_PRIVATE_PATH_NOT_CONNECTED_TO_AUTHENTICATED_APP",
+            "authenticated_serving_verified":False,
+            "deployed_records":0,
+            "verified_physical_facility_matches":0
+        })
+    return {
+        "lane":"C",
+        "source_category":"NRC_notifications_and_CSB_publisher_release_observations",
+        "active_release_id":report["active_release_id"],
+        "index_sha256":report["index_sha256"],
+        "sqlite_quick_check":report["sqlite_quick_check"],
+        "indexed_private_file_rows":report["total_indexed_source_observations"],
+        "source_namespaces":len(sources),
+        "sources":sources,
+        "private_installation_verified":True,
+        "authenticated_serving_verified":False,
+        "live_app_deployed_rows":0,
+        "physical_sites_verified":0,
+        "phmsa_pipeline_and_transport_report_census":"NOT_TESTED_OFFICIAL_ACCESS_BLOCKED",
+        "warning":"Source observations are not unique verified accidents, insured site locations or paid claims"
+    }
+
 def query(store_root,*,source,state=None,since=None,page=1,page_size=50,repo_root=None):
     # Every request uses the already verified immutable release pointed to by
     # an atomically installed pointer. Re-hashing all 17 original XLSX files
@@ -348,6 +399,8 @@ def main():
     p.add_argument("--release-id")
     p=sub.add_parser("status")
     p.add_argument("--root",required=True,type=Path)
+    p=sub.add_parser("health")
+    p.add_argument("--root",required=True,type=Path)
     p=sub.add_parser("query")
     p.add_argument("--root",required=True,type=Path)
     p.add_argument("--source",required=True)
@@ -363,6 +416,8 @@ def main():
         result=install(args.bundle,args.root,release_id=args.release_id)
     elif args.command=="status":
         result=active_status(args.root)
+    elif args.command=="health":
+        result=source_health(args.root)
     elif args.command=="query":
         result=query(args.root,source=args.source,state=args.state,
                      since=args.since,page=args.page,page_size=args.page_size)
