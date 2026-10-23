@@ -1,0 +1,86 @@
+name: Lane B independent EPA index artifact replay
+on:
+  workflow_dispatch:
+    inputs:
+      producer_run_id:
+        description: "Successful Lane B official archives run number containing manifests and index parts"
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+jobs:
+  verify_artifact_replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    strategy:
+      fail-fast: false
+      matrix:
+        source: [echo, rcra]
+    env:
+      PRODUCER_RUN: ${{ inputs.producer_run_id }}
+      SOURCE: ${{ matrix.source }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download exactly the producer's provenance manifests
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ inputs.producer_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          name: lane-b-${{ matrix.source }}-complete-manifests
+          path: ${{ runner.temp }}/replay/meta
+      - name: Download source-specific published chunks from producer run
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ inputs.producer_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: lane-b-${{ matrix.source }}-index-part-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/replay/parts
+      - name: Reassemble independent cryptographic chain without copying 13GB into production
+        run: |
+          set -euo pipefail
+          ls -l "$RUNNER_TEMP/replay/meta"
+          ls -lh "$RUNNER_TEMP/replay/parts"
+          python - <<'PY'
+          import json,os,pathlib
+          root=pathlib.Path(os.environ["RUNNER_TEMP"])/"replay"
+          meta=json.loads((root/"meta"/(os.environ["SOURCE"]+".manifest.json")).read_text())
+          parts=json.loads((root/"meta"/"chunk-manifest.json").read_text())
+          assert meta["source"]==parts["source"]==os.environ["SOURCE"]
+          assert meta["index_sha256"]==parts["sqlite_sha256"]
+          assert meta["archive_sha256"]==parts["source_archive_sha256"]
+          assert meta["indexed_rows"]==parts["indexed_rows"]>0
+          assert meta["rejected_rows"]==parts["rejected_rows"]
+          assert meta["index_bytes"]==parts["sqlite_bytes"]
+          assert meta["deployment_state"]==parts["deployment_state"]=="NOT_DEPLOYED"
+          assert len(parts["chunks"])>0
+          print("METADATA_AND_ARTIFACT_CHAIN_MATCH",os.environ["SOURCE"],meta["indexed_rows"],len(parts["chunks"]))
+          PY
+          python -m scripts.lane_b_epa.chunk_index restore --chunks-manifest "$RUNNER_TEMP/replay/meta/chunk-manifest.json" --parts "$RUNNER_TEMP/replay/parts" --verify-only > "$RUNNER_TEMP/replay/verified.json"
+          python - <<'PY'
+          import json,os,pathlib
+          base=pathlib.Path(os.environ["RUNNER_TEMP"])/"replay"
+          m=json.loads((base/"meta"/(os.environ["SOURCE"]+".manifest.json")).read_text())
+          verified=json.loads((base/"verified.json").read_text())
+          assert verified["sqlite_sha256"]==m["index_sha256"]
+          assert verified["sqlite_bytes"]==m["index_bytes"]
+          assert verified["indexed_rows"]==m["indexed_rows"]
+          assert verified["verified_only"] and verified["deployment_state"]=="NOT_DEPLOYED"
+          audit={"source":os.environ["SOURCE"],"producer_run_id":os.environ["PRODUCER_RUN"],
+                 "source_downloaded_rows":m["scanned_rows"],
+                 "accepted_normalized_rows":m["accepted_rows"],
+                 "indexed_staging_rows":m["indexed_rows"],
+                 "rejected_rows":m["rejected_rows"],"deployed_rows":0,
+                 "source_archive_sha256":m["archive_sha256"],
+                 "reconstructed_index_sha256":verified["sqlite_sha256"],
+                 "complete_independent_artifact_replay":True}
+          (base/"artifact_replay.json").write_text(json.dumps(audit,indent=2)+"\n")
+          print(json.dumps(audit,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: lane-b-${{ matrix.source }}-independent-replay-evidence
+          path: ${{ runner.temp }}/replay/artifact_replay.json
+          retention-days: 14
