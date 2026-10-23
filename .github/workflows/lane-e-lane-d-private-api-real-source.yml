@@ -9,6 +9,7 @@ on:
       - facilityrisk/lane_d/install_source_index.py
       - facilityrisk/app.py
       - tests/test_lane_d_private_api.py
+      - scripts/verify_lane_d_live_service.py
       - compose.yaml
       - .env.example
       - .github/workflows/lane-e-lane-d-private-api-real-source.yml
@@ -227,6 +228,8 @@ jobs:
           print("REAL OFFICIAL SOURCE -> PRIVATE READONLY AUTH HTTP VALIDATED:",
                 {k:v for k,v in report.items() if "sha256" not in k})
           PY
+          FIPS=$(python -c 'import json;print(json.load(open("/tmp/lane-e/coordinator_backend_acceptance.json"))["pnnl_county_fips_query"])')
+          python scripts/verify_lane_d_live_service.py             --base-url http://127.0.0.1:8891 --county-fips "$FIPS"             --output /tmp/lane-e/live_http_verification.json
       - name: Publish aggregate-only backend acceptance evidence, no large source DB
         if: always()
         uses: actions/upload-artifact@v4
@@ -236,6 +239,7 @@ jobs:
           if-no-files-found: warn
           path: |
             /tmp/lane-e/coordinator_backend_acceptance.json
+            /tmp/lane-e/live_http_verification.json
       - name: Remove ephemeral original source and staged research files
         if: always()
         shell: bash
