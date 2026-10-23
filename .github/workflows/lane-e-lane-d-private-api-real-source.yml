@@ -1,0 +1,244 @@
+name: Coordinator Lane D real-source private API integration
+
+on:
+  push:
+    branches:
+      - integrate/lane-d-private-serving-20261023
+    paths:
+      - facilityrisk/lane_d/private_api.py
+      - facilityrisk/lane_d/install_source_index.py
+      - facilityrisk/app.py
+      - tests/test_lane_d_private_api.py
+      - compose.yaml
+      - .env.example
+      - .github/workflows/lane-e-lane-d-private-api-real-source.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-to-private-api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install backend and original government workbook parser
+        run: python -m pip install -r requirements-dev.txt
+      - name: Run authenticated API and no-site-linking regressions
+        run: python -m pytest -q tests/test_lane_d_private_api.py
+      - name: Retrieve exact officially published 2025 EIA and 2014-2023 DOE PNNL originals
+        shell: bash
+        run: |
+          mkdir -p /tmp/lane-e/inputs /tmp/lane-e/transfers /tmp/lane-e/live/lane-d /tmp/lane-e/workspace
+          curl --fail --location --retry 3 --retry-delay 4 --connect-timeout 30 --max-time 360 \
+            --user-agent 'FacilityRiskCoordinator/1.0 source-integrity integration test' \
+            https://www.eia.gov/electricity/data/eia861/zip/f8612025.zip \
+            --output /tmp/lane-e/inputs/eia2025.zip
+          curl --fail --location --retry 3 --retry-delay 4 --connect-timeout 30 --max-time 360 \
+            --user-agent 'FacilityRiskCoordinator/1.0 source-integrity integration test' \
+            https://data.openei.org/files/6458/Outage_Dataset_R1.zip \
+            --output /tmp/lane-e/inputs/pnnl2014-2023.zip
+          printf '%s\n' 'f59f6c732bf685fe0a1591b32227f5ce572dc0dfd26bb5caaeed128ac4e3a396  /tmp/lane-e/inputs/eia2025.zip' \
+             '44557bae7a5c8e02c611a14f75fe9e123d81d286f700b9fd88ac538edd910fe7  /tmp/lane-e/inputs/pnnl2014-2023.zip' \
+             | sha256sum --check
+      - name: Build source-preserving original EIA-861 and full 50-table PNNL source indexes
+        run: |
+          python -m facilityrisk.lane_d.ingest_eia861 \
+            --year 2025 --zip /tmp/lane-e/inputs/eia2025.zip \
+            --output /tmp/lane-e/staged-eia > /tmp/lane-e/eia-build-output.json
+          python -m facilityrisk.lane_d.ingest_pnnl_county_outages \
+            --zip /tmp/lane-e/inputs/pnnl2014-2023.zip \
+            --output /tmp/lane-e/staged-pnnl > /tmp/lane-e/pnnl-build-output.json
+      - name: Build official ORNL published public-domain DOE OE417 annual index
+        run: |
+          python -m facilityrisk.lane_d.ingest_oe417_annual \
+            --output /tmp/lane-e/staged-oe417 > /tmp/lane-e/oe417-build-output.json
+      - name: Independently reconcile original publisher hashes and build transport receipts
+        shell: bash
+        run: |
+          python - <<'PY'
+          import hashlib, json, pathlib, sqlite3
+          root = pathlib.Path("/tmp/lane-e")
+          specs = [
+              ("eia861_2025", "staged-eia", "lane_d_eia861_staging.sqlite", "accepted", 12923,
+               3, "f59f6c732bf685fe0a1591b32227f5ce572dc0dfd26bb5caaeed128ac4e3a396"),
+              ("pnnl_2014_2023", "staged-pnnl", "pnnl_county_outage_staging.sqlite", "accepted", 2124183,
+               0, "44557bae7a5c8e02c611a14f75fe9e123d81d286f700b9fd88ac538edd910fe7"),
+              ("oe417_annual_public", "staged-oe417", "oe417_annual_staging.sqlite", "normalized_accepted", 341,
+               0, "5329d272544e9164692f08b34a5079d3f89a2095f1a77a8fa8dfca8923b06d18"),
+          ]
+          for dataset, folder, name, count_key, count, reject, expected_sha in specs:
+              source = root / folder
+              m = json.loads((source/"manifest.json").read_text())
+              db_path = source / name
+              with sqlite3.connect(db_path) as db:
+                  assert db.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+                  assert db.execute("SELECT COUNT(*) FROM source_observations").fetchone()[0] == count
+              assert m[count_key] == count and m["rejected"] == reject
+              sha = hashlib.sha256(db_path.read_bytes()).hexdigest()
+              receipt = {"deployed": 0}
+              if dataset == "eia861_2025":
+                  assert m["archive_sha256"] == expected_sha
+                  receipt.update(original_zip_sha256=expected_sha, local_index_sha256=sha,
+                                 local_index_rows=count, local_index_bytes=db_path.stat().st_size)
+              elif dataset == "pnnl_2014_2023":
+                  assert m["archive_sha256"] == expected_sha
+                  assert m["exact_duplicate_source_rows_within_same_table"] == 277360
+                  receipt.update(source_zip_sha256=expected_sha, staged_sqlite_sha256=sha,
+                                 sqlite_rows_verified=count, staged_sqlite_bytes=db_path.stat().st_size)
+              else:
+                  assert m["downloaded_original_export_sha256"] == expected_sha
+                  assert m["metadata_declared_license"] == "Public Domain"
+                  receipt.update(original_json_sha256=expected_sha, staged_sqlite_sha256=sha,
+                                 indexed_source_rows=count, staged_sqlite_bytes=db_path.stat().st_size)
+              (source/"coordinator_handoff.json").write_text(json.dumps(receipt, indent=2)+"\n")
+              print(dataset, "original SHA OK, real source accepted", count,
+                    "rejected", reject, "index SHA", sha)
+          PY
+      - name: Copy complete source-only transport bundles into a separate storage namespace
+        shell: bash
+        run: |
+          mkdir -p /tmp/lane-e/transfers/eia /tmp/lane-e/transfers/pnnl /tmp/lane-e/transfers/oe417
+          cp /tmp/lane-e/staged-eia/lane_d_eia861_staging.sqlite /tmp/lane-e/transfers/eia/
+          cp /tmp/lane-e/staged-eia/manifest.json /tmp/lane-e/staged-eia/coordinator_handoff.json /tmp/lane-e/transfers/eia/
+          cp /tmp/lane-e/staged-pnnl/pnnl_county_outage_staging.sqlite /tmp/lane-e/transfers/pnnl/
+          cp /tmp/lane-e/staged-pnnl/manifest.json /tmp/lane-e/staged-pnnl/coordinator_handoff.json /tmp/lane-e/transfers/pnnl/
+          cp /tmp/lane-e/staged-oe417/oe417_annual_staging.sqlite /tmp/lane-e/transfers/oe417/
+          cp /tmp/lane-e/staged-oe417/manifest.json /tmp/lane-e/staged-oe417/coordinator_handoff.json /tmp/lane-e/transfers/oe417/
+      - name: Atomically install 3 real government index families into independent private-readonly source root
+        shell: bash
+        run: |
+          python -m facilityrisk.lane_d.install_source_index install \
+            --bundle /tmp/lane-e/transfers/eia --dest /tmp/lane-e/live/lane-d \
+            --dataset eia861_2025 \
+            --source-sha256 f59f6c732bf685fe0a1591b32227f5ce572dc0dfd26bb5caaeed128ac4e3a396 \
+            > /tmp/lane-e/receipt-eia.json
+          python -m facilityrisk.lane_d.install_source_index install \
+            --bundle /tmp/lane-e/transfers/pnnl --dest /tmp/lane-e/live/lane-d \
+            --dataset pnnl_2014_2023 \
+            --source-sha256 44557bae7a5c8e02c611a14f75fe9e123d81d286f700b9fd88ac538edd910fe7 \
+            > /tmp/lane-e/receipt-pnnl.json
+          python -m facilityrisk.lane_d.install_source_index install \
+            --bundle /tmp/lane-e/transfers/oe417 --dest /tmp/lane-e/live/lane-d \
+            --dataset oe417_annual_public \
+            --source-sha256 5329d272544e9164692f08b34a5079d3f89a2095f1a77a8fa8dfca8923b06d18 \
+            > /tmp/lane-e/receipt-oe417.json
+          for dataset in eia861_2025 pnnl_2014_2023 oe417_annual_public; do
+            python -m facilityrisk.lane_d.install_source_index verify \
+              --dest /tmp/lane-e/live/lane-d --dataset "$dataset" > /dev/null
+          done
+      - name: Start localhost-only authenticated FastAPI process and validate actual source-index HTTP
+        shell: bash
+        run: |
+          export FACILITY_RISK_REQUIRE_AUTH=1
+          export FACILITY_RISK_AUTH_TOKEN=$(python -c 'import secrets; print(secrets.token_urlsafe(48))')
+          export FACILITY_RISK_LANE_D_INDEX_ROOT=/tmp/lane-e/live/lane-d
+          export FACILITY_RISK_DB=/tmp/lane-e/workspace/research.sqlite
+          export FACILITY_RISK_LANE_D_ODIN_USE_APPROVED=0
+          export FACILITY_RISK_ENABLE_WRITES=0
+          python -m uvicorn facilityrisk.app:app --host 127.0.0.1 --port 8891 \
+            > /tmp/lane-e/private-http-server.log 2>&1 &
+          APP_PID=$!
+          trap 'kill "$APP_PID" 2>/dev/null || true' EXIT
+          python - <<'PY'
+          import os, json, pathlib, sqlite3, time
+          from urllib.request import Request, urlopen
+          from urllib.error import HTTPError
+          base = "http://127.0.0.1:8891"
+          token = os.environ["FACILITY_RISK_AUTH_TOKEN"]
+          def call(path, auth=True):
+              req = Request(base + path, headers=(
+                  {"Authorization": "Bearer " + token} if auth else {}))
+              try:
+                  with urlopen(req, timeout=180) as response:
+                      return response.status,json.load(response)
+              except HTTPError as error:
+                  return error.code,json.load(error)
+          for _ in range(45):
+              try:
+                  if call("/api/health", auth=False)[0]==200:
+                      break
+              except Exception:
+                  time.sleep(1)
+          else: raise RuntimeError("Private auth backend did not boot on loopback")
+          assert call("/api/source-context/lane-d/status", auth=False)[0]==401
+          assert call("/api/source-indices/status", auth=False)[0]==401
+          code, status = call("/api/source-context/lane-d/status")
+          assert code==200
+          expected={"eia861_2025":12923,"pnnl_2014_2023":2124183,"oe417_annual_public":341}
+          for key, count in expected.items():
+              row=status["datasets"][key]
+              assert row["state"]=="verified_private_source_index"
+              assert row["indexed_private_readonly_rows"]==count
+              assert row["verified_insured_site_utility_connections"]==0
+              assert row["verified_insured_facility_outages"]==0
+          assert status["datasets"]["odin_direct_public"]["state"]=="not_installed"
+          code,eia=call("/api/source-context/utility-candidates?state=WA&county=Pierce&limit=25")
+          assert code==200 and eia["data"]["source_territory_observations"]==15
+          assert not eia["insured_site_service_connection_verified"]
+          pnnl_db=pathlib.Path("/tmp/lane-e/live/lane-d")
+          pnnl_version=json.loads((pnnl_db/"pnnl_2014_2023"/"current.json").read_text())
+          pnnl_index=pnnl_db/"pnnl_2014_2023"/pnnl_version["relative_db"]
+          with sqlite3.connect(f"file:{pnnl_index}?mode=ro&immutable=1",uri=True) as db:
+              fips, count = db.execute("""SELECT county_fips, count(*) AS n
+                  FROM source_observations
+                  WHERE source_kind='county_episode' AND county_fips IS NOT NULL
+                  GROUP BY county_fips ORDER BY n DESC LIMIT 1""").fetchone()
+          assert count>0 and len(fips)==5
+          code, historic = call(f"/api/source-context/historical-outages?county_fips={fips}&limit=10")
+          assert code==200 and historic["data"]["candidate_counts"]["pnnl_historical_county_episodes"]==count
+          assert all(not item["insured_facility_outage_verified"]
+                     for item in historic["data"]["returned_findings"])
+          code, oe = call("/api/source-context/annual-electric-disturbances?year=2023&limit=10")
+          assert code==200 and oe["data"]["matching_content_distinct_source_rows"]==309
+          assert not oe["insured_site_outage_verified"]
+          assert call("/api/source-context/current-outages?county_fips=01001")[0]==503
+          assert call("/api/source-context/historical-outages?county_fips=wrong")[0]==422
+          assert status["confirmed_paid_insurance_claims"]==0
+          report={
+              "execution_context":"GITHUB_HOSTED_EPHEMERAL_LOOPBACK_NOT_DURABLE_PRODUCTION",
+              "real_official_sources_readonly_api_http_verified":True,
+              "authenticated_http_without_token_status":401,
+              "authenticated_http_source_status":200,
+              "source_index_families_originally_downloaded_and_served":expected,
+              "eia_pierce_native_utility_candidates":15,
+              "pnnl_county_fips_query":fips,
+              "pnnl_original_county_episode_rows":count,
+              "annual_doe_oe417_reported_2023":309,
+              "original_outage_record_as_insured_property":False,
+              "independent_carrier_claims_verified":0,
+              "independently_verified_facility_outages":0,
+              "durable_production_backend_installed":0,
+              "public_github_pages_deployed_source_rows":0,
+              "private_backend_persistent_disk_provisioned":False,
+          }
+          for src in ("eia","pnnl","oe417"):
+              receipt=json.loads(pathlib.Path("/tmp/lane-e/receipt-"+src+".json").read_text())
+              assert receipt["verified_application_deployment"] is False
+              report["installed_"+src+"_source_sha256"]=receipt["source_archive_sha256"]
+              report["installed_"+src+"_sqlite_sha256"]=receipt["index_sha256"]
+          pathlib.Path("/tmp/lane-e/coordinator_backend_acceptance.json").write_text(
+              json.dumps(report,indent=2)+"\n")
+          print("REAL OFFICIAL SOURCE -> PRIVATE READONLY AUTH HTTP VALIDATED:",
+                {k:v for k,v in report.items() if "sha256" not in k})
+          PY
+      - name: Publish aggregate-only backend acceptance evidence, no large source DB
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-e-lane-d-private-auth-api-real-source-qa
+          retention-days: 7
+          if-no-files-found: warn
+          path: |
+            /tmp/lane-e/coordinator_backend_acceptance.json
+      - name: Remove ephemeral original source and staged research files
+        if: always()
+        shell: bash
+        run: |
+          rm -rf /tmp/lane-e/inputs /tmp/lane-e/staged-eia /tmp/lane-e/staged-pnnl \
+            /tmp/lane-e/staged-oe417 /tmp/lane-e/transfers /tmp/lane-e/live /tmp/lane-e/workspace
+          echo 'Ephemeral runner source rows and SQLite deleted after QA; production indexes still require actual private persistent host'
