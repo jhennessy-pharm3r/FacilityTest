@@ -1,0 +1,24 @@
+name: Lane B public EPA RMP FRS source discovery
+on:
+  push:
+    branches: ['ingest/epa-echo-tri-rcra-rmp-lane-b-20261023']
+    paths: ['.github/workflows/lane-b-rmp-discovery.yml']
+  workflow_dispatch:
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect public EPA GeoPlatform RMP FRS interests metadata (no restricted RMP data)
+        run: |
+          python - <<'PY'
+          import json,urllib.request
+          base='https://services.arcgis.com/cJ9YHowT8TU7DUyn/arcgis/rest/services/FRS_INTERESTS_RMP/FeatureServer'
+          for part in ('','/0'):
+              url=base+part+'?f=json'
+              with urllib.request.urlopen(urllib.request.Request(url,headers={'User-Agent':'FacilityTest-LaneB/1.0'}),timeout=45) as r:
+                  data=json.load(r)
+              print('RESOURCE',part or 'root', json.dumps({'error':data.get('error'),'layers':data.get('layers'),'name':data.get('name'),'fields':[f['name'] for f in data.get('fields',[])],'capabilities':data.get('capabilities'),'maxRecordCount':data.get('maxRecordCount')},sort_keys=True))
+              if data.get('error'):raise SystemExit(1)
+          PY
