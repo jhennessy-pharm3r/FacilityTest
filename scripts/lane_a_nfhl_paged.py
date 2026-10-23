@@ -278,9 +278,9 @@ def run(outdir, fetch=query_http, windows=None, *, max_ids_per_window=250,
                     if not isinstance(feats, list):
                         raise ValueError("Official batch missing feature list")
                     actual = {f.get("attributes", {}).get("OBJECTID") for f in feats}
-                    if actual != set(subset):
+                    if actual != set(chunk_receipt["requested_objectids"]):
                         raise ValueError("Missing/extra OBJECTIDs in batch: expected " +
-                                         repr(subset) + " got " + repr(sorted(actual)))
+                                         repr(chunk_receipt["requested_objectids"]) + " got " + repr(sorted(actual)))
                     for feature in feats:
                         attrs = feature["attributes"]
                         key = source_key(attrs)
@@ -301,13 +301,13 @@ def run(outdir, fetch=query_http, windows=None, *, max_ids_per_window=250,
                                  attrs.get("SFHA_TF"), attrs.get("SOURCE_CIT"),
                                  attrs.get("VERSION_ID"), packed,
                                  datetime.now(timezone.utc).isoformat(),
-                             chunk_receipt["sha256"],
-                             chunk_receipt["geometry_tolerance_degrees"]))
+                                 chunk_receipt["sha256"],
+                                 chunk_receipt["geometry_tolerance_degrees"]))
                             db.execute("INSERT INTO fema_source_bounds VALUES(?,?,?,?,?)",
                                        (cur.lastrowid, bounds[0], bounds[2], bounds[1], bounds[3]))
                         db.execute("INSERT OR IGNORE INTO fema_window_membership VALUES(?,?)", (name, key))
-                    if chunk_receipt["geometry_tolerance_degrees"]:
-                        win["simplified_geometry_records"] += 1
+                        if chunk_receipt["geometry_tolerance_degrees"]:
+                            win["simplified_geometry_records"] += 1
                         citation = str(attrs.get("SOURCE_CIT") or "MISSING")
                         win["source_citations"][citation] = win["source_citations"].get(citation, 0) + 1
             win["retrieved_ids"] = len(observed)
