@@ -267,10 +267,13 @@ def render_assessment_html(report,*,private_backend=False):
              '</td><td>'+e(x['current_source_rows'])+'</td><td>'+
              e(x['interpretation'])+'</td></tr>')
     interruption_rows=rows(report.get('interruption_scenarios',{}).get('scenarios',[]),
-        lambda x:'<tr><td>'+e(x['scenario_name'])+'</td><td>'+e(x['interruption_cause'])+
-          ' / '+e(x['affected_dependency'])+'</td><td>'+
-          e(x['illustration']['equivalent_lost_operating_days'])+'</td><td>
-          lambda asset:'<tr><td>'+e(asset['asset_type'])+'</td><td>'+e(asset['name'])+
+        lambda x:'<tr><td>'+e(x['scenario_name'])+'</td><td>'+
+          e(x['interruption_cause'])+' / '+e(x['affected_dependency'])+'</td><td>'+
+          e(x['illustration']['equivalent_lost_operating_days'])+'</td><td>$'+
+          e(x['illustration']['illustrative_lost_contribution_margin_usd'])+
+          ' (unverified, not insurer recovery)</td></tr>')
+    asset_rows=rows(report.get('physical_assets',{}).get('assets',[]),
+        lambda asset:'<tr><td>'+e(asset['asset_type'])+'</td><td>'+e(asset['name'])+
           '</td><td>'+e(asset['address'])+'</td><td>'+e(asset['status'])+
           '; point '+e(asset['coordinate_quality'])+'</td></tr>')
     actions=''.join('<li>'+e(a)+'</li>' for a in report['recommended_actions']) or '<li>No additional actions listed</li>'
