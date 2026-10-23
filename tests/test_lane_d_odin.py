@@ -35,6 +35,14 @@ class ODINTests(unittest.TestCase):
         self.assertIsNone(a[1]["reported_meters_affected"])
         self.assertEqual(a[0]["native_incident_id"],"EVT-02")
 
+    def test_missing_timestamp_is_unknown_not_fabricated_outage_time(self):
+        a,b,q=parse(json.dumps([rec(reportedstarttime=None),rec(reportedstarttime="")]).encode(),
+                    "2026-10-23T15:00:00Z")
+        self.assertEqual((len(a),len(b),q["missing_reported_start"]),(2,0,2))
+        self.assertTrue(all(x["reported_start_time"] is None for x in a))
+        self.assertTrue(all(x["reported_start_status"]=="NOT_REPORTED" for x in a))
+        self.assertFalse(any(x["facility_outage_verified"] for x in a))
+
     def test_invalid_rows_rejected_keeping_raw(self):
         data=[rec(),rec(communitydescriptor="123"),rec(metersaffected=-2),
               rec(utility_id=""),rec(reportedstarttime="bad"),{"other":"data"},3]
