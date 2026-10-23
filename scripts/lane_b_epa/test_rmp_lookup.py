@@ -3,6 +3,22 @@ from pathlib import Path
 from scripts.lane_b_epa.rmp_public import import_public
 from scripts.lane_b_epa.rmp_lookup import lookup,status,InvalidRMPIndex
 class PublicRMPIndexTests(unittest.TestCase):
+    def test_deterministic_raw_frs_rmp_order(self):
+        def source(reverse):
+            def fetch(p):
+                if "returnCountOnly" in p:return {"count":3}
+                if "returnIdsOnly" in p:return {"objectIds":[3,1,2]}
+                values=[int(v) for v in p["objectIds"].split(",")]
+                if reverse:values=list(reversed(values))
+                return {"features":[{"attributes":{"OBJECTID":v,"REGISTRY_ID":str(v),"PGM_SYS_ID":"RMP"+str(v),
+                            "STATE_CODE":"ME","LATITUDE83":44,"LONGITUDE83":-69}} for v in values]}
+            return fetch
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d)
+            a=import_public(root/"a",fetch=source(False),page_size=3)
+            b=import_public(root/"b",fetch=source(True),page_size=3)
+            self.assertEqual(a["raw_jsonl_sha256"],b["raw_jsonl_sha256"])
+            self.assertEqual(a["index_sha256"],b["index_sha256"])
     def test_readonly_public_program_id_lookups_and_verification(self):
         def fake(p):
             if "returnCountOnly" in p:return {"count":2}
