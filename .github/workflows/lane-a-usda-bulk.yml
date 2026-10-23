@@ -10,6 +10,9 @@ on:
       - 'scripts/verify_lane_a_whp_index.py'
       - 'tests/test_lane_a_whp_summary.py'
       - 'tests/test_lane_a_whp_summaries_index.py'
+      - 'facilityrisk/lane_a_source_query.py'
+      - 'tests/test_lane_a_source_query.py'
+      - 'scripts/lane_a_source_query_smoke.py'
       - '.github/workflows/lane-a-usda-bulk.yml'
 permissions:
   contents: read
@@ -30,6 +33,8 @@ jobs:
         run: python -m scripts.lane_a_whp_summaries_index --source data/lane_a/whp_official_summary/whp2023_official_summaries.zip --out-dir data/lane_a/whp_official_index
       - name: Independently rehash ZIP XLSX gzip and query SQLite
         run: python -m scripts.verify_lane_a_whp_index --source data/lane_a/whp_official_summary/whp2023_official_summaries.zip --index-dir data/lane_a/whp_official_index
+      - name: Smoke-test read-only exact native county state ZIP and management source identities
+        run: python -m scripts.lane_a_source_query_smoke --index data/lane_a/whp_official_index/whp2023-source-geographies.sqlite --receipt data/lane_a/whp_official_index/read_only_query_smoke.json
       - name: Archive real official source, normalized records, queries and manifests
         if: always()
         uses: actions/upload-artifact@v4
