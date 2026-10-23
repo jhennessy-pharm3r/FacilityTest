@@ -91,7 +91,7 @@
     const stages = {sample_ci_indexed:'Sample indexed in CI',ci_indexed:'Indexed in CI',staged_normalized:'Normalized, not indexed',downloaded_qa:'Official records QA',access_blocked:'Official access blocked'};
     const rows = summary.lanes.flatMap(lane => lane.sources.map(source => {
       const coords = source.valid_coordinates == null ? '' : ' · Source coordinates: ' + amount(source.valid_coordinates);
-      return `<tr><td><strong>${esc(source.name)}</strong><small>${esc(lane.name)} · ${esc(source.scope)}</small></td>`+
+      return `<tr class="parallel-source-row" data-lane="${esc(lane.id)}" data-stage="${esc(source.stage)}"><td><strong>${esc(source.name)}</strong><small>${esc(lane.name)} · ${esc(source.scope)}</small></td>`+
         `<td><span class="pill ${source.stage === 'access_blocked' ? 'orange' : 'gray'}">${esc(stages[source.stage]||'Unknown')}</span></td>`+
         `<td>${amount(source.scanned)}</td><td>${amount(source.accepted)}</td><td>${amount(source.rejected)}</td>`+
         `<td>${amount(source.indexed_ci)}</td><td><strong>${amount(source.deployed)}</strong></td>`+
@@ -99,13 +99,32 @@
     })).join('');
     const laneRows = summary.lanes.map(lane => `<div class="qa-box"><span class="title">Lane ${esc(lane.id)} · ${esc(lane.name)}</span>`+
       `<b>${lane.sources.length} source streams</b><span>${esc(lane.gate)}</span></div>`).join('');
+    const allStreams = summary.lanes.flatMap(lane=>lane.sources);
+    const indexReady = allStreams.filter(s=>['ci_indexed','sample_ci_indexed'].includes(s.stage)).length;
+    const sourceBlocked = allStreams.filter(s=>s.stage==='access_blocked').length;
+    const inApp = allStreams.filter(s=>s.deployed>0).length;
+    const summaryMetrics = '<div class="qa-grid">' + [
+      ['Documented source streams', allStreams.length, 'Four official-source ingestion lanes'],
+      ['Indexed in temporary CI', indexReady, 'Not queryable in the published app'],
+      ['Official access blocked', sourceBlocked, 'Publisher access; unknown underlying totals'],
+      ['Live production streams', inApp, 'No verified new-source production service']
+    ].map(item=>'<div class="qa-box"><span class="title">'+esc(item[0])+'</span><b>'+
+      Number(item[1]).toLocaleString('en-US')+'</b><span>'+esc(item[2])+'</span></div>').join('')+'</div>';
+    const laneOptions = summary.lanes.map(l=>'<option value="'+esc(l.id)+'">Lane '+esc(l.id)+' — '+esc(l.name)+'</option>').join('');
+    const sourceFilters = '<div class="filters"><div class="left"><select class="select" id="parallel-lane-filter" aria-label="Filter ingestion by lane">'+
+      '<option value="">All source lanes</option>'+laneOptions+'</select>'+
+      '<select class="select" id="parallel-stage-filter" aria-label="Filter ingestion by stage">'+
+      '<option value="">All source stages</option><option value="indexed">Temporarily CI indexed</option>'+
+      '<option value="access_blocked">Official access blocked</option></select></div>'+
+      '<small id="parallel-visible-count">'+allStreams.length+' source streams</small></div>';
+
     const ageDays = (Date.now() - Date.parse(summary.as_of + 'T23:59:59Z')) / 86400000;
     const stale = !Number.isFinite(ageDays) || ageDays > 3;
     return card(`${title('Parallel-source ingestion progress','Real official-source QA from four separate lanes; not a deployed facility-risk dataset')}`+
       `<div class="intel-card-body"><p><strong>Source results as of ${esc(summary.as_of)}${stale?' (snapshot older than 72 hours)':''}.</strong> All four draft lanes remain outside the persistent, authenticated facility service. CI-only indexes and regulatory source observations cannot be interpreted as verified insured properties or hazard assessments.</p>`+
       `<p>${safeLink(summary.coordination_issue,'Coordination and latest progress')} · Each source row links its underlying official-source workflow and draft PR. Unknown source counts are not zero events.</p>`+
-      `<div class="qa-grid">${laneRows}</div></div>`+
-      `<div class="table-wrap"><table><thead><tr><th>Source and scope</th><th>Stage</th><th>Scanned</th><th>Accepted</th><th>Rejected</th><th>CI indexed</th><th>App deployed</th><th>Evidence and limitations</th></tr></thead><tbody>${rows}</tbody></table></div>`+
+      `${summaryMetrics}<div class="qa-grid">${laneRows}</div></div>`+
+      `${sourceFilters}<div class="table-wrap"><table><thead><tr><th>Source and scope</th><th>Stage</th><th>Scanned</th><th>Accepted</th><th>Rejected</th><th>CI indexed</th><th>App deployed</th><th>Evidence and limitations</th></tr></thead><tbody>${rows}</tbody></table></div>`+
       `<div class="intel-card-body"><strong>Deployment gate:</strong> no Lane A–D source has authenticated persistent serving, independently approved physical-site matching, or confirmed loss/claims linkage. Record grain differs by publisher; never sum these rows into a facility count.</div>`);
   }
   function feedsPage(src,checks,extended=[],ledger=[],generatedAt=null,runUrl='',mounted=null,parallel=null){
@@ -167,6 +186,24 @@
           try{mounted=await api('source-indices/status');}catch(e){/* Private sidecars may not exist on older backends. */}
         }
         root.innerHTML=feedsPage(intel.source_catalog||[],intel.source_health||[],extra,intel.ingestions||[],intel.public_status_generated_at,intel.source_run_url,mounted,intel.parallel_ingestion||null);
+        const laneFilter=root.querySelector('#parallel-lane-filter');
+        const stageFilter=root.querySelector('#parallel-stage-filter');
+        const applyParallelFilters=()=>{
+          const rows=Array.from(root.querySelectorAll('tr.parallel-source-row'));
+          let visible=0;
+          for (const tr of rows) {
+            const laneOK=!laneFilter?.value||tr.dataset.lane===laneFilter.value;
+            const stageOK=!stageFilter?.value||(stageFilter.value==='indexed'?
+              ['ci_indexed','sample_ci_indexed'].includes(tr.dataset.stage):tr.dataset.stage===stageFilter.value);
+            const show=laneOK&&stageOK;
+            tr.style.display=show?'':'none';
+            if(show)visible++;
+          }
+          const counter=root.querySelector('#parallel-visible-count');
+          if(counter)counter.textContent=visible+' of '+rows.length+' source streams';
+        };
+        laneFilter?.addEventListener('change',applyParallelFilters);
+        stageFilter?.addEventListener('change',applyParallelFilters);
       }
     }catch(e){if(root.isConnected)root.innerHTML=`<div class="loading-card">Unable to load research panel: ${esc(e.message)}</div>`;}
   }
