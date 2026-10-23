@@ -1,0 +1,75 @@
+name: Lane D - First-party ORNL ODIN public county outage ingestion
+
+on:
+  push:
+    branches:
+      - ingest/eia861-utility-bi-lane-d-20261023
+    paths:
+      - facilityrisk/lane_d/ingest_odin_direct.py
+      - tests/test_lane_d_odin_direct.py
+      - .github/workflows/lane-d-odin-direct-ingestion.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  odin-official-direct-county:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Strict source-native identity and duplication tests
+        run: python -m unittest discover -s tests -p test_lane_d_odin_direct.py -v
+      - name: Download official non-authenticated ORNL ODIN current county outages
+        run: |
+          python -m facilityrisk.lane_d.ingest_odin_direct \
+            --output /tmp/lane-d/odin-direct
+      - name: Independently reconcile original first-party CIM JSON and SQLite
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json,pathlib,hashlib,sqlite3,collections
+          root=pathlib.Path("/tmp/lane-d/odin-direct")
+          source=(root/"odin_direct_original.json").read_bytes()
+          manifest=json.loads((root/"manifest.json").read_text())
+          official=json.loads(source)["outage"]
+          assert manifest["original_https_download"] is True
+          assert len(source)==manifest["original_raw_json_bytes"]
+          assert hashlib.sha256(source).hexdigest()==manifest["original_raw_json_sha256"]
+          normalized=[json.loads(s) for s in (root/"odin_direct_accepted.jsonl").read_text().splitlines()]
+          rejected=[json.loads(s) for s in (root/"odin_direct_rejected.jsonl").read_text().splitlines()]
+          assert len(official)==len(normalized)+len(rejected)==manifest["downloaded"]
+          assert len(normalized)==manifest["normalized_accepted"]==manifest["indexed_ephemeral_local_sqlite"]
+          assert len(normalized)>0
+          assert len(rejected)==manifest["rejected"]
+          assert sum(manifest["observations"]["reject_reasons"].values())==len(rejected)
+          for row in normalized:
+              original=official[row["source_row_1based"]-1]
+              assert original==row["original_row"]
+              signature=hashlib.sha256(json.dumps(original,sort_keys=True,ensure_ascii=False,separators=(",",":")).encode()).hexdigest()
+              assert signature==row["source_row_sha256"]
+              assert row["source_native_county_fips"].isdigit() and len(row["source_native_county_fips"])==5
+              assert not row["physical_site_outage_verified"]
+              assert not row["insured_business_interruption_verified"]
+          with sqlite3.connect(root/"odin_direct_county_staging.sqlite") as db:
+              assert db.execute("PRAGMA integrity_check").fetchone()[0]=="ok"
+              assert db.execute("SELECT COUNT(*) FROM source_observations").fetchone()[0]==len(normalized)
+              assert db.execute("SELECT COUNT(*) FROM source_observations WHERE is_exact_duplicate=1").fetchone()[0]==manifest["observations"]["exact_duplicate_source_rows_in_snapshot"]
+              assert {r[0] for r in db.execute("SELECT source_row_key FROM source_observations")}=={r["source_row_key"] for r in normalized}
+          assert manifest["deployed"]==manifest["durable_indexed"]==manifest["insured_facility_outages_verified"]==0
+          print("Verified primary official ORNL feed:",len(official),"raw,",len(normalized),"accepted,",
+                len(rejected),"rejected; county codes",manifest["observations"]["distinct_native_county_fips"],
+                "native EIA utility identifiers",manifest["observations"]["distinct_source_eia_utility_ids"])
+          PY
+      - name: Publish first-party source provenance only, no raw external distributor material
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-d-ornl-firstparty-odin-county-manifest
+          retention-days: 7
+          if-no-files-found: warn
+          path: /tmp/lane-d/odin-direct/manifest.json
