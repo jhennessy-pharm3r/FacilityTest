@@ -7,7 +7,8 @@ class ChunkStagingTests(unittest.TestCase):
     def test_roundtrip_real_sqlite_and_tampered_part_fail(self):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d);raw=root/"echo.csv"
-            raw.write_text("REGISTRY_ID,FAC_NAME,FAC_LAT,FAC_LONG\nA1,Facility,44,-69\nB2,Plant,43,-71\n")
+            raw.write_text("REGISTRY_ID,FAC_NAME,FAC_LAT,FAC_LONG\n"+
+               "".join(f"A{i},Facility-{hashlib.sha256(str(i).encode()).hexdigest()},44,-69\n" for i in range(300)))
             stage=root/"ingest"
             manifest=ingest("echo",raw,stage,source_url="https://echo.epa.gov/files/echodownloads/echo_exporter.zip")
             index=stage/"echo.sqlite"
@@ -20,7 +21,7 @@ class ChunkStagingTests(unittest.TestCase):
             summary=restore(root/"chunks"/"chunk-manifest.json",root/"chunks",restored)
             self.assertEqual(summary["sqlite_sha256"],manifest["index_sha256"])
             with sqlite3.connect(restored) as con:
-                self.assertEqual(con.execute("SELECT COUNT(*) FROM observation").fetchone()[0],2)
+                self.assertEqual(con.execute("SELECT COUNT(*) FROM observation").fetchone()[0],300)
             path=root/"chunks"/packed["chunks"][0]["file"]
             with path.open("ab") as out:out.write(b"bad")
             with self.assertRaises(ValueError):
