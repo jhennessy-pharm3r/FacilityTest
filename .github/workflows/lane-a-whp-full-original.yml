@@ -6,6 +6,8 @@ on:
     paths:
       - scripts/lane_a_whp_full_raster.py
       - tests/test_lane_a_full_whp_rasters.py
+      - tests/test_lane_a_national_whp.py
+      - facilityrisk/lane_a_national_whp.py
       - .github/workflows/lane-a-whp-full-original.yml
 permissions:
   contents: read
@@ -21,7 +23,7 @@ jobs:
       - name: Install geospatial TIFF reader from wheels
         run: python -m pip install 'rasterio>=1.4,<2' 'numpy>=1.26,<3' pytest
       - name: Validate full archive parser / source identity and install security fixtures
-        run: python -m pytest -q tests/test_lane_a_full_whp_rasters.py
+        run: python -m pytest -q tests/test_lane_a_full_whp_rasters.py tests/test_lane_a_national_whp.py
       - name: Download original USDA Forest Service six 270m national products and audit EVERY pixel
         run: |
           python -m scripts.lane_a_whp_full_raster --root "$RUNNER_TEMP/lane-a-whp2023-official" --full-audit > whp-full-raster-summary.txt
