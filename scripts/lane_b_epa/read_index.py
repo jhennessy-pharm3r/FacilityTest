@@ -102,9 +102,43 @@ def _classify(source,row):
     elif source=="tri":
         kind,dayfield,eventkey=("tri_chemical_report","1_YEAR","36_DOC_CTRL_NUM")
     else:
-        kind,dayfield,eventkey=("echo_facility_compliance_summary",None,None)
+        kind,dayfield,eventkey=("echo_facility_compliance_summary","FAC_DATE_LAST_INSPECTION",None)
     dt,precision=_date(d.get(dayfield)) if dayfield else (None,None)
     native_event=(d.get(eventkey) or "").strip() if eventkey else ""
+    if source=="rcra":
+        fields={
+            "reported_handler_name":d.get("FACILITY_NAME"),
+            "reported_enforcement_type":d.get("ENFORCEMENT_TYPE"),
+            "reported_enforcement_agency":d.get("ENFORCEMENT_AGENCY"),
+            "reported_evaluation_type":d.get("EVALUATION_TYPE"),
+            "reported_evaluation_agency":d.get("EVALUATION_AGENCY"),
+            "reported_violation_type":d.get("VIOLATION_TYPE"),
+            "reported_return_to_compliance_date":d.get("ACTUAL_RTC_DATE"),
+            "reported_generator_class":d.get("HREPORT_UNIVERSE_RECORD"),
+            "reported_enforcement_amounts_raw":{k:d[k] for k in ("PMP_AMOUNT","FMP_AMOUNT","FSC_AMOUNT","SCR_AMOUNT") if d.get(k)},
+        }
+    elif source=="tri":
+        fields={
+            "reporting_year":d.get("1_YEAR"),
+            "reported_chemical":d.get("37_CHEMICAL"),
+            "reported_chemical_identifier":d.get("39_TRI_CHEMICAL_COMPOUND_ID"),
+            "reported_cas":d.get("40_CAS"),
+            "reported_form_type":d.get("49_FORM_TYPE"),
+            "reported_unit":d.get("50_UNIT_OF_MEASURE"),
+            "total_releases_raw":d.get("107_TOTAL_RELEASES"),
+            "on_site_release_total_raw":d.get("65_ON_SITE_RELEASE_TOTAL"),
+            "off_site_release_total_raw":d.get("88_OFF_SITE_RELEASE_TOTAL"),
+            "reported_frs_identifier":d.get("3_FRS_ID"),
+        }
+    else:
+        fields={
+            "reported_facility_name":d.get("FAC_NAME"),
+            "reported_compliance_status":d.get("FAC_COMPLIANCE_STATUS"),
+            "reported_inspection_count":d.get("FAC_INSPECTION_COUNT"),
+            "reported_formal_action_count":d.get("FAC_FORMAL_ACTION_COUNT"),
+            "reported_total_penalties_raw":d.get("FAC_TOTAL_PENALTIES"),
+            "reported_program_flags":{k:d.get(k) for k in ("AIR_FLAG","NPDES_FLAG","RCRA_FLAG","TRI_FLAG")},
+        }
     return {"source":source,"source_identifier":row["source_id"],
             "activity_location":row["activity_location"] or None,
             "regulatory_observation_kind":kind,
@@ -115,6 +149,7 @@ def _classify(source,row):
             "source_table":member,"source_row_number":row["row_number"],
             "source_record_sha256":row["row_sha256"],
             "reported_latitude":row["latitude"],"reported_longitude":row["longitude"],
+            "source_reported_findings":fields,
             "raw_attributes":d,
             "interpretation":"Regulatory source observation; not physical-site match, verified damage, or insured claim"}
 
