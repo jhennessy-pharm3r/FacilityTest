@@ -269,8 +269,8 @@
    root.insertAdjacentHTML('beforeend','<div id="registry-detail-container"></div>');
    root.addEventListener('click',async e=>{
      const id=e.target.closest('[data-reg-id]')?.dataset.regId;
-     if(id){showDetail(id);if(selected)writeRegistryRoute();return;}
-     if(e.target.closest('#registry-search-button')){query=(document.getElementById('registry-query')?.value||'').trim();sector=document.getElementById('registry-sector')?.value||'';source=document.getElementById('registry-source')?.value||'';country=(document.getElementById('registry-country')?.value||'').trim().toUpperCase();page=0;selected=null;writeRegistryRoute();await search();return;}
+     if(id){clearTimeout(debounce);showDetail(id);if(selected)writeRegistryRoute();return;}
+     if(e.target.closest('#registry-search-button')){clearTimeout(debounce);query=(document.getElementById('registry-query')?.value||'').trim();sector=document.getElementById('registry-sector')?.value||'';source=document.getElementById('registry-source')?.value||'';country=(document.getElementById('registry-country')?.value||'').trim().toUpperCase();page=0;selected=null;writeRegistryRoute();await search();return;}
      if(e.target.closest('#registry-prev')){page=Math.max(0,page-1);selected=null;document.getElementById('registry-detail-container').innerHTML='';document.getElementById('registry-results').innerHTML=resultsHTML();writeRegistryRoute();return;}
      if(e.target.closest('#registry-next')){page=Math.min(Math.ceil(result.length/perPage)-1,page+1);selected=null;document.getElementById('registry-detail-container').innerHTML='';document.getElementById('registry-results').innerHTML=resultsHTML();writeRegistryRoute();return;}
      if(e.target.closest('#registry-close-detail')){selected=null;document.getElementById('registry-detail-container').innerHTML='';writeRegistryRoute();return;}
