@@ -6,6 +6,8 @@ on:
       - ingest/eia861-utility-bi-lane-d-20261023
     paths:
       - facilityrisk/lane_d/ingest_oe417_annual.py
+      - facilityrisk/lane_d/query_oe417_annual.py
+      - tests/test_lane_d_query_oe417_annual.py
       - tests/test_lane_d_oe417_annual.py
       - .github/workflows/lane-d-oe417-annual-ingestion.yml
   workflow_dispatch:
@@ -23,7 +25,9 @@ jobs:
         with:
           python-version: "3.12"
       - name: Run public-license, original-ID absence, duplicate and reject regression
-        run: python -m unittest discover -s tests -p test_lane_d_oe417_annual.py -v
+        run: |
+          python -m unittest discover -s tests -p test_lane_d_oe417_annual.py -v
+          python -m unittest discover -s tests -p test_lane_d_query_oe417_annual.py -v
       - name: Download ORIGINAL public-domain DOE CESER 2023 annual source distribution
         run: |
           python -m facilityrisk.lane_d.ingest_oe417_annual \
@@ -87,6 +91,35 @@ jobs:
               right=hashlib.sha256((b/filename).read_bytes()).hexdigest()
               assert left==right,"Nonreproducible normalized source file "+filename
               print("REPRODUCIBLE DOE OE417",filename,left)
+          PY
+      - name: Validate source-only annual event type and undated source-row query on ORIGINAL 2023 index
+        shell: bash
+        run: |
+          python - <<'PY'
+          import pathlib,json
+          from facilityrisk.lane_d.query_oe417_annual import annual_context
+          root=pathlib.Path("/tmp/lane-d/oe417-2023")
+          db=root/"oe417_annual_staging.sqlite"
+          m=json.loads((root/"manifest.json").read_text())
+          allrows=annual_context(db,limit=100)
+          dated=annual_context(db,event_year=2023,limit=100)
+          missing=annual_context(db,date_state="undated",limit=100)
+          vandalism=annual_context(db,event_type="Vandalism",limit=100)
+          expected=m["statistics"]
+          assert allrows["original_source_rows_total"]==m["original_source_rows"]
+          assert allrows["matching_content_distinct_source_rows"]==expected["content_distinct_accepted_publisher_rows"]
+          assert allrows["exact_duplicate_original_rows_withheld"]==expected["exact_duplicate_source_rows"]
+          assert missing["matching_content_distinct_source_rows"]==expected["missing_event_start_date_preserved_as_unknown"]
+          assert dated["matching_content_distinct_source_rows"]==expected["source_calendar_year_counts"]["2023"]
+          assert vandalism["matching_content_distinct_source_rows"]==expected["source_event_type_counts"]["Vandalism"]
+          assert all(r["date_status"]=="NOT_REPORTED" for r in missing["source_records"])
+          assert all(r["publisher_native_event_id"] is None for r in allrows["source_records"])
+          assert all(r["insured_site_electric_outage_verified"] is False for r in allrows["source_records"])
+          assert allrows["independently_confirmed_insurer_paid_business_interruption_claims"]==0
+          print("ACTUAL OE417 READONLY SOURCE QUERY dated",dated["matching_content_distinct_source_rows"],
+                "undated",missing["matching_content_distinct_source_rows"],
+                "Vandalism",vandalism["matching_content_distinct_source_rows"],
+                "verified site events",0)
           PY
       - name: Upload source-only published SHA provenance and original row/duplicate QA manifest
         if: always()
