@@ -36,7 +36,7 @@ def _hashfile(path):
     return digest.hexdigest()
 
 @lru_cache(maxsize=8)
-def _validated(dbpath,dbsize,dbmtime,manifestpath,mmtime,source):
+def _validated(dbpath,dbdevice,dbinode,dbsize,dbmtime,dbctime,manifestpath,mdevice,minode,msize,mmtime,mctime,source):
     db=Path(dbpath);p=Path(manifestpath)
     manifest=json.loads(p.read_text(encoding="utf-8"))
     if (manifest.get("source")!=source or manifest.get("schema_version")!=2 or
@@ -70,8 +70,10 @@ def source_status(index_path,manifest_path,source):
     if not db.is_file() or not p.is_file():raise InvalidSourceIndex("Source index and manifest must both exist")
     wal=Path(str(db)+"-wal")
     if wal.is_file() and wal.stat().st_size:raise InvalidSourceIndex("Uncheckpointed source WAL")
-    stat=db.stat()
-    return _validated(str(db),stat.st_size,stat.st_mtime_ns,str(p),p.stat().st_mtime_ns,source)
+    a,b=db.stat(),p.stat()
+    def fingerprint(stat):
+        return (stat.st_dev,stat.st_ino,stat.st_size,stat.st_mtime_ns,stat.st_ctime_ns)
+    return _validated(str(db),*fingerprint(a),str(p),*fingerprint(b),source)
 
 @contextmanager
 def open_source(index_path,manifest_path,source):
