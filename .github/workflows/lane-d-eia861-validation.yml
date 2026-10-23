@@ -70,6 +70,31 @@ jobs:
           PY
       - name: Normalize live official reliability workbook
         run: python -m facilityrisk.lane_d.ingest_eia861 --year 2025 --zip /tmp/facility-lane-d/f8612025.zip --output /tmp/facility-lane-d/normalized
+      - name: Independently verify every original workbook row against JSONL and SQLite
+        shell: bash
+        run: |
+          python -m facilityrisk.lane_d.audit_eia861 \
+            --zip /tmp/facility-lane-d/f8612025.zip \
+            --normalized /tmp/facility-lane-d/normalized \
+            --receipt /tmp/facility-lane-d/probe/source_audit_receipt.json
+      - name: Repeat official input transform and compare byte-identical normalized records
+        shell: bash
+        run: |
+          python -m facilityrisk.lane_d.ingest_eia861 \
+            --year 2025 --zip /tmp/facility-lane-d/f8612025.zip \
+            --output /tmp/facility-lane-d/second-run > /dev/null
+          python - <<'PY'
+          import hashlib, pathlib, json
+          left=pathlib.Path("/tmp/facility-lane-d/normalized")
+          right=pathlib.Path("/tmp/facility-lane-d/second-run")
+          names=("eia861_reliability.jsonl","eia861_state_total.jsonl",
+                 "eia861_service_territory.jsonl","eia861_rejected.jsonl")
+          for name in names:
+              before=hashlib.sha256((left/name).read_bytes()).hexdigest()
+              after=hashlib.sha256((right/name).read_bytes()).hexdigest()
+              assert before==after, f"Non-deterministic normalized output: {name}"
+              print(f"REPRODUCIBLE {name}: {before}")
+          PY
       - name: Publish safe manifest and schema inventory for peer validation
         if: always()
         uses: actions/upload-artifact@v4
@@ -79,6 +104,7 @@ jobs:
           if-no-files-found: warn
           path: |
             /tmp/facility-lane-d/probe/archive_inventory.json
+            /tmp/facility-lane-d/probe/source_audit_receipt.json
             /tmp/facility-lane-d/normalized/manifest.json
 
   official-eia-disturbances:
