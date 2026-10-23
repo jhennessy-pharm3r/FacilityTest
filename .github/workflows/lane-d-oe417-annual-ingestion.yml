@@ -1,0 +1,98 @@
+name: Lane D - Official public-domain DOE OE417 annual event ingestion
+
+on:
+  push:
+    branches:
+      - ingest/eia861-utility-bi-lane-d-20261023
+    paths:
+      - facilityrisk/lane_d/ingest_oe417_annual.py
+      - tests/test_lane_d_oe417_annual.py
+      - .github/workflows/lane-d-oe417-annual-ingestion.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  official-doe-oe417-2023-discovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run public-license, original-ID absence, duplicate and reject regression
+        run: python -m unittest discover -s tests -p test_lane_d_oe417_annual.py -v
+      - name: Download ORIGINAL public-domain DOE CESER 2023 annual source distribution
+        run: |
+          python -m facilityrisk.lane_d.ingest_oe417_annual \
+            --output /tmp/lane-d/oe417-2023
+      - name: Independently verify original JSON export, metadata license and every SQLite staged row
+        shell: bash
+        run: |
+          python - <<'PY'
+          import collections,hashlib,json,pathlib,sqlite3
+          root=pathlib.Path("/tmp/lane-d/oe417-2023")
+          m=json.loads((root/"manifest.json").read_text())
+          source=(root/"original_export.json").read_bytes()
+          metadata=(root/"original_metadata.json").read_bytes()
+          orig=json.loads(source)
+          meta=json.loads(metadata)
+          accepted=[json.loads(x) for x in (root/"accepted.jsonl").read_text().splitlines()]
+          rejected=[json.loads(x) for x in (root/"rejected.jsonl").read_text().splitlines()]
+          assert m["downloaded_official_original_json"]
+          assert meta["dataset_id"]=="oe-417-annual-summaries"
+          assert m["metadata_declared_license"]=="Public Domain"
+          assert m["metadata_original_sha256"]==hashlib.sha256(metadata).hexdigest()
+          assert m["downloaded_original_export_sha256"]==hashlib.sha256(source).hexdigest()
+          assert m["downloaded_original_export_bytes"]==len(source)
+          assert len(orig)==m["original_source_rows"]==len(accepted)+len(rejected)
+          assert len(orig)>=100, "Unexpectedly small public source, verify publisher scope"
+          assert len(accepted)==m["normalized_accepted"]==m["indexed_temporary_sqlite_rows"]
+          assert m["rejected"]==len(rejected)
+          assert sum(m["statistics"]["rejection_reasons"].values())==len(rejected)
+          for r in accepted:
+              original=orig[r["source_original_position_1based"]-1]
+              assert original==r["original_source_row"]
+              assert hashlib.sha256(json.dumps(original,sort_keys=True,ensure_ascii=False,separators=(",",":")).encode()).hexdigest()==r["original_row_sha256"]
+              assert r["publisher_native_event_id"] is None
+              assert not r["site_electric_outage_verified"]
+              assert not r["insured_business_interruption_claim_confirmed"]
+          with sqlite3.connect(root/"oe417_annual_staging.sqlite") as db:
+              assert db.execute("PRAGMA integrity_check").fetchone()[0]=="ok"
+              assert db.execute("SELECT COUNT(*) FROM source_observations").fetchone()[0]==len(accepted)
+              assert db.execute("SELECT COUNT(*) FROM source_observations WHERE exact_duplicate_source=1").fetchone()[0]==m["statistics"]["exact_duplicate_source_rows"]
+              assert {x[0] for x in db.execute("SELECT source_row_key FROM source_observations")}=={r["source_row_key"] for r in accepted}
+          assert m["durable_backend_indexed"]==m["deployed"]==0
+          print("REAL OFFICIAL DOE OE-417 PUBLIC DOMAIN SOURCE validated:",
+                len(orig),"downloaded",len(accepted),"normalized/indexed",
+                len(rejected),"rejected","years",m["statistics"]["source_calendar_year_counts"],
+                "source duplicated rows",m["statistics"]["exact_duplicate_source_rows"],
+                "license",m["metadata_declared_license"])
+          PY
+      - name: Repeat exact normalized source transform from downloaded bytes for reproducibility
+        shell: bash
+        run: |
+          python -m facilityrisk.lane_d.ingest_oe417_annual \
+            --source-json /tmp/lane-d/oe417-2023/original_export.json \
+            --metadata-json /tmp/lane-d/oe417-2023/original_metadata.json \
+            --output /tmp/lane-d/oe417-repeat
+          python - <<'PY'
+          import hashlib,pathlib
+          a=pathlib.Path("/tmp/lane-d/oe417-2023")
+          b=pathlib.Path("/tmp/lane-d/oe417-repeat")
+          for filename in ("accepted.jsonl","rejected.jsonl","oe417_annual_staging.sqlite"):
+              left=hashlib.sha256((a/filename).read_bytes()).hexdigest()
+              right=hashlib.sha256((b/filename).read_bytes()).hexdigest()
+              assert left==right,"Nonreproducible normalized source file "+filename
+              print("REPRODUCIBLE DOE OE417",filename,left)
+          PY
+      - name: Upload source-only published SHA provenance and original row/duplicate QA manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-d-doe-oe417-2023-annual-source-qa
+          retention-days: 7
+          if-no-files-found: warn
+          path: /tmp/lane-d/oe417-2023/manifest.json
