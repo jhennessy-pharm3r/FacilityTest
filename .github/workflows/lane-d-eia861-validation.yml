@@ -95,6 +95,38 @@ jobs:
               assert before==after, f"Non-deterministic normalized output: {name}"
               print(f"REPRODUCIBLE {name}: {before}")
           PY
+      - name: Real 2025 EIA utility candidates: exact county, never inferred property utility
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, sqlite3
+          from facilityrisk.lane_d.query_eia_service_territory import service_territory_candidates
+          db="/tmp/facility-lane-d/normalized/lane_d_eia861_staging.sqlite"
+          for state,county in (("AK","Aleutians East"),("WA","Pierce")):
+              out=service_territory_candidates(db,state,county,limit=100)
+              with sqlite3.connect(db) as conn:
+                  source_count=conn.execute(
+                      "SELECT COUNT(*) FROM source_observations WHERE source_kind='service_territory' AND state=? AND county=?",
+                      (state,county)).fetchone()[0]
+              assert source_count>1
+              assert out["candidate_records_returned"]==source_count
+              assert out["source_territory_observations"]==source_count
+              assert not out["truncated"]
+              assert len(set(x["original_source_utility_id"] for x in out["returned_candidates"]))==source_count
+              for candidate in out["returned_candidates"]:
+                  assert candidate["source_state"]==state
+                  assert candidate["source_county"]==county
+                  assert candidate["original_reported_cells"][1]==candidate["original_source_utility_id"]
+                  assert candidate["original_reported_cells"][2]==candidate["source_utility_name"]
+                  assert not candidate["site_serving_utility_verified"]
+                  assert not candidate["insured_site_outage_verified"]
+                  for reliability in candidate["same_state_utility_reliability_sources"]:
+                      assert reliability["native_utility_id"]==candidate["original_source_utility_id"]
+                      assert reliability["original_positional_values"][3]==state
+              assert out["verified_serving_facility_utility_connections"]==0
+              print("ACTUAL SOURCE COUNTY",state,county,"utility candidates",source_count,
+                    "physical utility assignments verified",0)
+          PY
       - name: Create coordinator staging handoff digest after verified 2025 original-source audit
         shell: bash
         run: |
