@@ -129,7 +129,7 @@ def stage_sources(root, *, artifact_paths=(), source_root=None):
                 if (entry.filename.startswith("/") or "\\" in entry.filename or
                         "\x00" in entry.filename or
                         ".." in pathlib.PurePosixPath(entry.filename).parts):
-                    raise ValueError("Unsafe source artifact path")
+                    raise ValueError("unsafe source artifact path")
                 if (pathlib.PurePosixPath(entry.filename).parts[0]
                         in IGNORED_LANE_A_DIAGNOSTICS):
                     continue
