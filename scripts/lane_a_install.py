@@ -44,6 +44,7 @@ REQUIRED_FILES = {
 IGNORED_LANE_A_DIAGNOSTICS = frozenset((
     "live_validation", "massgis_2025", "fema_transport",
     "fema_msc_county", "fema_distribution",
+    "lane_a_integration_handoff.json",
 ))
 MAX_ARCHIVE_BYTES = 100 * 1024 * 1024
 MAX_FILE_BYTES = 100 * 1024 * 1024
