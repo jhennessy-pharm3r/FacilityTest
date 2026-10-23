@@ -51,6 +51,10 @@ def test_installs_all_six_source_rasters_atomic_and_audits_full_original_grid(tm
     assert manifest["zip_original_source"]["sha256"]==hashlib.sha256(source.read_bytes()).hexdigest()
     for name in r.PRODUCTS:
         profile=manifest["tiff_independent_grid_qa"][name]
+        expected_region={"conus":"pnw","ak":"alaska","hi":"hawaii"}[Path(name).stem.split("_")[-1]]
+        assert any(p["region"]==expected_region and
+                   p["source_cell_value"] is not None
+                   for p in profile["sampled_public_geographic_points"])
         assert profile["valid_raster_pixels"]==159999
         assert profile["masked_nodata_pixels"]==1
         assert profile["grid_cell_count"]==160000
