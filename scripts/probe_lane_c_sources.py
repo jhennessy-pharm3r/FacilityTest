@@ -62,10 +62,10 @@ def workbook_probe(path):
                 if any(x for x in words) and len(first_nonempty_rows) < 30:
                     first_nonempty_rows.append({"row": idx, "nonempty_columns": sum(bool(x) for x in words), "text_cells": sum(isinstance(x, str) for x in values if x is not None)})
                 matches = sum(bool(re.search(r"(?i)\\b(date|time|incident|release|company|facility|state|address|city|fatal|injur|report|id)\\b", x)) for x in words)
-                if matches >= 3:
-                    candidates.append({"row": idx, "candidate_field_names": words[:35]})
+                if idx <= 2 and matches >= 3:
+                    candidates.append({"row": idx, "field_name_candidates": [str(x)[:75] for x in words[:35]]})
             row2 = next(sh.iter_rows(min_row=2, max_row=2, values_only=True), ())
-            results.append({"sheet": sh.title, "second_row_labels": [str(x or "")[:90] for x in row2[:25]], "actual_nonempty_data_rows": observed,
+            results.append({"sheet": sh.title, "second_row_labels": ([str(x or "")[:90] for x in row2[:25]] if sh.title=="Public" else []), "actual_nonempty_data_rows": observed,
                             "header": [str(x or "")[:100] for x in header[:80]],
                             "header_candidates": candidates,
                             "initial_row_shapes": first_nonempty_rows})
