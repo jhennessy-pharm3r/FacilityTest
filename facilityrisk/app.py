@@ -29,6 +29,7 @@ from .source_sidecars import (status as source_index_status, frs_status, frs_sea
     incidentnews_index_status, incidentnews_connection, incidentnews_events,
     SourceIndexUnavailable)
 from .incident_news import nearby_reviewed_site as nearby_incidentnews_site
+from .lane_d.private_api import router as lane_d_private_router, installed_status as lane_d_installed_status
 from .universal_registry import import_records as import_universal_source
 from .universal_registry import (search as universal_search, detail as universal_detail,
     statistics as universal_stats, track_for_research as universal_track)
@@ -41,6 +42,7 @@ WEB=ROOT/'web'
 app=FastAPI(title='Pharm3r Facility Risk Intelligence',version='0.8.0',
             description='Evidence research prototype; not an actuarially calibrated risk score.')
 app.mount('/assets',StaticFiles(directory=WEB),name='assets')
+app.include_router(lane_d_private_router)
 add_security(app)
 
 
@@ -63,7 +65,7 @@ def health(c=Depends(conn_dependency)):
 
 @app.get('/api/source-indices/status')
 def private_source_indices():
-    return source_index_status()
+    return {**source_index_status(), 'lane_d': lane_d_installed_status()}
 
 
 @app.get('/api/noaa/storm-events/status')
