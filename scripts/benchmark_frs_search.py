@@ -76,6 +76,8 @@ def benchmark(db_path,repeats=3,concurrency=4,*,cases=None):
         observations=[query(case) for _ in range(repeats)]
         if case[0]=='identifier_prefix' and not observations[0][2]:
             raise AssertionError('Indexed exact source identifier failed to resolve')
+        if case[0]=='identifier_prefix' and max(x[1] for x in observations)>10_000:
+            raise AssertionError('National FRS source identifier lookup exceeds 10-second acceptance gate; investigate the query plan')
         output.append({'case':case[0],'params':case[1],
            'matching_source_site_candidates':observations[0][2],
            'returned':observations[0][3],

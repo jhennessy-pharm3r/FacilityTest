@@ -146,3 +146,27 @@ def test_private_universal_api_accepts_combined_source_industry_country_filters(
           'q':'General','country':'CA','source':'EPA_FRS'})
         assert zero.status_code==200 and zero.json()['total']==0
         assert client.get('/api/universal-facilities?industry=Retail').json()['total']==0
+
+
+
+def test_national_numeric_identifier_prefix_uses_source_btree_not_site_scan():
+    c=db()
+    import_records(c,'EPA_FRS',[
+      {'id':'110000300001','name':'Industrial Refinery','country':'US','industry':'324110'},
+      {'id':'110000300002','name':'Municipal Water Works','country':'CA','industry':'221310'},
+      {'id':'110000309999','name':'Warehouse Depot','country':'US','industry':'493110'},
+      {'id':'120000300000','name':'Hospital Annex','country':'US','industry':'622110'},
+    ],'https://www.epa.gov/frs')
+    assert search(c,q='11000030',source='EPA_FRS')['total']==3
+    assert search(c,q='110000300001')['total']==1
+    assert search(c,q='11000030',country='CA')['total']==1
+    assert search(c,q='11000030',industry='493110')['total']==1
+    assert search(c,q='120000300000',country='CA')['total']==0
+    assert search(c,q='999999000000')['total']==0
+    plan=[r[3] for r in c.execute('EXPLAIN QUERY PLAN SELECT ir.site_id '
+      'FROM universal_source_records AS ir INDEXED BY '
+      'idx_universal_source_identifier_lookup WHERE ir.source_identifier LIKE ?',
+      ('11000030%',))]
+    assert any('SEARCH ir USING INDEX idx_universal_source_identifier_lookup' in x
+               for x in plan),plan
+    c.close()

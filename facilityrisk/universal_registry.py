@@ -278,11 +278,24 @@ def search(conn, q='', *, country='', industry='', source='', limit=50, offset=0
         # at national scale. Use an indexed case-insensitive prefix instead;
         # this also prevents user wildcard patterns from expanding a search.
         expression=' AND '.join('"' + x.replace('"','') + '"*' for x in tokens)
-        if re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9-]{1,79}',query_text):
+        if re.fullmatch(r'[0-9]{6,80}',query_text):
+            # National FRS identifiers are numeric. Source-ID prefix lookup
+            # must start from the NOCASE identifier B-tree, not join/scan
+            # 5M universal site rows and union with unrelated full text hits.
+            # This dedicated route avoids the previously measured ~234-second
+            # numeric prefix searches on the complete official source index.
+            conditions.append("""s.id IN (
+              SELECT ir.site_id FROM universal_source_records AS ir
+              INDEXED BY idx_universal_source_identifier_lookup
+              WHERE ir.source_identifier LIKE ?)""")
+            params.append(query_text+'%')
+        elif re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9-]{1,79}',query_text):
             conditions.append("""s.rowid IN (
               SELECT rowid FROM universal_site_fts WHERE universal_site_fts MATCH ?
-              UNION SELECT t.rowid FROM universal_sites t
-              JOIN universal_source_records ir ON ir.site_id=t.id
+              UNION ALL
+              SELECT t.rowid FROM universal_source_records AS ir
+              INDEXED BY idx_universal_source_identifier_lookup
+              JOIN universal_sites AS t ON t.id=ir.site_id
               WHERE ir.source_identifier LIKE ?)""")
             params += [expression,query_text+'%']
         else:
