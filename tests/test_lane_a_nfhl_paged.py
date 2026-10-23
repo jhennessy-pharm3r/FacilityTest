@@ -113,7 +113,7 @@ class FEMAPagedWindowsTests(unittest.TestCase):
                 "w": (-90.083, 29.946, -90.080, 29.950)
             })
             self.assertEqual(m["successful_windows"], 0)
-            self.assertIn("transfer limit", m["windows"]["w"]["error"])
+            self.assertIn("exceededTransferLimit", m["windows"]["w"]["error"])
 
 
     def test_split_and_disclosed_generalization_for_oversize_polygon(self):
