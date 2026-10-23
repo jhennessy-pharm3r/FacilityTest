@@ -20,6 +20,9 @@ const ROUTE_PAGES=new Set(['workbench','insurance','policy-review','bi-scenarios
 const ROUTE_TABS=new Set(['summary','risk','evidence','disclosures']);
 const ROUTE_KEYS=new Set(['page','facility','tab','q','country','source','sector','industry','domain','p','record']);
 
+function canShareResearchFilters(){
+  return !window.PublicRiskAPI||!String(document.getElementById('public-data-label')?.textContent||'').startsWith('Local browser snapshot');
+}
 function routeableFacility(id){
   if(!window.PublicRiskAPI)return true;
   const label=document.getElementById('public-data-label')?.textContent||'';
@@ -336,9 +339,9 @@ document.addEventListener('click',async e=>{
   if(e.target.closest('#global-prev')){state.globalOffset=Math.max(0,state.globalOffset-50);patchRoute({page:'evidence',p:state.globalOffset?String(state.globalOffset/50+1):null});await loadGlobalEvidence();return;}
   if(e.target.closest('#global-next')){state.globalOffset+=50;patchRoute({page:'evidence',p:String(state.globalOffset/50+1)});await loadGlobalEvidence();return;}
 });
-  document.addEventListener('input',e=>{if(e.target.id==='facility-search'){state.facilityQuery=e.target.value;patchRoute({page:'facilities',q:state.facilityQuery},'replace');updateFacilityList();}
-    if(e.target.id==='disclosure-search'){state.disclosureQuery=e.target.value;patchRoute({page:'disclosures',q:state.disclosureQuery},'replace');updateDisclosureList();}
-    if(e.target.id==='global-search'){state.globalQuery=e.target.value;state.globalOffset=0;patchRoute({page:'evidence',q:state.globalQuery,p:null},'replace');clearTimeout(window.__globalSearch);window.__globalSearch=setTimeout(loadGlobalEvidence,350);}
+  document.addEventListener('input',e=>{if(e.target.id==='facility-search'){state.facilityQuery=e.target.value;if(canShareResearchFilters())patchRoute({page:'facilities',q:state.facilityQuery},'replace');updateFacilityList();}
+    if(e.target.id==='disclosure-search'){state.disclosureQuery=e.target.value;if(canShareResearchFilters())patchRoute({page:'disclosures',q:state.disclosureQuery},'replace');updateDisclosureList();}
+    if(e.target.id==='global-search'){state.globalQuery=e.target.value;state.globalOffset=0;if(canShareResearchFilters())patchRoute({page:'evidence',q:state.globalQuery,p:null},'replace');clearTimeout(window.__globalSearch);window.__globalSearch=setTimeout(loadGlobalEvidence,350);}
     if(e.target.id==='evidence-search'){state.evQuery=e.target.value;state.evOffset=0;clearTimeout(window.__frSearch);window.__frSearch=setTimeout(refreshEvidence,420);}
   });
   document.addEventListener('change',e=>{if(e.target.id==='country-filter'){state.country=e.target.value;patchRoute({page:'facilities',country:state.country});updateFacilityList();}
