@@ -234,6 +234,10 @@ jobs:
         shell: bash
         run: |
           docker build --pull -t facility-risk:lane-d-private-ci .
+          # tempfile-created version directories are private to their owner (0700).
+          # Grant the actual unprivileged container UID access to verified *source-only*
+          # immutable directories; keep the bind mount readonly inside Docker.
+          sudo chown -R 10001:10001 /tmp/lane-e/live/lane-d
           sudo chown 10001:10001 /tmp/lane-e/workspace
           TOKEN=$(python -c 'import secrets; print(secrets.token_urlsafe(48))')
           printf 'FACILITY_RISK_REQUIRE_AUTH=1\nFACILITY_RISK_AUTH_TOKEN=%s\nFACILITY_RISK_ENABLE_WRITES=0\nFACILITY_RISK_LANE_D_INDEX_ROOT=/app/source-index/lane-d\nFACILITY_RISK_LANE_D_ODIN_USE_APPROVED=0\n' "$TOKEN" > /tmp/lane-e/ci-private.env
@@ -285,6 +289,6 @@ jobs:
         if: always()
         shell: bash
         run: |
-          rm -rf /tmp/lane-e/inputs /tmp/lane-e/staged-eia /tmp/lane-e/staged-pnnl \
+          sudo rm -rf /tmp/lane-e/inputs /tmp/lane-e/staged-eia /tmp/lane-e/staged-pnnl \
             /tmp/lane-e/staged-oe417 /tmp/lane-e/transfers /tmp/lane-e/live /tmp/lane-e/workspace
           echo 'Ephemeral runner source rows and SQLite deleted after QA; production indexes still require actual private persistent host'
