@@ -1,0 +1,51 @@
+name: Lane B EPA full official content-profile audit
+on:
+  push:
+    branches: ['ingest/epa-echo-tri-rcra-rmp-lane-b-20261023']
+    paths: ['.github/workflows/lane-b-content-profile.yml']
+  workflow_dispatch:
+jobs:
+  profile-official:
+    runs-on: ubuntu-latest
+    timeout-minutes: 58
+    strategy:
+      fail-fast: false
+      matrix:
+        source: [echo, rcra, tri]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Scan complete official national archive and source-native fields
+        env:
+          SOURCE: ${{ matrix.source }}
+        run: |
+          set -euo pipefail
+          python -m scripts.lane_b_epa.profile_official --source "$SOURCE" --year 2024 --output "$RUNNER_TEMP/profile-$SOURCE" > "$RUNNER_TEMP/profile-$SOURCE.log"
+          cat "$RUNNER_TEMP/profile-$SOURCE.log"
+      - name: Require positive, internally consistent official source cohort
+        env:
+          SOURCE: ${{ matrix.source }}
+        run: |
+          python - <<'PY'
+          import json,os,pathlib
+          source=os.environ['SOURCE']
+          f=pathlib.Path(os.environ['RUNNER_TEMP'])/('profile-'+source)/'audit.json'
+          p=json.loads(f.read_text())
+          assert p['total_member_rows']>0 and len(p['archive_sha256'])==64
+          assert sum(x['rows'] for x in p['members'].values())==p['total_member_rows']
+          assert sum(x['missing_native_id'] for x in p['members'].values())==p['missing_native_id_rows']
+          for k,v in p['members'].items():
+              assert v['rows']>=v['missing_native_id']+v['duplicate_native_id_rows']
+              assert v['valid_coordinate_pairs']<=v['rows']
+              assert not v['malformed_overwide_rows'],(source,k,'malformed')
+          print('COMPLETE OFFICIAL CONTENT PROFILE',source,p['total_member_rows'])
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lane-b-full-profile-${{ matrix.source }}
+          path: ${{ runner.temp }}/profile-${{ matrix.source }}/audit.json
+          if-no-files-found: warn
+          retention-days: 14
