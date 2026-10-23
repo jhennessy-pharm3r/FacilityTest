@@ -33,9 +33,9 @@
     const options=sites.slice(0,250).map(s=>'<option value="'+esc(s.id)+'">'+esc(s.name||s.id)+'</option>').join('');
     return card(title('FEMA flood source evidence','Authenticated source-index check · site coordinates require independent review')+
       '<div class="intel-card-body"><p>Run a read-only FEMA NFHL polygon check for a private research site. Only the server-stored, independently reviewed CURRENT property coordinate can be evaluated. Outside the six QA windows, missing evidence remains UNKNOWN; no insured loss or effective FIRM determination is inferred.</p>'+
-      '<div class="intel-map-source-query"><label for="lane-a-site">Private research site</label><select id="lane-a-site">'+options+'</select> '+
-      '<button class="btn tiny" id="lane-a-check-fema" type="button"'+(options?'':' disabled')+'>Check FEMA source polygons</button></div>'+
-      '<div id="lane-a-fema-result" class="small-muted" role="status" aria-live="polite">Verifying mounted source index…</div></div>');
+      '<div class="intel-map-source-query"><label for="lane-a-site">Private research site</label><div class="intel-source-check-controls"><select id="lane-a-site">'+options+'</select>'+
+      '<button class="btn" id="lane-a-check-fema" type="button"'+(options?'':' disabled')+'>Check FEMA source polygons</button></div></div>'+
+      '<div id="lane-a-fema-result" class="intel-source-check-result" role="status" aria-live="polite">Verifying mounted source index…</div></div>');
   }
   async function initLaneAFloodPanel(api){
     const button=$('#lane-a-check-fema'),output=$('#lane-a-fema-result'),picker=$('#lane-a-site');
