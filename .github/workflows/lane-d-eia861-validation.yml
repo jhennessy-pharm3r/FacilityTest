@@ -80,3 +80,44 @@ jobs:
           path: |
             /tmp/facility-lane-d/probe/archive_inventory.json
             /tmp/facility-lane-d/normalized/manifest.json
+
+  official-eia-disturbances:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Lane D disturbance parser regression tests
+        run: python -m unittest discover -s tests -p 'test_lane_d_electric_events.py' -v
+      - name: Download actual published EIA DOE-417-derived event summaries
+        shell: bash
+        run: |
+          mkdir -p /tmp/facility-lane-d/epm
+          curl --fail --location --retry 3 --connect-timeout 30 --max-time 180 \
+            --user-agent 'FacilityRiskLaneD/1.0 (publisher validation)' \
+            'https://www.eia.gov/electricity/monthly/epm_table_grapher.php?t=epmt_b_1' \
+            --output /tmp/facility-lane-d/epm/b1.html
+          curl --fail --location --retry 3 --connect-timeout 30 --max-time 180 \
+            --user-agent 'FacilityRiskLaneD/1.0 (publisher validation)' \
+            'https://www.eia.gov/electricity/monthly/epm_table_grapher.php?t=epmt_b_2' \
+            --output /tmp/facility-lane-d/epm/b2.html
+      - name: Normalize 2024 partial and 2023 annual event observations
+        run: |
+          python -m facilityrisk.lane_d.ingest_electric_events \
+            --table b1 --html /tmp/facility-lane-d/epm/b1.html \
+            --output /tmp/facility-lane-d/epm/b1-staged
+          python -m facilityrisk.lane_d.ingest_electric_events \
+            --table b2 --html /tmp/facility-lane-d/epm/b2.html \
+            --output /tmp/facility-lane-d/epm/b2-staged
+      - name: Upload only safe source count/provenance manifests
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-d-eia-epm-doe417-event-validation
+          retention-days: 7
+          if-no-files-found: warn
+          path: |
+            /tmp/facility-lane-d/epm/b1-staged/manifest.json
+            /tmp/facility-lane-d/epm/b2-staged/manifest.json
