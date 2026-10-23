@@ -1,0 +1,32 @@
+name: Lane C PHMSA published failure investigation real-source QA
+on:
+  push:
+    branches:
+      - 'ingest/industrial-events-nrc-csb-phmsa-*'
+    paths:
+      - 'scripts/build_phmsa_failure_investigations.py'
+      - 'scripts/probe_lane_c_phmsa_investigations.py'
+      - 'tests/test_phmsa_failure_investigations.py'
+      - '.github/workflows/lane-c-phmsa-investigations.yml'
+  workflow_dispatch:
+jobs:
+  first-party-investigation-catalog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install isolated PHMSA read-only source dependencies
+        run: pip install requests beautifulsoup4 openpyxl pytest
+      - name: Verify publisher layout, provenance, source IDs and negative controls
+        run: python -m pytest -q tests/test_phmsa_failure_investigations.py
+      - name: Download actual PHMSA publisher investigation listing, stage, index temporarily and inspect official detail links
+        run: python scripts/probe_lane_c_phmsa_investigations.py --output output
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lane-c-phmsa-official-investigation-catalog-qa
+          path: output/*.json
+          retention-days: 14
