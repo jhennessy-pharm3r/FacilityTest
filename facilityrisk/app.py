@@ -24,6 +24,10 @@ from .physical_assets import (create_asset,revise_asset,facility_assets as list_
     propose_asset_review,asset_review_queue,decide_asset_review)
 from .bi_scenarios import save_scenario,facility_scenarios as get_bi_scenarios
 from .storm_events import status as noaa_status, search as noaa_search, nearby_reviewed_facility
+from .source_sidecars import (status as source_index_status, frs_status, frs_search,
+    frs_detail, noaa_index_status, noaa_connection, noaa_events,
+    SourceIndexUnavailable)
+from .universal_registry import import_records as import_universal_source
 from .universal_registry import (search as universal_search, detail as universal_detail,
     statistics as universal_stats, track_for_research as universal_track)
 from .site_workspace import (SOURCES as REGULATOR_SOURCES, intake_site, search_external_registry,
@@ -55,8 +59,16 @@ def health(c=Depends(conn_dependency)):
     return {'status':'ok','version':'0.8.0'}
 
 
+@app.get('/api/source-indices/status')
+def private_source_indices():
+    return source_index_status()
+
+
 @app.get('/api/noaa/storm-events/status')
 def national_noaa_status(c=Depends(conn_dependency)):
+    snapshot = noaa_index_status()
+    if snapshot['state'] != 'not_configured':
+        return snapshot
     return noaa_status(c)
 
 
@@ -64,9 +76,17 @@ def national_noaa_status(c=Depends(conn_dependency)):
 def national_noaa_events(year:int|None=Query(None,ge=1950,le=2100),state:str='',
                          event_type:str='',limit:int=Query(50,ge=1,le=100),
                          offset:int=Query(0,ge=0),c=Depends(conn_dependency)):
-    try:return noaa_search(c,year=year,state=state[:90],
-                           event_type=event_type[:100],limit=limit,offset=offset)
-    except ValueError as exc:raise HTTPException(422,str(exc)) from exc
+    params=dict(year=year,state=state[:90],event_type=event_type[:100],
+                limit=limit,offset=offset)
+    snapshot=noaa_index_status()
+    try:
+        if snapshot['state']=='not_configured':
+            return noaa_search(c,**params)
+        return noaa_events(**params)
+    except SourceIndexUnavailable as exc:
+        raise HTTPException(503,'NOAA indexed source unavailable; no coverage conclusion') from exc
+    except ValueError as exc:
+        raise HTTPException(422,str(exc)) from exc
 
 
 @app.get('/api/facilities/{facility_id}/noaa-storm-events')
@@ -74,9 +94,18 @@ def site_noaa_events(facility_id:str,radius_km:float=Query(50,ge=1,le=100),
                      year:int|None=Query(None,ge=1950,le=2100),
                      limit:int=Query(50,ge=1,le=100),
                      c=Depends(conn_dependency)):
-    try:return nearby_reviewed_facility(c,facility_id,radius_km=radius_km,
-                                        year=year,limit=limit)
-    except ValueError as exc:raise HTTPException(404,str(exc)) from exc
+    try:
+        snapshot=noaa_index_status()
+        if snapshot['state']=='not_configured':
+            return nearby_reviewed_facility(c,facility_id,radius_km=radius_km,
+                                            year=year,limit=limit)
+        with noaa_connection() as events:
+            return nearby_reviewed_facility(c,facility_id,radius_km=radius_km,
+                                            year=year,limit=limit,events_conn=events)
+    except SourceIndexUnavailable as exc:
+        raise HTTPException(503,'NOAA indexed source unavailable; no coverage conclusion') from exc
+    except ValueError as exc:
+        raise HTTPException(404,str(exc)) from exc
 
 
 @app.get('/api/insurance/coverage-types')
@@ -225,20 +254,41 @@ async def revise_interruption_scenario(facility_id:str,scenario_id:str,request:R
 
 @app.get('/api/universal-facilities/stats')
 def universal_facility_stats(c=Depends(conn_dependency)):
-    return universal_stats(c)
+    summary=universal_stats(c)
+    index=frs_status()
+    summary['national_index']=index
+    summary['workspace_source_identities']=summary['source_identities']
+    if index['state'] in ('ready_full','ready_partial'):
+        # Keep the separate indexed and workspace populations distinct.
+        # They may share source IDs and must not be added as unique properties.
+        if not any(x['source_key']=='EPA_FRS' for x in summary['sources']):
+            summary['sources'].append({'source_key':'EPA_FRS',
+                                       'records':index['source_identities'],
+                                       'storage':'readonly_national_index'})
+    return summary
 
 
 @app.get('/api/universal-facilities')
 def universal_facilities(q:str='',country:str='',industry:str='',source:str='',
                          limit:int=Query(50,ge=1,le=100),offset:int=Query(0,ge=0),
                          c=Depends(conn_dependency)):
-    return universal_search(c,q=q[:120],country=country[:8],industry=industry[:120],
-                            source=source[:80],limit=limit,offset=offset)
+    filters=dict(q=q[:120],country=country[:8],industry=industry[:120],
+                 limit=limit,offset=offset)
+    index=frs_status()
+    if source=='EPA_FRS' and index['state']!='not_configured':
+        try:return frs_search(**filters)
+        except SourceIndexUnavailable as exc:
+            raise HTTPException(503,'National EPA source index unavailable; do not infer absence') from exc
+    return universal_search(c,source=source[:80],**filters)
 
 
 @app.get('/api/universal-facilities/{site_id}')
 def universal_facility_detail(site_id:str,c=Depends(conn_dependency)):
     result=universal_detail(c,site_id)
+    if result is None and frs_status()['state'] in ('ready_full','ready_partial'):
+        try:result=frs_detail(site_id)
+        except SourceIndexUnavailable as exc:
+            raise HTTPException(503,'National EPA source index unavailable') from exc
     if result is None:raise HTTPException(404,'Facility source identity not found')
     return result
 
@@ -247,6 +297,28 @@ def universal_facility_detail(site_id:str,c=Depends(conn_dependency)):
 def universal_facility_track(site_id:str,request:Request,c=Depends(conn_dependency)):
     if __import__('os').environ.get('FACILITY_RISK_ENABLE_WRITES')!='1':
         raise HTTPException(403,'Research workspace writes are disabled')
+    if universal_detail(c,site_id) is None:
+        try:
+            selected=frs_detail(site_id)
+        except SourceIndexUnavailable as exc:
+            raise HTTPException(404,'Source identity not in the private research catalog') from exc
+        if selected is None:raise HTTPException(404,'Unknown source identity')
+        originals=[x for x in selected['source_identities'] if x['source_key']=='EPA_FRS']
+        if len(originals)!=1:
+            raise HTTPException(422,'Expected one independently sourced EPA identifier')
+        src=originals[0]
+        site=selected['site']
+        record={'source_identifier':src['source_identifier'],
+                'name':site['name'],'company':site['company'],
+                'address':site['address'],'city':site['city'],'state':site['state'],
+                'country':site['country'],'industry':site['industry'],
+                'activities':site['activities'],'latitude':site['latitude'],
+                'longitude':site['longitude'],'category':src['category']}
+        import_universal_source(c,'EPA_FRS',[record],src['source_url'],
+                                vintage=src['vintage'],
+                                notes='Single explicitly selected EPA source observation; not a verified insured property')
+        if universal_detail(c,site_id) is None:
+            raise HTTPException(422,'Identity changed during source import; research not started')
     try:return universal_track(c,site_id,request.state.actor)
     except ValueError as e:raise HTTPException(404,str(e)) from e
 
