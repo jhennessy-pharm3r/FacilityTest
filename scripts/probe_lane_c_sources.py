@@ -96,6 +96,24 @@ def main():
                 report["downloaded_bytes"], report["raw_sha256"] = download(url, limit, target)
                 report["content"] = zip_probe(target) if target.suffix == ".zip" else workbook_probe(target)
                 report["state"] = "DOWNLOADED_AND_INVENTORIED_NOT_NORMALIZED"
+                if name == "csb_2026_09":
+                    try:
+                        csb = stage("csb", target, Path(work) / "csb-normalized.csv.gz",
+                            args.output / "csb-normalized-manifest.json", source_url=url,
+                            sheet="Public", header_row=2,
+                            mapping={"id": "Number", "date": "Incident\nDate",
+                                     "name": "Company", "city": "City", "state": "State"},
+                            minimum_rows=500)
+                        report["normalization"] = {
+                            "raw_rows": csb["raw_rows"], "accepted_rows": csb["accepted_rows"],
+                            "rejected_rows": csb["rejected_rows"],
+                            "duplicate_source_ids": csb["duplicate_source_ids"],
+                            "missing_coordinates": csb["missing_coordinates"],
+                            "failure_reasons": csb["failure_reasons"],
+                            "normalized_sha256": csb["normalized_sha256"]}
+                        report["state"] = "STAGED_AND_CONTENT_VALIDATED_NOT_INDEXED"
+                    except Exception as error:
+                        report["normalization_blocker"] = type(error).__name__ + ": " + str(error)[:350]
                 if name == "nrc_2025":
                     try:
                         rich = stage_nrc(target, Path(work) / "nrc-enriched.csv.gz",
