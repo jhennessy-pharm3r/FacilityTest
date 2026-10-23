@@ -17,7 +17,8 @@ from test_lane_d_install_source_index import make_bundle
 @pytest.fixture()
 def secured_api(monkeypatch, tmp_path):
     _check_cached.cache_clear()
-    monkeypatch.setenv("FACILITY_RISK_DB", str(tmp_path / "insured-workspace.sqlite"))
+    (tmp_path / "insured-data").mkdir()
+    monkeypatch.setenv("FACILITY_RISK_DB", str(tmp_path / "insured-data" / "insured-workspace.sqlite"))
     monkeypatch.setenv("FACILITY_RISK_AUTH_TOKEN", "L" * 48)
     monkeypatch.setenv("FACILITY_RISK_REQUIRE_AUTH", "1")
     monkeypatch.delenv("FACILITY_RISK_LANE_D_ODIN_USE_APPROVED", raising=False)
