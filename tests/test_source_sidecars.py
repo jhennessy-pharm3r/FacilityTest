@@ -209,3 +209,27 @@ def test_noaa_corrupt_manifest_refuses_silent_fallback(monkeypatch,tmp_path):
     with _authenticated(monkeypatch,tmp_path) as client:
         assert client.get("/api/noaa/storm-events").status_code==503
         assert client.get("/api/noaa/storm-events/status").json()["state"]=="unavailable"
+
+
+
+def test_national_readonly_search_reports_sql_failure_without_zero_risk(monkeypatch,tmp_path):
+    from facilityrisk import source_sidecars as indices
+    db,qa,_=_frs_index(tmp_path)
+    _set_source_env(monkeypatch,db,qa,"frs")
+    assert indices.frs_status()["state"]=="ready_partial"
+    def interrupted(*args,**kwargs):
+        raise sqlite3.OperationalError("interrupted")
+    monkeypatch.setattr(indices,"universal_search",interrupted)
+    with pytest.raises(indices.SourceIndexUnavailable,match="source query failed"):
+        indices.frs_search(q="warehouse",limit=5)
+
+
+def test_immutable_national_reader_rejects_uncheckpointed_wal(monkeypatch,tmp_path):
+    db,qa,_=_frs_index(tmp_path)
+    _set_source_env(monkeypatch,db,qa,"frs")
+    assert frs_status()["state"]=="ready_partial"
+    wal=Path(str(db)+"-wal")
+    wal.write_bytes(b"unsafe uncheckpointed source mutation")
+    assert frs_status()["state"]=="unavailable"
+    wal.unlink()
+    assert frs_status()["state"]=="ready_partial"
