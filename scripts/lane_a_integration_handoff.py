@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 
 SOURCE_DEFINITIONS = (
     ("fema_nfhl", "paged_windows/manifest.json", "fema-window-index.sqlite"),
+    ("fema_nfhl_count_only", "fema_distribution/manifest.json", None),
+    ("massgis_ma_nfhl_2025_state_archive", "massgis_2025/manifest.json", "massgis-source-only.sqlite"),
     ("usfs_whp2023_continuous", "whp_regions/manifest.json", "whp-regional-source-only.sqlite"),
     ("usfs_whp2023_classified", "whp_classified/manifest.json", "whp-classified-source-only.sqlite"),
     ("usfs_whp2023_admin_summaries", "whp_official_index/manifest.json", "whp2023-source-geographies.sqlite"),
@@ -40,7 +42,7 @@ def generate(root):
         path = root / relative
         status = {
             "source_id": name, "manifest_path_in_artifact": relative,
-            "ephemeral_source_only_sqlite": str(pathlib.PurePosixPath(relative).parent / index_filename),
+            "ephemeral_source_only_sqlite": str(pathlib.PurePosixPath(relative).parent / index_filename) if index_filename else None,
             "durable_production_indexed": 0, "deployed": 0,
             "approved_site_links": 0, "has_current_nationwide_raster_or_polygon_census": False,
         }
@@ -70,6 +72,43 @@ def generate(root):
                     "coverage_or_access_errors": [
                         {"window": k, "error": x.get("error")}
                         for k, x in m.get("windows", {}).items() if x.get("error")
+                    ],
+                })
+            elif name == "fema_nfhl_count_only":
+                metadata_ok = m.get("rest_count_state") == "DOWNLOADED_RESPONSE_ONLY"
+                status.update({
+                    "state": "PUBLISHER_COUNT_METADATA_ONLY" if metadata_ok else
+                             "NATIONAL_SOURCE_COUNT_UNKNOWN",
+                    "real_downloaded_or_normalized": 0,
+                    "source_only_indexed": 0,
+                    "publisher_reported_national_feature_count_not_downloaded": (
+                        m.get("reported_current_service_feature_count") if metadata_ok else None),
+                    "publisher_service_checked_at_utc": m.get("checked_utc"),
+                    "publisher_original_count_response_sha256": (
+                        m.get("rest_count_receipt", {}).get("sha256")),
+                    "official_wfs_source_status": m.get("wfs_state"),
+                    "coverage_or_access_errors": [
+                        e for e in (m.get("rest_count_error"), m.get("wfs_error")) if e
+                    ],
+                    "source_coverage_level": "OFFICIAL_NATIONAL_REST_COUNT_ONLY_ZERO_GEOMETRIES",
+                    "full_national_download_verified": False,
+                })
+            elif name == "massgis_ma_nfhl_2025_state_archive":
+                verified = bool(m.get("source_sample_validated"))
+                status.update({
+                    "state": "VERIFIED_DATED_STATE_SAMPLE" if verified else
+                             "OPTIONAL_STATE_SOURCE_PROBED_OR_INCOMPLETE",
+                    "real_downloaded_or_normalized": m.get("sample_accepted"),
+                    "source_only_indexed": m.get("indexed_observations"),
+                    "actual_raw_observations": m.get("sample_raw"),
+                    "rejected": m.get("sample_rejected"),
+                    "distinct_source_native_keys": m.get("distinct_fema_native_keys"),
+                    "publisher_vintage": m.get("source_data_vintage"),
+                    "not_a_national_nfhl_replacement": True,
+                    "source_coverage_level": "DATED_2025_MASSACHUSETTS_BOUNDED_POLYGON_SAMPLE",
+                    "coverage_or_access_errors": [
+                        x.get("error") for x in [m.get("metadata")] + m.get("samples", [])
+                        if isinstance(x, dict) and x.get("error")
                     ],
                 })
             elif name.startswith("usfs_whp2023_") and name != "usfs_whp2023_admin_summaries":
