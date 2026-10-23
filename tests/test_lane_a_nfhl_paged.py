@@ -116,5 +116,46 @@ class FEMAPagedWindowsTests(unittest.TestCase):
             self.assertIn("transfer limit", m["windows"]["w"]["error"])
 
 
+    def test_split_and_disclosed_generalization_for_oversize_polygon(self):
+        def big(params):
+            if "objectIds" in params:
+                ids = params["objectIds"].split(",")
+                if len(ids) > 1:
+                    raise RuntimeError("ArcGIS 500 oversized polygon batch")
+                if ids == ["13"] and "maxAllowableOffset" not in params:
+                    raise RuntimeError("Single polygon exceeds 15MB JSON limit")
+            return responder(params)
+        with tempfile.TemporaryDirectory() as folder:
+            m = run(Path(folder), fetch=big, windows={
+                "w": (-90.083, 29.946, -90.080, 29.950)
+            }, batch_size=3)
+            self.assertTrue(m["all_requested_windows_complete"])
+            self.assertFalse(m["all_native_resolution"])
+            self.assertEqual(m["geometry_generalized_observations"], 1)
+            self.assertEqual(m["source_feature_count"], 3)
+            self.assertEqual(m["windows"]["w"]["accepted_count"], 3)
+            self.assertGreater(len(m["windows"]["w"]["attempt_errors"]), 0)
+            db = sqlite3.connect(Path(folder) / "fema-window-index.sqlite")
+            self.assertEqual(db.execute(
+                "SELECT COUNT(*) FROM fema_source_features WHERE geometry_tolerance_degrees > 0"
+            ).fetchone()[0], 1)
+            db.close()
+
+    def test_interruption_preserves_true_partial_index_counts(self):
+        def fail_last(params):
+            if params.get("objectIds") == "13":
+                raise RuntimeError("official source disconnected during last polygon")
+            return responder(params)
+        with tempfile.TemporaryDirectory() as folder:
+            m = run(Path(folder), fetch=fail_last, windows={
+                "w": (-90.083, 29.946, -90.080, 29.950)
+            }, batch_size=2)
+            self.assertFalse(m["all_requested_windows_complete"])
+            self.assertEqual(m["source_feature_count"], 2)
+            self.assertEqual(m["windows"]["w"]["accepted_count"], 2)
+            self.assertEqual(m["windows"]["w"]["retrieved_ids"], 2)
+            self.assertEqual(m["windows"]["w"]["status"], "INCOMPLETE")
+
+
 if __name__ == "__main__":
     unittest.main()
