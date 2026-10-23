@@ -66,7 +66,8 @@ def test_verified_bundle_installs_and_readonly_source_query(tmp_path):
     assert result["total_indexed_source_observations"]==2
     assert result["authenticated_service_connected"] is False
     assert result["app_deployed_records"]==0
-    assert result["persisted_on_configured_private_mount"] is True
+    assert result["installed_to_private_path"] is True
+    assert result["durable_production_indexed"]==0
     assert active_status(root,repo_root=repo)["active_release_id"]=="official-2025-a"
     assert (root/"releases/official-2025-a/indexes/lane-c-source.sqlite").exists()
     page=query(root,source="nrc_2025",page_size=1,repo_root=repo)
