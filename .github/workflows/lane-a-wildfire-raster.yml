@@ -1,0 +1,48 @@
+name: Lane A - official USDA 2023 WHP 270m continuous and classified raster QA
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - ingest/fema-wildfire-lane-a-20261023
+    paths:
+      - 'scripts/lane_a_whp_regions.py'
+      - 'scripts/lane_a_whp_classified.py'
+      - 'scripts/verify_lane_a_archive.py'
+      - 'scripts/lane_a_integration_handoff.py'
+      - 'tests/test_lane_a_integration_handoff.py'
+      - 'tests/test_lane_a_whp_regions.py'
+      - 'tests/test_lane_a_whp_classified.py'
+      - '.github/workflows/lane-a-wildfire-raster.yml'
+permissions:
+  contents: read
+jobs:
+  whp-2023-regional:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test original WHP 2023 raster values and special mask classes
+        run: python -m unittest discover -s tests -p 'test_lane_a_whp_*.py' -v
+      - name: Collect real official USDA continuous ImageServer values at seventy public geographic QA points
+        run: python -m scripts.lane_a_whp_regions --out-dir data/lane_a/whp_regions
+      - name: Collect real official USDA 5-class ImageServer values at the same seventy points
+        run: python -m scripts.lane_a_whp_classified --out-dir data/lane_a/whp_classified
+      - name: Independently verify 140 original USDA replies plus metadata, SQLite and NoData masks
+        run: python -m scripts.verify_lane_a_archive --root data/lane_a
+      - name: Emit Lane A only coordinator handoff with staged source grain and zero deployed rows
+        if: always()
+        run: python -m scripts.lane_a_integration_handoff --root data/lane_a --output data/lane_a/whp_regions/lane_a_integration_handoff.json
+      - name: Preserve original official replies, exact SHA256 manifests and disposable source-only indexes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-a-official-usda-2023-270m-raster-qa
+          path: |
+            data/lane_a/whp_regions/
+            data/lane_a/whp_classified/
+          retention-days: 7
+          compression-level: 5
+          if-no-files-found: warn

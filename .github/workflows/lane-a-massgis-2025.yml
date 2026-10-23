@@ -1,0 +1,37 @@
+name: Lane A - optional dated MassGIS 2025 FEMA state derivative QA
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - ingest/fema-wildfire-lane-a-20261023
+    paths:
+      - 'scripts/validate_lane_a_massgis.py'
+      - 'tests/test_lane_a_massgis.py'
+      - '.github/workflows/lane-a-massgis-2025.yml'
+permissions:
+  contents: read
+jobs:
+  massgis-state:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify state-only source identity and failure-as-unknown regression
+        run: python -m unittest discover -s tests -p 'test_lane_a_massgis.py' -v
+      - name: Probe actual MassGIS government FeatureServer for FEMA-derived July 2025 source data
+        run: python -m scripts.validate_lane_a_massgis --output-dir data/lane_a/massgis_2025
+      - name: Re-hash original MassGIS government replies and temporary source-only SQLite
+        if: always()
+        run: python -m scripts.verify_lane_a_archive --root data/lane_a
+      - name: Archive source responses and exact failure evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-a-optional-massgis-2025-source-probe
+          path: |
+            data/lane_a/massgis_2025/
+          retention-days: 7
+          if-no-files-found: warn

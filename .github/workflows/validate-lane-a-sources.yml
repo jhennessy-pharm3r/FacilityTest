@@ -1,0 +1,123 @@
+name: Lane A - official FEMA flood and USDA wildfire source validation
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - ingest/fema-wildfire-lane-a-20261023
+    paths:
+      - 'facilityrisk/lane_a_hazards.py'
+      - 'scripts/validate_lane_a_sources.py'
+      - 'tests/test_lane_a_hazards.py'
+      - 'tests/test_lane_a_live_validation.py'
+      - 'tests/test_lane_a_massgis.py'
+      - 'scripts/validate_lane_a_massgis.py'
+      - 'scripts/diagnose_lane_a_fema_access.py'
+      - 'tests/test_lane_a_fema_transport.py'
+      - 'scripts/verify_lane_a_archive.py'
+      - 'scripts/lane_a_integration_handoff.py'
+      - 'tests/test_lane_a_integration_handoff.py'
+      - 'tests/test_lane_a_archive_verify.py'
+      - 'scripts/lane_a_nfhl_paged.py'
+      - 'tests/test_lane_a_nfhl_paged.py'
+      - 'scripts/lane_a_whp_regions.py'
+      - 'tests/test_lane_a_whp_regions.py'
+      - 'scripts/lane_a_whp_classified.py'
+      - 'tests/test_lane_a_whp_classified.py'
+      - 'facilityrisk/lane_a_geospatial.py'
+      - 'tests/test_lane_a_geospatial.py'
+      - 'scripts/lane_a_whp_official_summary.py'
+      - 'tests/test_lane_a_whp_summary.py'
+      - 'scripts/lane_a_fema_msc_bulk.py'
+      - 'tests/test_lane_a_fema_msc_bulk.py'
+      - 'scripts/lane_a_whp_summaries_index.py'
+      - 'tests/test_lane_a_whp_summaries_index.py'
+      - 'scripts/verify_lane_a_whp_index.py'
+      - '.github/workflows/validate-lane-a-sources.yml'
+permissions:
+  contents: read
+jobs:
+  lane-a-source-qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run deterministic ingestion and source-identity regressions
+        run: python -m unittest discover -s tests -p 'test_lane_a*.py' -v
+      - name: Probe original capped FEMA and USDA smoke samples (paged FEMA importer is authoritative)
+        continue-on-error: true
+        run: python scripts/validate_lane_a_sources.py --output-dir data/lane_a/live_validation
+      - name: Fully enumerate FEMA polygons within bounded geographic test windows
+        if: always()
+        run: python -m scripts.lane_a_nfhl_paged --out-dir data/lane_a/paged_windows --max-per-window 250 --batch-size 4
+      - name: Collect real USDA WHP samples across fourteen US geographic regions
+        if: always()
+        run: python -m scripts.lane_a_whp_regions --out-dir data/lane_a/whp_regions
+      - name: Collect real USDA WHP classified hazard categories with burnable and special mask distinction
+        if: always()
+        run: python -m scripts.lane_a_whp_classified --out-dir data/lane_a/whp_classified
+      - name: Download and validate official USDA WHP 2023 aggregate ZIP inventory (not a parcel raster)
+        if: always()
+        continue-on-error: true
+        run: python -m scripts.lane_a_whp_official_summary --out-dir data/lane_a/whp_official_summary
+      - name: Normalize and index complete real USDA WHP2023 county, state and ZIP source summary records
+        if: always()
+        run: python -m scripts.lane_a_whp_summaries_index --source data/lane_a/whp_official_summary/whp2023_official_summaries.zip --out-dir data/lane_a/whp_official_index
+      - name: Independently verify official USDA original ZIP/XLSX, normalized NDJSON and SQLite provenance
+        if: always()
+        run: python -m scripts.verify_lane_a_whp_index --source data/lane_a/whp_official_summary/whp2023_official_summaries.zip --index-dir data/lane_a/whp_official_index
+      - name: Probe documented FEMA Map Service Center official county NFHL product bulk download
+        if: always()
+        continue-on-error: true
+        run: python -m scripts.lane_a_fema_msc_bulk --out-dir data/lane_a/fema_msc_county
+      - name: Probe optional Massachusetts FEMA 2025 derivative without substituting for national NFHL
+        if: always()
+        continue-on-error: true
+        run: python -m scripts.validate_lane_a_massgis --output-dir data/lane_a/massgis_2025
+      - name: Diagnose official FEMA shorter GET and POST attribute queries
+        if: always()
+        continue-on-error: true
+        run: python -m scripts.diagnose_lane_a_fema_access --output-dir data/lane_a/fema_transport
+      - name: Independently verify captured raw SHA256 and SQLite row reconciliations
+        if: always()
+        run: python -m scripts.verify_lane_a_archive --root data/lane_a
+      - name: Emit Lane A only coordinator handoff with staged source grain and zero deployed rows
+        if: always()
+        run: python -m scripts.lane_a_integration_handoff --root data/lane_a --output data/lane_a/lane_a_integration_handoff.json
+      - name: Upload real source receipts, checksums and isolated source-only indexes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-a-fema-usfs-massgis-source-qa
+          path: |
+            data/lane_a/live_validation/manifest.json
+            data/lane_a/live_validation/raw/
+            data/lane_a/live_validation/source-only.sqlite
+            data/lane_a/massgis_2025/manifest.json
+            data/lane_a/massgis_2025/raw/
+            data/lane_a/massgis_2025/massgis-source-only.sqlite
+            data/lane_a/fema_transport/manifest.json
+            data/lane_a/fema_transport/raw/
+            data/lane_a/fema_transport/fema-attribute-only.sqlite
+            data/lane_a/paged_windows/manifest.json
+            data/lane_a/paged_windows/raw/
+            data/lane_a/paged_windows/fema-window-index.sqlite
+            data/lane_a/whp_regions/manifest.json
+            data/lane_a/whp_regions/raw/
+            data/lane_a/whp_regions/whp-regional-source-only.sqlite
+            data/lane_a/whp_classified/manifest.json
+            data/lane_a/whp_classified/raw/
+            data/lane_a/whp_classified/whp-classified-source-only.sqlite
+            data/lane_a/whp_official_summary/manifest.json
+            data/lane_a/whp_official_summary/whp2023_official_summaries.zip
+            data/lane_a/fema_msc_county/manifest.json
+            data/lane_a/fema_msc_county/NFHL_51013C.zip
+            data/lane_a/whp_official_index/manifest.json
+            data/lane_a/whp_official_index/whp2023-source-geographies.sqlite
+            data/lane_a/whp_official_index/whp2023-source-geographies.ndjson.gz
+            data/lane_a/lane_a_integration_handoff.json
+          retention-days: 7
+          compression-level: 5
+          if-no-files-found: warn
