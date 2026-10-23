@@ -1,0 +1,46 @@
+name: Lane B TRI 2024 official US source validation
+on:
+  push:
+    branches: ['ingest/epa-echo-tri-rcra-rmp-lane-b-20261023']
+    paths: ['.github/workflows/lane-b-tri-2024.yml']
+  workflow_dispatch:
+jobs:
+  tri-us-2024:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Download and inspect official EPA annual TRI Basic
+        run: |
+          python - <<'PY'
+          import urllib.request,csv,io,os
+          u='https://data.epa.gov/efservice/downloads/tri/mv_tri_basic_download/2024_US/csv'
+          dest=os.environ['RUNNER_TEMP']+'/tri_2024_US.csv'
+          with urllib.request.urlopen(urllib.request.Request(u,headers={'User-Agent':'FacilityRisk-LaneB/1.0'}),timeout=150) as r,open(dest,'wb') as f:
+              import shutil;shutil.copyfileobj(r,f)
+          with open(dest,encoding='utf-8-sig',errors='replace') as f:
+              fields=next(csv.reader(f))
+          print('OFFICIAL_TRI_URL',u,'RAW_BYTES',os.path.getsize(dest),'SOURCE_HEADERS',fields)
+          PY
+      - name: Import official TRI native rows by year
+        run: |
+          set -euo pipefail
+          python -m scripts.lane_b_epa.ingest --source tri --year 2024 --input "$RUNNER_TEMP/tri_2024_US.csv" --url 'https://data.epa.gov/efservice/downloads/tri/mv_tri_basic_download/2024_US/csv' --output "$RUNNER_TEMP/tri_2024_import" > "$RUNNER_TEMP/tri_out.json"
+          cat "$RUNNER_TEMP/tri_out.json"
+          python - <<'PY'
+          import json,os,pathlib
+          path=pathlib.Path(os.environ['RUNNER_TEMP'])/'tri_2024_import'/'tri.manifest.json'
+          m=json.loads(path.read_text())
+          assert m['accepted_rows']>0 and m['indexed_rows']==m['accepted_rows'] and m['integrity']=='ok'
+          print('OFFICIAL_TRI_ACCEPTED',m['indexed_rows'])
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lane-b-tri-2024-us-manifest
+          path: ${{ runner.temp }}/tri_2024_import/*.manifest.json
+          if-no-files-found: warn
+          retention-days: 7
