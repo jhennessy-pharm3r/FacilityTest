@@ -17,11 +17,14 @@ import time
 from .db import get_db_path
 from .universal_registry import search as universal_search, detail as universal_detail
 from .storm_events import search as noaa_search
+from .incident_news import search as incidentnews_search, validate_manifest as validate_incidentnews_manifest
 
 FRS_INDEX_ENV = "FACILITY_RISK_FRS_INDEX_PATH"
 FRS_QA_ENV = "FACILITY_RISK_FRS_INDEX_QA"
 NOAA_INDEX_ENV = "FACILITY_RISK_NOAA_INDEX_PATH"
 NOAA_MANIFEST_ENV = "FACILITY_RISK_NOAA_INDEX_MANIFEST"
+INCIDENTNEWS_INDEX_ENV = "FACILITY_RISK_INCIDENTNEWS_INDEX_PATH"
+INCIDENTNEWS_MANIFEST_ENV = "FACILITY_RISK_INCIDENTNEWS_INDEX_MANIFEST"
 GOOD_STATES = frozenset(("ready_full", "ready_partial"))
 PRIVATE_TABLES = ("facilities", "evidence", "sec_findings", "raw_snapshots",
                   "audit_events", "insurance_policies", "insurance_terms",
@@ -163,6 +166,32 @@ def _noaa_facts(db_path, device, inode, size, mtime, manifest_path,
             "notice": "Regional source reports only; not site-specific hazard intensity or insured damage"}
 
 
+
+@lru_cache(maxsize=8)
+def _incidentnews_facts(db_path, device, inode, size, mtime, manifest_path,
+                        mdevice, minode, msize, mmtime):
+    manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+    if manifest.get("source_url") != "https://incidentnews.noaa.gov/raw/incidents.csv" or \
+            manifest.get("complete_publisher_snapshot") is not True or \
+            not _sha(manifest.get("original_sha256")) or \
+            not _sha(manifest.get("normalized_sha256")):
+        raise SourceIndexUnavailable("IncidentNews publisher manifest invalid")
+    with _readonly(Path(db_path)) as conn:
+        tables = {r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'")}
+        if not {"incidentnews_incidents","incidentnews_imports"}.issubset(tables):
+            raise SourceIndexUnavailable("IncidentNews source-only tables missing")
+        for table in PRIVATE_TABLES:
+            if table in tables and conn.execute('SELECT 1 FROM "'+table+'" LIMIT 1').fetchone():
+                raise SourceIndexUnavailable("IncidentNews source index contains private research rows")
+        summary = validate_incidentnews_manifest(conn,manifest)
+    summary["publisher"] = "NOAA Office of Response and Restoration"
+    summary["source_sha256"] = manifest["original_sha256"]
+    summary["notice"] = ("Selected scientific-response spill incidents with approximate "
+                         "reference positions; no insured property association or actual loss")
+    return summary
+
+
 def _status(kind, db_env, meta_env, validator):
     if not os.environ.get(db_env, "").strip() and not os.environ.get(meta_env, "").strip():
         return {"state": "not_configured", "source": kind,
@@ -183,8 +212,14 @@ def noaa_index_status():
     return _status("NOAA_STORM_EVENTS", NOAA_INDEX_ENV, NOAA_MANIFEST_ENV, _noaa_facts)
 
 
+def incidentnews_index_status():
+    return _status("NOAA IncidentNews Selected Spills", INCIDENTNEWS_INDEX_ENV,
+                   INCIDENTNEWS_MANIFEST_ENV, _incidentnews_facts)
+
+
 def status():
     return {"frs": frs_status(), "noaa": noaa_index_status(),
+            "incidentnews": incidentnews_index_status(),
             "scope": "Read-only public-authority source catalogs, never insured properties or claims"}
 
 
@@ -243,3 +278,16 @@ def frs_detail(site_id):
 def noaa_events(**filters):
     with noaa_connection() as conn:
         return noaa_search(conn, **filters)
+
+
+@contextmanager
+def incidentnews_connection():
+    if incidentnews_index_status()["state"] not in GOOD_STATES:
+        raise SourceIndexUnavailable("Verified IncidentNews selected-spill index not mounted")
+    with _readonly(_config(INCIDENTNEWS_INDEX_ENV, INCIDENTNEWS_MANIFEST_ENV)[0]) as conn:
+        yield conn
+
+
+def incidentnews_events(**filters):
+    with incidentnews_connection() as conn:
+        return incidentnews_search(conn, **filters)
