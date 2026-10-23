@@ -98,6 +98,20 @@ with sync_playwright() as pw:
     page.locator('[data-page="registry"]').first.click()
     page.locator('[data-reg-id]').first.click()
     page.locator('#registry-track').click()
+    # Dynamic current official NOAA selected spill-response source count.
+    selected_path=Path(__file__).resolve().parents[1]/'web/ingestion/noaa-incidentnews.json'
+    if selected_path.exists():
+        selected=json.loads(selected_path.read_text(encoding='utf-8'))
+        assert selected['source']=='NOAA IncidentNews Selected Spills'
+        assert selected['state']=='staged_source_artifact'
+        assert selected['records']>0 and selected['coordinate_records']<=selected['records']
+        assert sum(selected['threat_counts'].values())==selected['records']
+        expect(page.locator('#intel-content')).to_contain_text(
+            'NOAA IncidentNews Selected Spills',timeout=15000)
+        expect(page.locator('#intel-content')).to_contain_text(
+            f"{selected['records']:,}",timeout=15000)
+        expect(page.locator('#intel-content')).to_contain_text(
+            'not all reported spills',timeout=15000)
     page.locator('[data-page="facilities"]').first.click()
     expect(page.locator('#facility-cards')).to_contain_text('Acme Devices Galway',timeout=15000)
     page.locator('[data-page="cases"]').first.click()
