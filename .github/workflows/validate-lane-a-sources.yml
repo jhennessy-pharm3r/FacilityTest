@@ -1,0 +1,39 @@
+name: Lane A - official FEMA flood and USDA wildfire source validation
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - ingest/fema-wildfire-lane-a-20261023
+    paths:
+      - 'facilityrisk/lane_a_hazards.py'
+      - 'scripts/validate_lane_a_sources.py'
+      - 'tests/test_lane_a_hazards.py'
+      - 'tests/test_lane_a_live_validation.py'
+      - '.github/workflows/validate-lane-a-sources.yml'
+permissions:
+  contents: read
+jobs:
+  lane-a-source-qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run deterministic ingestion and source-identity regressions
+        run: python -m unittest discover -s tests -p 'test_lane_a*.py' -v
+      - name: Request actual FEMA flood polygons and USFS 2023 raster pixels
+        run: python scripts/validate_lane_a_sources.py --output-dir data/lane_a/live_validation
+      - name: Upload raw official source replies, checksum manifest and temporary source-only index
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-a-fema-usfs-official-source-qa
+          path: |
+            data/lane_a/live_validation/manifest.json
+            data/lane_a/live_validation/raw/
+            data/lane_a/live_validation/source-only.sqlite
+          retention-days: 7
+          compression-level: 5
+          if-no-files-found: warn
