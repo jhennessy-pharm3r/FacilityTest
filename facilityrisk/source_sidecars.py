@@ -12,7 +12,6 @@ import os
 from pathlib import Path
 import re
 import sqlite3
-from urllib.parse import quote
 
 from .db import get_db_path
 from .universal_registry import search as universal_search, detail as universal_detail
@@ -59,7 +58,7 @@ def _config(path_var, evidence_var):
 def _readonly(path: Path):
     # Snapshots must be sealed and mounted read-only; immutable mode avoids
     # SQLite WAL sidecar writes on Docker's read-only source volume.
-    uri = "file:" + quote(path.resolve().as_posix(), safe="/") + "?mode=ro&immutable=1"
+    uri = path.resolve().as_uri() + "?mode=ro&immutable=1"
     conn = sqlite3.connect(uri, uri=True, timeout=15)
     try:
         conn.row_factory = sqlite3.Row
