@@ -102,7 +102,7 @@ async function inspect(id,updateURL=true){
  try{
  const res=await fetch('/api/universal-facilities/'+encodeURIComponent(id),{cache:'no-store'});
  if(!res.ok)throw Error('Selected source-site identity is not accessible');
- const data=await res.json();selected=data;if(updateURL)saveRoute();
+ const data=await res.json();if(!el.isConnected||window.FacilityRiskRouter?.route()?.page!=='universal')return;selected=data;if(updateURL)saveRoute();
  const provenance=(data.source_identities||[]).map(x=>{
    const safe=https(x.source_url);
    return '<li><strong>'+esc(x.source_key)+'</strong> / '+esc(x.source_identifier)+
