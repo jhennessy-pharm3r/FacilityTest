@@ -12,7 +12,7 @@ import pytest
 rasterio = pytest.importorskip("rasterio")
 from facilityrisk import lane_a_national_whp as service
 from scripts import lane_a_whp_full_raster as importer
-from tests.test_lane_a_full_whp_rasters import original_six_tiff_fixture
+from test_lane_a_full_whp_rasters import original_six_tiff_fixture
 
 
 @pytest.fixture
