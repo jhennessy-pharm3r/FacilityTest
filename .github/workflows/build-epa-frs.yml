@@ -32,8 +32,13 @@ jobs:
       - name: Verify complete cohort and usable records
         run: |
           python - <<'PY'
-          import csv,gzip,json
+          import csv,gzip,json,hashlib
           m=json.load(open('data/epa-frs-national-manifest.json'))
+          digest=hashlib.sha256()
+          with open('data/epa-frs-national.csv.gz','rb') as archive:
+              for chunk in iter(lambda:archive.read(1024*1024),b''):
+                  digest.update(chunk)
+          assert digest.hexdigest()==m['output_sha256'], 'Normalized FRS cohort checksum mismatch'
           assert m['complete_source'], 'Sample export must not be published as complete'
           assert m['valid_records'] >= 100000, 'Unexpectedly small official FRS cohort'
           assert m['valid_records'] + m['rejected_rows'] == m['read_rows']
