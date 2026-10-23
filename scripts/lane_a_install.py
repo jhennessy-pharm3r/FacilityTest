@@ -41,6 +41,10 @@ REQUIRED_FILES = {
                      "whp_official_index/whp2023-source-geographies.ndjson.gz",
                      "whp_official_summary/whp2023_official_summaries.zip"),
 }
+IGNORED_LANE_A_DIAGNOSTICS = frozenset((
+    "live_validation", "massgis_2025", "fema_transport",
+    "fema_msc_county", "fema_distribution",
+))
 MAX_ARCHIVE_BYTES = 100 * 1024 * 1024
 MAX_FILE_BYTES = 100 * 1024 * 1024
 MAX_TOTAL_BYTES = 400 * 1024 * 1024
@@ -118,8 +122,17 @@ def stage_sources(root, *, artifact_paths=(), source_root=None):
             for entry in archive.infolist():
                 if entry.is_dir():
                     continue
-                # Artifact ZIPs occasionally include .gitkeep etc; explicitly
-                # reject anything other than Lane A's own source directories.
+                # Combined successful source artifacts also hold Lane A's older
+                # diagnostics. Ignore those, but never import outside owned
+                # source indexes or silently accept arbitrary foreign content.
+                # Check path traversal even for intentionally skipped files.
+                if (entry.filename.startswith("/") or "\\\\" in entry.filename or
+                        "\\x00" in entry.filename or
+                        ".." in pathlib.PurePosixPath(entry.filename).parts):
+                    raise ValueError("Unsafe source artifact path")
+                if (pathlib.PurePosixPath(entry.filename).parts[0]
+                        in IGNORED_LANE_A_DIAGNOSTICS):
+                    continue
                 rel = _safe_relative_name(entry.filename)
                 if stat.S_IFMT(entry.external_attr >> 16) == stat.S_IFLNK:
                     raise ValueError("Refusing artifact symlink: " + entry.filename)
