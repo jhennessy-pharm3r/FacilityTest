@@ -17,6 +17,9 @@ def test_csb_quarter_key_reuse_requires_matching_event_fields():
     assert a["new_release_rows"]==3
     assert a["reused_number_count"]==2
     assert a["changed_event_attributes_under_same_number"]==1
+    assert a["changed_event_field_counts"]["incident_date"]==1
+    assert a["changed_event_field_counts"]["reported_company"]==0
+    assert a["same_number_with_multiple_fields_changed"]==0
     assert a["numbers_absent_in_new_release"]==1
     assert a["new_number_values"]==1
     assert a["safe_cross_vintage_id_assumption"] is False
