@@ -1,11 +1,15 @@
 name: Validate full EPA FRS indexed database
 on:
   workflow_dispatch:
-  push:
+    inputs:
+      source_run_id:
+        description: 'Successful official EPA staging workflow run ID (required)'
+        required: true
+        type: string
+  workflow_run:
+    workflows: ['EPA FRS national source staging']
+    types: [completed]
     branches: [main]
-    paths:
-      - 'scripts/import_universal.py'
-      - '.github/workflows/validate-frs-index.yml'
 permissions:
   contents: read
   actions: read
@@ -14,6 +18,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   index:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
@@ -28,7 +33,7 @@ jobs:
       - name: Download completed full official EPA FRS source artifact
         uses: actions/download-artifact@v4
         with:
-          run-id: 39809865315
+          run-id: ${{ github.event.workflow_run.id || inputs.source_run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           name: epa-frs-national-source-import
           path: data
@@ -37,9 +42,13 @@ jobs:
           python - <<'PY'
           import json
           m=json.load(open('data/epa-frs-national-manifest.json'))
-          assert m['complete_source'] and m['valid_records']==5354716
-          assert m['rejected_rows']==7158
-          print('Source cohort verified:',m['valid_records'])
+          assert m['complete_source'], 'Staged source is partial'
+          assert m['valid_records']>=5000000, 'National source dropped below the minimum quality floor'
+          assert m['valid_records']+m['rejected_rows']==m['read_rows'], 'Manifest has inconsistent rows'
+          assert len(m['sha256'])==64 and len(m['output_sha256'])==64
+          print('Official source cohort verified:',m['valid_records'])
+          print('Change from October 2026 reference:',m['valid_records']-5354716)
+          print('Rejected raw source rows:',m['rejected_rows'])
           PY
       - name: Load all source identities into indexed SQLite
         run: |
@@ -67,7 +76,7 @@ jobs:
              source,vintage='2026-10-01',
              notes='Complete EPA national source identity import; not verified properties')
           stats=statistics(c)
-          assert result['read']==5354716, result
+          assert result['read']>=5000000, result
           assert result['rejected']==0, result
           assert stats['source_identities']>=5000000, stats
           assert stats['site_candidates']>=5000000, stats
@@ -92,6 +101,10 @@ jobs:
           print(json.dumps(report,indent=2),flush=True)
           c.close()
           PY
+      - name: Benchmark indexed all-industry search and parallel read performance
+        run: |
+          python scripts/benchmark_frs_search.py data/full-frs-index.sqlite \
+            --out data/frs-search-benchmark.json --repeats 3 --concurrency 4
       - name: Publish validated source-only SQLite for private-host import
         uses: actions/upload-artifact@v4
         with:
@@ -99,6 +112,7 @@ jobs:
           path: |
             data/full-frs-index.sqlite
             data/full-frs-index-qa.json
+            data/frs-search-benchmark.json
           compression-level: 3
           retention-days: 7
           if-no-files-found: error
