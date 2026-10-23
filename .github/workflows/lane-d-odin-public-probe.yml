@@ -33,6 +33,7 @@ jobs:
           import hashlib,json,pathlib
           endpoints = [
             "https://odin.ornl.gov/odi/status",
+            "https://odin.ornl.gov/odi",
             "https://odin.ornl.gov/v3/api-docs",
             "https://openenergyhub.ornl.gov/api/explore/v2.1/catalog/datasets/odin-real-time-outages-county/records?limit=5",
             "https://openenergyhub.ornl.gov/api/explore/v2.1/catalog/datasets/odin-real-time-outages-county/exports/json",
@@ -53,6 +54,7 @@ jobs:
                       rec["content_length_header"]=response.headers.get("Content-Length","")
                       rec["content_range"]=response.headers.get("Content-Range","")
                       rec["fetched_byte_count"]=len(data)
+                      rec["truncated_at_probe_ceiling"]=len(data)>=2_000_001
                       rec["sample_sha256"]=hashlib.sha256(data).hexdigest()
                       rec["final_host"]=response.geturl().split("/")[2]
                   if b"xml" in rec.get("content_type","").lower().encode() or data.lstrip().startswith(b"<?xml"):
@@ -60,7 +62,7 @@ jobs:
                       rec["root_xml_tag"]=root.tag.rsplit("}",1)[-1]
                       rec["children_tags"]=dict(Counter(c.tag.rsplit("}",1)[-1] for c in root))
                       rec["depth_two_names"]=[(c.tag.rsplit("}",1)[-1], [j.tag.rsplit("}",1)[-1] for j in list(c)[:12]]) for c in list(root)[:5]]
-                  elif rec.get("content_type","").startswith("application/json"):
+                  elif rec.get("content_type","").startswith("application/json") and not rec.get("truncated_at_probe_ceiling"):
                       obj=json.loads(data)
                       rec["json_top_level"]=list(obj)[:30] if isinstance(obj,dict) else type(obj).__name__
                       if isinstance(obj,dict) and isinstance(obj.get("paths"),dict):
