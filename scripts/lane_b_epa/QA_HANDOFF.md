@@ -8,7 +8,7 @@
 | --- | ---: | ---: | ---: | ---: |
 | ECHO exporter national ZIP | 3,229,311 | **3,208,008** | **21,303** without FRS `REGISTRY_ID` | **0** |
 | RCRAInfo national ZIP, **six** source tables | 7,022,589 | **7,022,589** | 0 | **0** |
-| TRI Basic U.S. 2020–2024, **five annual CSVs** | **392,878** | **392,878** | 0 | **0** |
+| TRI Basic U.S. **1987–2024**, **38 annual CSVs** | **3,218,093** | **3,218,093** | 0 | **0** |
 | EPA **public** FRS RMP-program interest layer | **21,853** | **21,853** | 0 | **0** |
 | Restricted full RMP and OCA plans | Not downloaded | Not authorized for unrestricted ingest | N/A | 0 |
 
@@ -16,7 +16,7 @@ RCRA `RCRA_FACILITIES.csv`: **1,630,839** rows and unique native handler identit
 
 ECHO **3,146,109** source-keyed coordinate pairs among 3,208,008 indexed records. The complete file contains 3,167,409 coordinate pairs, but **21,300** of these occur in 21,303 unkeyed rows. New schema v2 preserves the 21,303 rows and SHA-256 fingerprints in its quarantined raw-payload table. Do not assign a name/address-derived synthetic FRS key or represent these as clean/negative findings.
 
-TRI 2024: **77,295** chemical-report records from **21,482** native TRIFDs; **68,567 Form R**, **8,728 Form A**, **76,574 pounds-unit reports**, **721 grams-unit reports**; 232 rows have EPA's PFAS source flag `YES`. These are reporting classifications, **not PFAS property-risk labels**. Across 2020–2024, there are **392,878** chemical-report rows, of which **388,944** use pounds and **3,934** use grams. Never add tons/grams/pounds or events/chemical reports to physical-site counts without normalized units and semantic checks.
+TRI 2024: **77,295** chemical-report records from **21,482** native TRIFDs; **68,567 Form R**, **8,728 Form A**, **76,574 pounds-unit reports**, **721 grams-unit reports**; 232 rows have EPA's PFAS source flag `YES`. These are reporting classifications, **not PFAS property-risk labels**. Across **1987–2024** there are **3,218,093** chemical-report rows (including 2020–2024's 392,878); **3,191,748** pounds-unit and **26,345** grams-unit forms, not quantities of emissions. Never add tons/grams/pounds or events/chemical reports to physical-site counts without normalized units and semantic checks.
 
 ## Authoritative joins and orphan handling
 
@@ -38,7 +38,7 @@ TRI 2024: **77,295** chemical-report records from **21,482** native TRIFDs; **68
 
 - ECHO full source/rejection/geo [run 39973733592](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39973733592), original archive SHA256 `116f6e53117b52f7891c6d2466d662f4ee5e29946b065fdb7b97eaf095615899`.
 - RCRA v2 full read-only query/index/hash checks [run 39979755246](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39979755246), original SHA256 `babf48b1e2388b7f27cfc186cb1e9eb0ecfa26f53476fc81908712e41dfe09f3`. 3.16GB uncompressed indexed data / 740MB compressed temporary handoff artifact.
-- TRI **all five** 2020–2024 official national years [run 39980692415](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39980692415), annual input and index hashes at `validation/tri_2020_2024.md`. Available only as short-lived **staging** artifacts.
+- TRI **1987–2024** all 38 official national years: [1987–2019 producer 39985627343](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39985627343) and [independent aggregate 39988067337](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39988067337); **five** 2020–2024 years [run 39980692415](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39980692415), annual input and index hashes at `validation/tri_2020_2024.md`. Available only as short-lived **staging** artifacts.
 - Public FRS RMP source with separate distinct-program/FRS identity counts, raw JSONL and indexed blob [run 39980425241](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39980425241); deterministic GeoPlatform ordering correction in a subsequent source-only rerun.
 - Complete observed official field schemas, selected date years, jurisdictions, geobounds and nonmatching RCRA handler keys [full audit 39980093306](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39980093306). Official ECHO/RCRA ZIP response Last-Modified was **October 18, 2026**; HTTP retrieval time is not an event date.
 - Source data guidance: [ECHO official downloads](https://echo.epa.gov/tools/data-downloads), [RCRAInfo data dictionary](https://echo.epa.gov/tools/data-downloads/rcrainfo-download-summary), [TRI Basic reporting/units/revisions](https://www.epa.gov/toxics-release-inventory-tri-program/tri-basic-data-files-calendar-years-1987-present), [restricted RMP access](https://www.epa.gov/rmp/accessing-rmp-data).
@@ -47,7 +47,7 @@ TRI 2024: **77,295** chemical-report records from **21,482** native TRIFDs; **68
 
 - Obtain/retain a durable authenticated source host (Lane E); temporary CI artifacts expire and are **not** persistent deployed indexes.
 - Comprehensive public RMP plans/OCA cannot be treated as unrestricted bulk. Follow authorized, non-OCA disclosure and access review.
-- Full historic TRI 1987–2019 not yet staged by the five-year workflow; source coverage is explicit.
+- Full historic TRI 1987–2019 is source-ingested and independently validated; source bundles remain short-lived Actions artifacts, **0 persistently deployed**. The 2025 Basic endpoint returned HTTP 404 and is unavailable, not an empty year.
 - RCRA orphan two-key source identities and ECHO blank-registry rows require **manual source-data policy** for eventual review, never automatic physical-site assignment.
 - Benchmark actual production search/pagination and geographic coverage on authenticated host, inspect dataset vintages and date sentinel values, implement refresh, backup, provenance reconciliations, real source-status publication and physical-property approval.
 
