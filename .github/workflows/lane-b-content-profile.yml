@@ -1,4 +1,4 @@
-name: Lane B EPA full official content-profile audit
+name: Lane B EPA full official content-profile and program linkage QA
 on:
   push:
     branches: ['ingest/epa-echo-tri-rcra-rmp-lane-b-20261023']
