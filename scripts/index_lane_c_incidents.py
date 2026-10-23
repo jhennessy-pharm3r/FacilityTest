@@ -10,6 +10,7 @@ import csv
 from datetime import datetime, timezone
 import gzip
 import json
+import re
 from pathlib import Path
 import sqlite3
 
@@ -67,6 +68,17 @@ CONFIG = {
     }
 }
 
+def config_for_source(key, manifest=None):
+    if key in CONFIG:
+        config = CONFIG[key]
+    elif re.fullmatch(r"nrc_20[0-9]{2}",key):
+        config = CONFIG["nrc"]
+        if manifest and int(key[4:]) != int(manifest["year"]):
+            raise ValueError("Annual NRC source namespace and manifest vintage disagree")
+    else:
+        raise ValueError("Unknown publisher source or annual NRC namespace")
+    return config
+
 def _float_or_none(s, low, high):
     if s is None or s == "":
         return None
@@ -88,10 +100,10 @@ def index_sources(database, source_inputs, audit_path):
         with conn:
             conn.executescript(SCHEMA)
             for key, source_path, manifest_path in source_inputs:
-                if key not in CONFIG or key in summaries:
-                    raise ValueError("Unknown or duplicate source index requested")
-                cfg = CONFIG[key]
+                if key in summaries:
+                    raise ValueError("Duplicate source index requested")
                 manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+                cfg = config_for_source(key,manifest)
                 cfg["validate"](source_path, manifest)
                 inserted, geocoded, min_date, max_date = 0, 0, None, None
                 with gzip.open(source_path, "rt", encoding="utf-8", newline="") as fh:
@@ -122,7 +134,7 @@ def index_sources(database, source_inputs, audit_path):
                 expected = manifest["accepted_rows"]
                 if inserted != expected:
                     raise ValueError("Source index count does not match real normalized manifest")
-                if key == "nrc" and geocoded != manifest["coordinate_records"]:
+                if (key == "nrc" or key.startswith("nrc_")) and geocoded != manifest["coordinate_records"]:
                     raise ValueError("NRC coordinate index count differs from source")
                 if key == "csb" and geocoded != 0:
                     raise ValueError("CSB source should not have inferred coordinates")
@@ -169,8 +181,9 @@ def index_sources(database, source_inputs, audit_path):
         raise
 
 def search_source(db_path, *, source, state=None, since=None, page=1, page_size=50):
-    if source not in CONFIG or not 1 <= page_size <= 200 or page < 1:
-        raise ValueError("Unsupported source or paging")
+    if not 1 <= page_size <= 200 or page < 1:
+        raise ValueError("Unsupported paging")
+    config_for_source(source)
     with sqlite3.connect(db_path) as conn:
         where = ["source=?"]
         params = [source]
