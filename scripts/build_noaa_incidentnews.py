@@ -31,8 +31,8 @@ RAW_REQUIRED = frozenset((
     "tags", "commodity", "max_ptl_release_gallons", "posts",
     "description",
 ))
-MEASURES = ("is_measure_skim", "is_measure_shore", "is_measure_bio",
-            "is_measure_disperse", "is_measure_burn")
+MEASURES = ("measure_skim", "measure_shore", "measure_bio",
+            "measure_disperse", "measure_burn")
 COLUMNS = ("incident_id", "notification_date", "name", "location",
            "latitude", "longitude", "threat", "tags", "commodity",
            "potential_release_gallons_max", "response_posts",
@@ -150,10 +150,16 @@ def normalize(source, output, *, minimum_rows=100):
         with Path(source).open("r", encoding="utf-8-sig", newline="") as inp, \
                 gzip.open(temp, "wt", encoding="utf-8", newline="") as out:
             reader = csv.DictReader(inp)
-            if not RAW_REQUIRED.issubset(reader.fieldnames or ()) or \
-                    not set(MEASURES).issubset(reader.fieldnames or ()):
-                observed=list(reader.fieldnames or [])
-                missing=sorted((RAW_REQUIRED | set(MEASURES))-set(observed))
+            observed=list(reader.fieldnames or [])
+            missing=sorted(RAW_REQUIRED-set(observed))
+            # The current publisher CSV omits the documented is_ prefix.
+            # Accept both exact field-name variants, but never assume the
+            # measure is false if neither official spelling exists.
+            measure_columns={name:(name if name in observed else "is_"+name)
+                             for name in MEASURES}
+            missing += [name for name,field in measure_columns.items()
+                        if field not in observed]
+            if missing:
                 raise ValueError("Official IncidentNews CSV columns changed; "+
                     "missing="+repr(missing)+"; "+
                     "observed_header="+repr(observed[:45]))
@@ -181,7 +187,7 @@ def normalize(source, output, *, minimum_rows=100):
                     raise ValueError(f"Unexpected official IncidentNews threat category: {threat}")
                 threat = threat or "Unspecified"
                 classes[threat] += 1
-                measure_flags = [_flag(raw.get(k)) for k in MEASURES]
+                measure_flags = [_flag(raw.get(measure_columns[k])) for k in MEASURES]
                 writer.writerow(dict(zip(COLUMNS, (
                     incident_id, when, _text(raw.get("name"), 500),
                     _text(raw.get("location"), 500),
