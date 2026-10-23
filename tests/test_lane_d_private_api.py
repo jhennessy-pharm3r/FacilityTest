@@ -132,7 +132,7 @@ def test_manifest_or_sqlite_tampering_blocks_readonly_serving(secured_api):
 def test_source_index_cannot_live_inside_mutable_insured_workspace(secured_api):
     client, root, patch, temp = secured_api
     private = temp / "insured-data"
-    private.mkdir()
+    private.mkdir(exist_ok=True)
     patch.setenv("FACILITY_RISK_DB", str(private / "insured-workspace.sqlite"))
     patch.setenv("FACILITY_RISK_LANE_D_INDEX_ROOT", str(private))
     status = client.get("/api/source-context/lane-d/status").json()
