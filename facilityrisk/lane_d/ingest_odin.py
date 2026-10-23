@@ -61,6 +61,7 @@ def parse(data, snapshot_utc):
     fips,countries,states=set(),set(),set()
     geography_null,geo_point_null,meters_null,status_counts=0,0,0,Counter()
     reported_times=[]
+    missing_reported_start=0
     for rownum, raw in enumerate(items, start=1):
         reason=None
         if not isinstance(raw,dict):
@@ -80,14 +81,17 @@ def parse(data, snapshot_utc):
             elif not state or not county:
                 reason="missing_county_or_state"
             else:
-                try:
-                    moment=datetime.fromisoformat(started.replace("Z","+00:00"))
-                    if moment.tzinfo is None:
-                        raise ValueError("No timezone in publisher timestamp")
-                    if moment.year<2000 or moment>datetime.now(timezone.utc):
-                        raise ValueError("Source date outside publication bounds")
-                except ValueError:
-                    reason="invalid_reported_start"
+                if started:
+                    try:
+                        moment=datetime.fromisoformat(started.replace("Z","+00:00"))
+                        if moment.tzinfo is None:
+                            raise ValueError("No timezone in publisher timestamp")
+                        if moment.year<2000 or moment>datetime.now(timezone.utc):
+                            raise ValueError("Source date outside publication bounds")
+                    except ValueError:
+                        reason="invalid_reported_start"
+                else:
+                    moment=None
                 if not reason:
                     try:
                         affected=clean_numeric(raw["metersaffected"])
@@ -106,7 +110,10 @@ def parse(data, snapshot_utc):
         meters_null+=int(affected is None)
         geography_null+=int(raw.get("geom") is None)
         geo_point_null+=int(raw.get("geo_point_2d") is None)
-        reported_times.append(moment.isoformat())
+        if moment:
+            reported_times.append(moment.isoformat())
+        else:
+            missing_reported_start+=1
         incident=raw.get("incident")
         # ODIN incident may be nested or not globally unique. Preserve without inventing source event ID.
         native_incident_id = incident if isinstance(incident,(str,int)) and str(incident).strip() else None
@@ -121,7 +128,8 @@ def parse(data, snapshot_utc):
             "native_county_fips":loc,
             "reported_state":state,
             "reported_county":county,
-            "reported_start_time":started,
+            "reported_start_time":started or None,
+            "reported_start_status":"REPORTED" if moment else "NOT_REPORTED",
             "reported_status":status,
             "reported_meters_affected":affected,
             "source_record_sha256":digest,
@@ -152,8 +160,9 @@ def parse(data, snapshot_utc):
         "missing_publisher_geom":geography_null,
         "missing_publisher_geo_point":geo_point_null,
         "status_kind_counts":dict(status_counts),
-        "earliest_reported_start":min(reported_times),
-        "latest_reported_start":max(reported_times),
+        "earliest_reported_start":min(reported_times) if reported_times else None,
+        "latest_reported_start":max(reported_times) if reported_times else None,
+        "missing_reported_start":missing_reported_start,
         "snapshot_time_type":"run_utc_observation",
     }
 
@@ -209,6 +218,7 @@ def run(path:Path, output:Path, expected_total=None, official_download=False):
         "status":"PUBLIC_COUNTY_SNAPSHOT_LOCAL_STAGING_NOT_SITE_VERIFIED",
         "restrictions":[
             "Snapshot data are time-varying and must not be added across collection times",
+            "Null reported start time is unknown; accepted as context but not interpreted as zero downtime",
             "County polygon and FIPS are context, not a physical facility geometry or meter link",
             "Number of meters affected is publisher-reported; not customer monetary loss",
             "No independent outage confirmation at a facility, no paid claims, no policy coverage",
