@@ -1,0 +1,83 @@
+name: NOAA Storm Events national bulk ingestion
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '13 5 * * 4'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/build_noaa_storm_events.py'
+      - 'facilityrisk/storm_events.py'
+      - '.github/workflows/build-noaa-storm-events.yml'
+permissions:
+  contents: write
+concurrency:
+  group: noaa-storm-source-ingestion
+  cancel-in-progress: false
+jobs:
+  stage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install runtime dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Download official year partitions and validate the entire raw cohort
+        run: |
+          python scripts/build_noaa_storm_events.py \
+            --years 2023-2026 \
+            --output data/noaa/storm-events.csv.gz \
+            --manifest data/noaa/storm-events-manifest.json \
+            --raw-dir data/noaa/raw \
+            --summary web/ingestion/noaa-storm-events.json \
+            --min-rows 5000
+      - name: Verify source manifest, checksum and normalized annual counts
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from scripts.build_noaa_storm_events import validate_normalized, sha256
+          m=json.load(open('data/noaa/storm-events-manifest.json',encoding='utf-8'))
+          assert m['complete_requested_years'] is True
+          assert m['requested_years']==[2023,2024,2025,2026]
+          assert all(p['event_records']>=5000 for p in m['partitions'])
+          assert sum(p['event_records'] for p in m['partitions'])==m['total_events']
+          for part in m['partitions']:
+              archive=Path('data/noaa/raw')/part['source_file']
+              assert archive.is_file() and sha256(archive)==part['original_archive_sha256']
+          assert validate_normalized(Path('data/noaa/storm-events.csv.gz'),m)
+          summary=json.load(open('web/ingestion/noaa-storm-events.json',encoding='utf-8'))
+          assert summary['state']=='staged_source_artifact'
+          assert summary['records']==m['total_events']
+          print('Complete NOAA bulk source ingestion validated:',m['total_events'])
+          PY
+      - name: Upload complete verified source files for authenticated private import
+        uses: actions/upload-artifact@v4
+        with:
+          name: noaa-storm-events-national-2023-2026
+          path: |
+            data/noaa/storm-events.csv.gz
+            data/noaa/storm-events-manifest.json
+            data/noaa/raw/*.csv.gz
+          retention-days: 14
+          compression-level: 3
+          if-no-files-found: error
+      - name: Update public source-health inventory without fabricating new probes
+        run: |
+          python scripts/publish_source_status.py \
+            --merge-only --ingestion-dir web/ingestion \
+            --output web/source-status.json
+      - name: Commit sanitized aggregate source status (no original events or private data)
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add web/ingestion/noaa-storm-events.json web/source-status.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Data: publish NOAA storm source ingestion manifest [skip ci]'
+          git pull --rebase origin main
+          git push origin HEAD:main
