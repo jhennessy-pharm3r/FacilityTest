@@ -117,6 +117,8 @@ def initialize(conn: sqlite3.Connection) -> None:
     initialize_assets(conn)
     from .bi_scenarios import initialize_interruption
     initialize_interruption(conn)
+    from .storm_events import initialize_storm_events
+    initialize_storm_events(conn)
     conn.commit()
 
 
