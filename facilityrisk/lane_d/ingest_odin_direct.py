@@ -179,7 +179,8 @@ def parse(raw_bytes, snapshot_utc):
         })
     if len(accepted)+len(rejected)!=len(raw) or not accepted:
         raise ValueError("ODIN native publisher row count failed reconciliation")
-    stats.update({
+    observations=dict(stats)
+    observations.update({
         "raw_source_rows_downloaded":len(raw),
         "accepted":len(accepted),
         "rejected":len(rejected),
@@ -194,7 +195,7 @@ def parse(raw_bytes, snapshot_utc):
         "last_reported_start":max(reported_dates) if reported_dates else None,
         "reject_reasons":dict(Counter(r["reason"] for r in rejected)),
     })
-    return accepted,rejected,dict(stats)
+    return accepted,rejected,observations
 
 
 def run(path, output, official_https=False):
