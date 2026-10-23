@@ -56,6 +56,31 @@ jobs:
           assert summary['records']==m['total_events']
           print('Complete NOAA bulk source ingestion validated:',m['total_events'])
           PY
+      - name: Prove complete real-source import and index query in disposable private SQLite
+        env:
+          FACILITY_RISK_DB: data/noaa/storm-only.sqlite
+        run: |
+          python -m facilityrisk import-noaa-storm-events \
+            data/noaa/storm-events.csv.gz \
+            --manifest data/noaa/storm-events-manifest.json \
+            > data/noaa/private-db-qa.json
+          python - <<'PY'
+          import json,sqlite3
+          manifest=json.load(open('data/noaa/storm-events-manifest.json'))
+          qa=json.load(open('data/noaa/private-db-qa.json'))
+          assert qa['state']=='imported_private_backend'
+          assert qa['rows_imported_for_requested_years']==manifest['total_events']
+          db=sqlite3.connect('data/noaa/storm-only.sqlite')
+          row=db.execute('SELECT COUNT(*) FROM noaa_storm_events').fetchone()[0]
+          assert row==manifest['total_events'], (row,manifest['total_events'])
+          records=db.execute('SELECT COUNT(*) FROM noaa_storm_imports').fetchone()[0]
+          assert records==len(manifest['partitions'])
+          assert db.execute("SELECT COUNT(*) FROM noaa_storm_events WHERE state='MAINE'").fetchone()[0]>=1
+          assert db.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+          db.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+          db.close()
+          print('Private source-only database indexed and verified:',row)
+          PY
       - name: Upload complete verified source files for authenticated private import
         uses: actions/upload-artifact@v4
         with:
@@ -63,6 +88,8 @@ jobs:
           path: |
             data/noaa/storm-events.csv.gz
             data/noaa/storm-events-manifest.json
+            data/noaa/storm-only.sqlite
+            data/noaa/private-db-qa.json
             data/noaa/raw/*.csv.gz
           retention-days: 14
           compression-level: 3
