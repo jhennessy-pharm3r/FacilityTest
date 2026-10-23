@@ -54,7 +54,7 @@ def verify_dir(root):
          (("fema_nfhl", "fema_source_observations"),
           ("usfs_whp_continuous_2023", "usfs_raster_observations"))),
         ("massgis_2025", "massgis-source-only.sqlite",
-         (("massgis_ma_nfhl_2025_sfha_subset", "fema_source_observations"),)),
+         (("massgis_ma_nfhl_2025_state_archive", "fema_source_observations"),)),
         ("fema_transport", "fema-attribute-only.sqlite",
          (("fema_transport_attribute_only", "fema_attribute_samples"),)),
     ):
