@@ -3,51 +3,84 @@
   "as_of": "2026-10-23",
   "review_status": "verified_source_qa_not_deployed",
   "coordination_issue": "https://github.com/jhennessy-pharm3r/FacilityTest/issues/73",
-  "purpose": "Source-level quality assurance completed or attempted in separate GitHub Actions staging workflows; NOT a live risk feed or a count of insurable physical sites.",
+  "purpose": "Reviewed public metadata for source-level QA by independent lane; staging and counts do not mean these records are available in the production facility-risk service.",
   "caveats": [
-    "Rows have different source grains (regulatory tables, chemical filings, notifications, facility/provider context, polygons and raster observations). Never sum them as distinct facilities.",
-    "CI-indexed is ephemeral staging/index validation, not an accessible persistent production index. Every Lane A-D source still has zero verified deployed records in the authenticated facility application.",
-    "No insured physical site identity, exact footprint, facility-specific hazard, policy coverage, actual property loss or insurance claim has been independently established from these cohorts.",
-    "Publisher coverage and vintages vary. An unknown or blocked count is not zero events or zero risk."
+    "Each row represents a distinct official-source table, reported notification, chemical form, county observation, wildfire pixel or publisher aggregate. Do NOT sum accepted counts as unique facilities, accidents, outages or insured claims.",
+    "Source-only SQLite indexed in disposable GitHub Actions staging differs from an installed authenticated durable private index. The four ingestion lane PRs remain DRAFT, not yet merged. Production deployed and approved physical-site matches = 0 for all streams.",
+    "Some source products overlap (e.g., ORNL current snapshots and mirrors, NRC/CSB match candidates, CSB quarterly revisions). Never deduplicate or join them into a verified event or site without manual independent evidence.",
+    "Source blocks (PHMSA original incident data, SEC original filings, restricted RMP plans) and geographic/snapshot gaps mean UNKNOWN coverage, not zero risk.",
+    "Identity, location accuracy, policy coverage, damage, financial impact and paid insurance claims require separate verifiable evidence before underwriting use."
   ],
   "lanes": [
     {
       "id": "A",
-      "name": "Natural hazards",
+      "name": "Flood and wildfire",
       "pr_url": "https://github.com/jhennessy-pharm3r/FacilityTest/pull/75",
-      "gate": "Real FEMA/USFS sample ingestion passed; national flood coverage, untruncated paging, verified facility locations and production serving remain unresolved.",
+      "gate": "34 FEMA polygons prove only six bounded query windows; the full national NFHL/270m raster and verified property intersections are unavailable. 2023 wildfire county/state/ZIP aggregates are not facility hazard pixels. All private hosting, per-study effective dates and location review gates remain open.",
       "sources": [
         {
           "id": "fema_nfhl",
           "name": "FEMA NFHL flood polygons",
-          "scope": "21 sampled polygon features across New Orleans (10), Houston (9), Sacramento (2); New Orleans transfer-truncated",
+          "scope": "34 polygons from six tiny city query windows; 31 native and 3 explicitly generalized geometries",
           "stage": "sample_ci_indexed",
-          "scanned": 21,
-          "accepted": 21,
+          "scanned": 34,
+          "accepted": 34,
           "rejected": 0,
-          "indexed_ci": 21,
+          "indexed_ci": 34,
           "deployed": 0,
           "verified_insured_sites": 0,
           "valid_coordinates": null,
-          "run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39975835483",
+          "run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39981174363",
           "source_sha256": null,
-          "notes": "Official FEMA responses; not a national layer or a property-specific flood determination."
+          "notes": "Source retrieval and 34-record QA step passed; broader workflow had an independent failure. Six city windows are NOT nationwide coverage. No verified insured-property intersections."
         },
         {
           "id": "usfs_whp",
-          "name": "USFS Wildfire Hazard Potential 2023",
-          "scope": "Three official raster pixel observations; raw values 0, 231, 4155",
+          "name": "USDA WHP2023 continuous raster samples",
+          "scope": "70 USFS continuous 270m ImageServer sample pixels across 14 test regions",
           "stage": "sample_ci_indexed",
-          "scanned": 3,
-          "accepted": 3,
+          "scanned": 70,
+          "accepted": 70,
           "rejected": 0,
-          "indexed_ci": 3,
+          "indexed_ci": 70,
           "deployed": 0,
           "verified_insured_sites": 0,
-          "valid_coordinates": 3,
-          "run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39975835483",
+          "valid_coordinates": null,
+          "run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39985460693",
           "source_sha256": null,
-          "notes": "Source raster pixels are neither wildfire incidents nor insured-property risk scores."
+          "notes": "Original numeric raster pixels only, not 70 facilities. Source landscape based on approximately 2020; not live wildfire predictions."
+        },
+        {
+          "id": "usfs_whp_classified",
+          "name": "USDA WHP2023 classified raster samples",
+          "scope": "70 classified 270m pixels paired with continuous sample locations",
+          "stage": "sample_ci_indexed",
+          "scanned": 70,
+          "accepted": 70,
+          "rejected": 0,
+          "indexed_ci": 70,
+          "deployed": 0,
+          "verified_insured_sites": 0,
+          "valid_coordinates": null,
+          "run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39985460693",
+          "source_sha256": null,
+          "notes": "Includes 14 non-burnable and 1 water mask; masks are NOT a lower-risk determination. Not insured property locations."
+        },
+        {
+          "id": "usfs_whp_aggregates",
+          "name": "USDA WHP2023 national administrative summaries",
+          "scope": "3,143 counties, 51 state rows, 32,094 ZIP areas and 16 management totals",
+          "stage": "ci_indexed",
+          "scanned": 35304,
+          "accepted": 35304,
+          "rejected": 0,
+          "indexed_ci": 35304,
+          "deployed": 0,
+          "verified_insured_sites": 0,
+          "valid_coordinates": null,
+          "run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39985452864",
+          "source_sha256": "1008b6d10c3635c6549dba3d1893381c2e6ed266c59b5fe8648cf5a6dea4b185",
+          "notes": "National publisher administrative source (not full 270m wildfire raster). 60 ZIP areas lack acreage and remain unknown; ZIP areas are not insured properties."
         }
       ]
     },
@@ -55,12 +88,12 @@
       "id": "B",
       "name": "Environmental compliance",
       "pr_url": "https://github.com/jhennessy-pharm3r/FacilityTest/pull/76",
-      "gate": "Source records passed real-content QA in temporary indexes. Persistent query service and review-only facility crosswalk are not deployed; restricted RMP plans remain outside public scope.",
+      "gate": "Validated real-source national source-only QA and independent ECHO/RCRA database artifact replay; no durable private host, approved physical-site crosswalk, or service deployment. Restricted RMP/OCA documents are outside public scope.",
       "sources": [
         {
           "id": "epa_echo",
           "name": "EPA ECHO national exporter",
-          "scope": "ECHO_EXPORTER.csv; native REGISTRY_ID; 3,146,109 valid coordinate pairs",
+          "scope": "Native REGISTRY_ID source identities, not violations or physical properties",
           "stage": "ci_indexed",
           "scanned": 3229311,
           "accepted": 3208008,
@@ -71,12 +104,12 @@
           "valid_coordinates": 3146109,
           "run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39973733592",
           "source_sha256": "116f6e53117b52f7891c6d2466d662f4ee5e29946b065fdb7b97eaf095615899",
-          "notes": "21,303 rejected for missing native REGISTRY_ID. Coordinate fields FAC_LAT/FAC_LONG corrected and revalidated; source records are not violation counts."
+          "notes": "21,303 source rows rejected for missing REGISTRY_ID; FAC_LAT/FAC_LONG corrected and 3,146,109 pairs validated. Complete ECHO index artifact replay also passed run 39985749332."
         },
         {
           "id": "epa_rcra",
-          "name": "EPA RCRAInfo national tables",
-          "scope": "Six regulatory tables; 1,630,839 facility-table records among the accepted source-table rows",
+          "name": "EPA RCRAInfo national",
+          "scope": "Six regulatory member-table rows (1,630,839 facility table records); NOT unique properties",
           "stage": "ci_indexed",
           "scanned": 7022589,
           "accepted": 7022589,
@@ -85,41 +118,41 @@
           "deployed": 0,
           "verified_insured_sites": 0,
           "valid_coordinates": 1522387,
-          "run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39971197481",
+          "run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39984660816",
           "source_sha256": "babf48b1e2388b7f27cfc186cb1e9eb0ecfa26f53476fc81908712e41dfe09f3",
-          "notes": "Regulatory table rows are not 7 million different facilities; preserve native ID_NUMBER and member-table grain."
+          "notes": "Original six-table rows and read-only index integrity independently verified. 11,212 event/NAICS foreign-key candidates are left unresolved; native ID_NUMBER + ACTIVITY_LOCATION matter."
         },
         {
           "id": "epa_tri",
-          "name": "EPA TRI 2024 U.S. Basic",
-          "scope": "2024 chemical-level reporting rows, native TRIFD source field",
+          "name": "EPA TRI 1987–2024 history",
+          "scope": "38 official annual U.S. Basic chemical-level reporting cohorts",
           "stage": "ci_indexed",
-          "scanned": 77295,
-          "accepted": 77295,
+          "scanned": 3218093,
+          "accepted": 3218093,
           "rejected": 0,
-          "indexed_ci": 77295,
+          "indexed_ci": 3218093,
           "deployed": 0,
           "verified_insured_sites": 0,
-          "valid_coordinates": 77295,
-          "run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39972946492",
-          "source_sha256": "06dfa3a67bb4c5bd38d9e9f0f7b8bff10b95254a63169423632d7f6f251e1506",
-          "notes": "Chemical reporting rows, not unique manufacturing facilities or actual releases at insured locations."
+          "valid_coordinates": null,
+          "run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39988067337",
+          "source_sha256": null,
+          "notes": "3,218,093 per-chemical reporting rows, not facilities. 33 historical 1987–2019 vintages independently SHA-reconciled; the 2025 public Basic URL returned HTTP 404, not a zero-report finding."
         },
         {
           "id": "epa_rmp_public",
           "name": "EPA public RMP program interest",
-          "scope": "21,853 distinct public FRS RMP-interest observations; excludes protected RMP/OCA records",
-          "stage": "downloaded_qa",
+          "scope": "Public FRS program-interest identities; 21,567 distinct FRS registry IDs",
+          "stage": "ci_indexed",
           "scanned": 21853,
           "accepted": 21853,
           "rejected": 0,
-          "indexed_ci": null,
+          "indexed_ci": 21853,
           "deployed": 0,
           "verified_insured_sites": 0,
           "valid_coordinates": 21853,
-          "run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39971992625",
+          "run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39981171808",
           "source_sha256": "a2ae6195b1e20096b8b21faed57e4ed840fcc753f6775624aadb292e0d3a4272",
-          "notes": "Public regulated-program association only; restricted RMP plans and offsite-consequence analysis are not ingested."
+          "notes": "21,853 program-interest rows, not 21,853 independent physical sites. Restricted RMP plans and off-site consequence analyses are NOT included."
         }
       ]
     },
@@ -127,44 +160,60 @@
       "id": "C",
       "name": "Industrial incidents",
       "pr_url": "https://github.com/jhennessy-pharm3r/FacilityTest/pull/79",
-      "gate": "NRC and CSB source-normalized evidence passed QA, but not indexed/deployed. PHMSA hazardous-liquid archive returned HTTP 403; authorized alternate official distribution and separate hazmat data remain unresolved.",
+      "gate": "NRC 2010–2026 + CSB September 2026 source-only private handoff revalidated with 429,796 temporary indexed source rows. Separate PHMSA enforcement validated; original pipeline/transport accident exports remain access-blocked. No site-level verification or durable service.",
       "sources": [
         {
           "id": "uscg_nrc",
-          "name": "USCG NRC 2025",
-          "scope": "Unique native SEQNOS notifications joined across workbook tables; 3,999 usable reported DMS coordinates",
-          "stage": "staged_normalized",
-          "scanned": 21533,
-          "accepted": 21533,
+          "name": "USCG NRC annual notifications 2010–2026",
+          "scope": "17 official source-reporting-year workbooks; 2026 provisional",
+          "stage": "ci_indexed",
+          "scanned": 429122,
+          "accepted": 429122,
           "rejected": 0,
-          "indexed_ci": 0,
+          "indexed_ci": 429122,
           "deployed": 0,
           "verified_insured_sites": 0,
-          "valid_coordinates": 3999,
-          "run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39972783353",
-          "source_sha256": "086da221569b5bbccb0f8170c54fd83c11cf8b7894258bfdea2c60a218407bda",
-          "notes": "Initial spill/release notifications are unverified, and 17,534 notifications lack usable source coordinates. Incident-to-site attribution is not confirmed."
+          "valid_coordinates": 62276,
+          "run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39987550790",
+          "source_sha256": null,
+          "notes": "Source-native year/SEQNOS IDs; 422 ambiguous/missing child links, 3 undatable master reports preserved. 366,846 missing/invalid coordinates. NRC notifications are initially UNVERIFIED and may be offshore or international."
         },
         {
           "id": "csb",
-          "name": "U.S. Chemical Safety Board, Sept 2026",
-          "scope": "675 dated-event source rows observed in official workbook",
-          "stage": "staged_normalized",
+          "name": "U.S. Chemical Safety Board — Sept 2026",
+          "scope": "Latest September accidental release publication; original row count 675",
+          "stage": "ci_indexed",
           "scanned": 675,
           "accepted": 674,
           "rejected": 1,
-          "indexed_ci": 0,
+          "indexed_ci": 674,
           "deployed": 0,
           "verified_insured_sites": 0,
           "valid_coordinates": null,
-          "run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39972783353",
+          "run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39987550790",
           "source_sha256": "dbea875040e7ddfebfbe295c1731faab5f4c3829784c0c93dbb8d054c10b9dc1",
-          "notes": "One record rejected for missing incident date. Investigations are selective, not a national accident census."
+          "notes": "One record excluded for missing incident date. Historic June release not added; 19 reused Number values changed event identity fields across vintages. 135 NRC/CSB matching candidates require independent review."
+        },
+        {
+          "id": "phmsa_enforcement",
+          "name": "PHMSA WMS enforcement cases",
+          "scope": "First-party enforcement case records; 453 case rows reference reports",
+          "stage": "ci_indexed",
+          "scanned": 5089,
+          "accepted": 5089,
+          "rejected": 0,
+          "indexed_ci": 5089,
+          "deployed": 0,
+          "verified_insured_sites": 0,
+          "valid_coordinates": null,
+          "run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39985148724",
+          "source_sha256": "23d8d5c62dd93f848ba3f22d4fc24d0c7f3d90b750aea2ac7223168401725bb7",
+          "notes": "5,089 enforcement cases are NOT pipeline accident or hazmat report records. 403 distinct typed report references do not prove 403 additional incidents."
         },
         {
           "id": "phmsa_liquid",
-          "name": "PHMSA hazardous-liquid incidents 2010+",
-          "scope": "Official ZIP download blocked by HTTP 403 in networked CI",
+          "name": "PHMSA original pipeline / hazmat incidents",
+          "scope": "Official primary accident ZIPs / hazardous-materials incident export blocked",
           "stage": "access_blocked",
           "scanned": null,
           "accepted": null,
@@ -173,9 +222,9 @@
           "deployed": 0,
           "verified_insured_sites": 0,
           "valid_coordinates": null,
-          "run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39972783353",
+          "run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39972123258",
           "source_sha256": null,
-          "notes": "No accepted or rejected source count can be claimed. Missing source access is not evidence of zero pipeline incidents."
+          "notes": "Four official pipeline ZIP endpoints returned HTTP 403; separate hazmat portal unavailable without approved access. Real underlying incident counts remain unknown, NOT zero."
         }
       ]
     },
@@ -183,12 +232,12 @@
       "id": "D",
       "name": "Utilities and interruption",
       "pr_url": "https://github.com/jhennessy-pharm3r/FacilityTest/pull/77",
-      "gate": "Actual EIA utility and disturbance rows were staged and locally indexed. Utility/provider identity is not a verified customer site; SEC primary filing downloads were HTTP 403, and insured BI losses remain unverified.",
+      "gate": "Validated historical county outage rows, utility reliability, source feed snapshots and first-party corporate disruption evidence are temporary CI data only. No verified serving utility/meter at an insured site, live persistent index or paid BI claims. SEC original filings remain blocked.",
       "sources": [
         {
           "id": "eia861",
-          "name": "EIA-861 final 2025",
-          "scope": "979 reliability rows, 51 state aggregates, 11,893 county service-territory rows",
+          "name": "EIA-861 2025 utilities and territories",
+          "scope": "979 utility reliability rows, 51 state aggregates, 11,893 county-territory rows",
           "stage": "ci_indexed",
           "scanned": 12926,
           "accepted": 12923,
@@ -197,14 +246,14 @@
           "deployed": 0,
           "verified_insured_sites": 0,
           "valid_coordinates": null,
-          "run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39975860947",
+          "run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39978518676",
           "source_sha256": "f59f6c732bf685fe0a1591b32227f5ce572dc0dfd26bb5caaeed128ac4e3a396",
-          "notes": "913 distinct utility IDs in reliability portion; 3 invalid-year records rejected. SAIDI/SAIFI are utility-level context only."
+          "notes": "3 invalid-year records rejected; source utility and county context do NOT establish an insured property's utility or past outage."
         },
         {
           "id": "eia_b1",
-          "name": "EIA Electric Power Monthly table B.1",
-          "scope": "2024 partial utility disturbance reports; derived source-row keys",
+          "name": "EIA / DOE-417-derived EPM B.1",
+          "scope": "2024 partial utility disturbance source observations",
           "stage": "ci_indexed",
           "scanned": 72,
           "accepted": 72,
@@ -215,12 +264,12 @@
           "valid_coordinates": null,
           "run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39975860947",
           "source_sha256": null,
-          "notes": "Reported disruptions cannot automatically be assigned to insured physical sites."
+          "notes": "Derived source table/row keys, not publisher-native event IDs. Area reports are NOT site-specific loss evidence."
         },
         {
           "id": "eia_b2",
-          "name": "EIA Electric Power Monthly table B.2",
-          "scope": "2023 annual utility disturbance reports; derived source-row keys",
+          "name": "EIA / DOE-417-derived EPM B.2",
+          "scope": "2023 annual utility disturbance source observations",
           "stage": "ci_indexed",
           "scanned": 158,
           "accepted": 158,
@@ -231,12 +280,76 @@
           "valid_coordinates": null,
           "run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39975860947",
           "source_sha256": null,
-          "notes": "Publisher has no native event ID in table; source keys are derived, not original incident identifiers."
+          "notes": "Derived source table/row keys. Not verified outage episodes at insured physical properties."
+        },
+        {
+          "id": "pnnl_outages",
+          "name": "DOE/PNNL county outage source 2014–2023",
+          "scope": "50 source CSV tables; includes episodes, correlation joins, sensitivity rows and summaries",
+          "stage": "ci_indexed",
+          "scanned": 2124183,
+          "accepted": 2124183,
+          "rejected": 0,
+          "indexed_ci": 2124183,
+          "deployed": 0,
+          "verified_insured_sites": 0,
+          "valid_coordinates": null,
+          "run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39984734680",
+          "source_sha256": "44557bae7a5c8e02c611a14f75fe9e123d81d286f700b9fd88ac538edd910fe7",
+          "notes": "277,360 exact repeated rows preserved/flagged across source tables; 1,846,823 distinct same-table rows. 1,385,389 county episodes are only ONE grain. CC BY 4.0 attribution required."
+        },
+        {
+          "id": "odin_county",
+          "name": "DOE/ORNL ODIN outage-status snapshot",
+          "scope": "One publisher county/utility outage observation snapshot; not a continuous feed",
+          "stage": "ci_indexed",
+          "scanned": 558,
+          "accepted": 558,
+          "rejected": 0,
+          "indexed_ci": 558,
+          "deployed": 0,
+          "verified_insured_sites": 0,
+          "valid_coordinates": null,
+          "run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39985271905",
+          "source_sha256": "19ca8e195ac765159168b0a32d459e3bf171fc058de84b3db148db1734025a9a",
+          "notes": "248 county FIPS; 89 utility IDs; 6 duplicate source rows flagged, 157 unknown start timestamps. This DIRECT primary-source snapshot overlaps earlier mirror data: do not sum across snapshots."
+        },
+        {
+          "id": "odin_feeds",
+          "name": "DOE/ORNL ODIN utility feed health",
+          "scope": "157 utility-participation/health rows, including 10 publisher hasError flags",
+          "stage": "ci_indexed",
+          "scanned": 157,
+          "accepted": 157,
+          "rejected": 0,
+          "indexed_ci": 157,
+          "deployed": 0,
+          "verified_insured_sites": 0,
+          "valid_coordinates": null,
+          "run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39985698922",
+          "source_sha256": null,
+          "notes": "Utility feed status is provider-system evidence, NOT power outage or insured facility count."
+        },
+        {
+          "id": "baxter_bi",
+          "name": "Baxter North Cove issuer publications",
+          "scope": "Three dated first-party company publications; one underlying operational interruption",
+          "stage": "ci_indexed",
+          "scanned": 3,
+          "accepted": 3,
+          "rejected": 0,
+          "indexed_ci": 3,
+          "deployed": 0,
+          "verified_insured_sites": 0,
+          "valid_coordinates": null,
+          "run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39978131475",
+          "source_sha256": null,
+          "notes": "Baxter reported Helene-related operations/forecast impacts. A prospective $200M companywide sales outlook is NOT realized profit loss, insured BI coverage or paid claim."
         },
         {
           "id": "sec_bi",
-          "name": "SEC EDGAR primary-source BI filings",
-          "scope": "Three issuer references are candidates only; no official filing retrieved",
+          "name": "SEC EDGAR original issuer BI filings",
+          "scope": "Primary SEC filings not retrieved; blocked by publisher HTTP 403",
           "stage": "access_blocked",
           "scanned": null,
           "accepted": null,
@@ -247,9 +360,21 @@
           "valid_coordinates": null,
           "run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39975705946",
           "source_sha256": null,
-          "notes": "SEC official site returned HTTP 403; zero actual verified issuer filing downloads and zero validated BI loss amounts."
+          "notes": "Zero official SEC filings verified from attempted access; do not substitute corporate press releases for audited SEC documents or invent financial claim amounts."
         }
       ]
     }
-  ]
+  ],
+  "integration_status": {
+    "private_backend": "not_provisioned",
+    "production_source_rows_deployed": 0,
+    "approved_insured_physical_site_links": 0,
+    "worker_prs": "draft_unmerged",
+    "missing_gates": [
+      "durable encrypted authenticated source-index installation with backup and scheduled refresh",
+      "review-only physical-site geocoding/identity and source-to-location crosswalk",
+      "API coverage, tenant isolation, query performance and 25-site cross-industry acceptance",
+      "legal/source-use, policy and actual loss/claim validation"
+    ]
+  }
 }
