@@ -15,7 +15,7 @@ def mock_classified_api(operation, params):
     else:
         geom = json.loads(params["geometry"])
         # Five geographic probes sample four hazards + one non-burnable.
-        value = 6 if geom["x"] > -99.97 else (255 if geom["x"] < -100.06 else 3)
+        value = 6 if geom["x"] > -99.97 and geom["y"] < 40 else (255 if geom["x"] < -100.06 and geom["y"] < 40 else 3)
         response = {"value": str(value)}
     raw = json.dumps(response, sort_keys=True).encode()
     return response, raw, IMAGE_SERVER + "/" + operation
