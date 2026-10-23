@@ -3,6 +3,21 @@ on:
   push:
     branches:
       - 'ingest/industrial-events-nrc-csb-phmsa-*'
+    paths:
+      - '.github/workflows/lane-c-industrial-probe.yml'
+      - 'scripts/build_industrial_incidents.py'
+      - 'scripts/build_nrc_enriched.py'
+      - 'scripts/build_csb_incidents.py'
+      - 'scripts/industrial_incident_io.py'
+      - 'scripts/index_lane_c_incidents.py'
+      - 'scripts/lane_c_review_candidates.py'
+      - 'scripts/probe_lane_c_sources.py'
+      - 'scripts/run_lane_c_verified.py'
+      - 'tests/test_industrial_incidents.py'
+      - 'tests/test_nrc_enriched.py'
+      - 'tests/test_csb_release.py'
+      - 'tests/test_lane_c_index.py'
+      - 'tests/test_lane_c_candidates.py'
   workflow_dispatch:
 concurrency:
   group: lane-c-official-${{ github.ref }}
