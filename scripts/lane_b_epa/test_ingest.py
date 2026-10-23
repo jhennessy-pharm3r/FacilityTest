@@ -1,4 +1,4 @@
-import tempfile,unittest
+import tempfile,unittest,sqlite3,json
 from pathlib import Path
 from zipfile import ZipFile
 from scripts.lane_b_epa.ingest import ingest,coordinate
@@ -50,6 +50,27 @@ class LaneBTests(unittest.TestCase):
             self.assertEqual(m["indexed_rows"],1)
             self.assertEqual(m["valid_coordinate_pairs"],1)
             self.assertEqual(m["reject_reason_counts"]["missing_native_id"],1)
+    def test_rcrainfo_composite_source_identity_and_quarantine(self):
+        with tempfile.TemporaryDirectory() as d:
+            x=Path(d);p=x/"RCRA_FACILITIES.csv"
+            p.write_text("ID_NUMBER,ACTIVITY_LOCATION,FACILITY_NAME,LATITUDE83,LONGITUDE83\n"
+                         "TXD123,TX,Site 1,31,-97\n"
+                         "TXD123,OK,Site 2,32,-96\n"
+                         ",TX,Not uniquely identified,30,-95\n")
+            m=ingest("rcra",p,x/"out")
+            self.assertEqual((m["scanned_rows"],m["indexed_rows"],m["rejected_rows"]),(3,2,1))
+            con=sqlite3.connect(x/"out"/"rcra.sqlite")
+            self.assertEqual([r[0] for r in con.execute("SELECT activity_location FROM observation ORDER BY row_number")],["TX","OK"])
+            kept=con.execute("SELECT reason,payload_json,row_sha256 FROM rejected").fetchone()
+            self.assertEqual(kept[0],"missing_native_id")
+            self.assertEqual(json.loads(kept[1])["FACILITY_NAME"],"Not uniquely identified")
+            self.assertEqual(len(kept[2]),64)
+            con.close()
+    def test_zero_accepted_fails_closed(self):
+        with tempfile.TemporaryDirectory() as d:
+            x=Path(d);p=x/"invalid.csv";p.write_text("UNKNOWN_ID,NAME\nA,Example\n")
+            with self.assertRaises(ValueError):ingest("rcra",p,x/"out")
+            self.assertFalse((x/"out"/"rcra.sqlite").exists())
     def test_no_false_facility_merge(self):
         with tempfile.TemporaryDirectory() as d:
             x=Path(d);p=x/"echo.csv";p.write_text("REGISTRY_ID,NAME\nA,Same\nB,Same\n")
