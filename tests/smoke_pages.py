@@ -117,6 +117,21 @@ with sync_playwright() as pw:
     expect(page.locator('#intel-content')).to_contain_text('EPA ECHO',timeout=15000)
     expect(page.locator('#intel-content')).to_contain_text('Actual published data ingestion',timeout=15000)
     expect(page.locator('#intel-content')).to_contain_text('USCG National Response Center',timeout=15000)
+    # Parallel worker lanes expose official source staging, never production facility matches.
+    expect(page.locator('#intel-content')).to_contain_text('Parallel-source ingestion progress',timeout=15000)
+    expect(page.locator('#intel-content')).to_contain_text('App deployed',timeout=15000)
+    ledger_path=Path(__file__).resolve().parents[1]/'web/coordination/parallel-ingestion.json'
+    progress=json.loads(ledger_path.read_text(encoding='utf-8'))
+    assert progress['review_status']=='verified_source_qa_not_deployed'
+    records=[source for lane in progress['lanes'] for source in lane['sources']]
+    assert all(row['deployed']==0 for row in records)
+    for source_id in ('epa_echo','epa_rcra','uscg_nrc','eia861','fema_nfhl'):
+        item=next(row for row in records if row['id']==source_id)
+        expect(page.locator('#intel-content')).to_contain_text(item['name'],timeout=15000)
+        expect(page.locator('#intel-content')).to_contain_text(f"{item['accepted']:,}",timeout=15000)
+    expect(page.locator('#intel-content')).to_contain_text('Official access blocked',timeout=15000)
+    expect(page.locator('#intel-content')).to_contain_text('not a deployed facility-risk dataset',timeout=15000)
+
     # Use the actual committed NOAA summary, never a fixed or guessed row count.
     noaa_status=Path(__file__).resolve().parents[1]/'web/ingestion/noaa-storm-events.json'
     if noaa_status.exists():
