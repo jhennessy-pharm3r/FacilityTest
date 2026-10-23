@@ -63,6 +63,10 @@ function navigateToPage(page){
   url.search='';
   url.hash='';
   url.searchParams.set('page',page);
+  const remembered=page==='registry'?window.RegistryUI?.routeParams?.():page==='universal'?window.UniversalUI?.routeParams?.():null;
+  for(const [key,value] of Object.entries(remembered||{})){
+    if(ROUTE_KEYS.has(key)&&value!=null&&value!=='')url.searchParams.set(key,String(value).slice(0,240));
+  }
   if(url.href!==window.location.href)window.history.pushState({facilityRiskRoute:true},'',url);
   state.page=page;
   closeDrawer();
