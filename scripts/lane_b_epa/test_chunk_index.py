@@ -13,6 +13,9 @@ class ChunkStagingTests(unittest.TestCase):
             index=stage/"echo.sqlite"
             packed=pack(index,stage/"echo.manifest.json",root/"chunks",chunk_bytes=1031)
             self.assertGreater(len(packed["chunks"]),1)
+            audit=restore(root/"chunks"/"chunk-manifest.json",root/"chunks",verify_only=True)
+            self.assertTrue(audit["verified_only"])
+            self.assertEqual(audit["sqlite_sha256"],manifest["index_sha256"])
             restored=root/"restored.sqlite"
             summary=restore(root/"chunks"/"chunk-manifest.json",root/"chunks",restored)
             self.assertEqual(summary["sqlite_sha256"],manifest["index_sha256"])
