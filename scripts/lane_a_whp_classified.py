@@ -100,6 +100,7 @@ def run(output, fetch=fetch_json, regions=REGIONS, workers=3):
         "received": 0, "burnable_classes": 0, "special_mask_classes": 0,
         "nodata": 0, "rejected": 0, "source_failures": 0,
         "class_distribution": {}, "records": [], "metadata": None,
+        "sample_complete": False, "all_counts_reconciled": False,
     }
     try:
         metadata, raw, url = fetch("", {"f": "json"})
