@@ -115,6 +115,19 @@ with sync_playwright() as pw:
     expect(page.locator('#view-root')).to_contain_text('Coverage unknown',timeout=15000)
     page.locator('[data-page="feeds"]').first.click()
     expect(page.locator('#intel-content')).to_contain_text('EPA ECHO',timeout=15000)
+    expect(page.locator('#intel-content')).to_contain_text('Actual published data ingestion',timeout=15000)
+    expect(page.locator('#intel-content')).to_contain_text('USCG National Response Center',timeout=15000)
+    # Use the actual committed NOAA summary, never a fixed or guessed row count.
+    noaa_status=Path(__file__).resolve().parents[1]/'web/ingestion/noaa-storm-events.json'
+    if noaa_status.exists():
+        noaa=json.loads(noaa_status.read_text(encoding='utf-8'))
+        assert noaa['state']=='staged_source_artifact' and noaa['records']>0
+        expect(page.locator('#intel-content')).to_contain_text(
+            f"{noaa['records']:,}",timeout=15000)
+        expect(page.locator('#intel-content')).to_contain_text(
+            'NOAA Storm Events Details',timeout=15000)
+        expect(page.locator('#intel-content')).to_contain_text(
+            'staged source artifact',timeout=15000)
     page.locator('[data-page="facilities"]').first.click()
     page.locator('.facility-card').first.click()
     expect(page.locator('#detail-drawer')).to_have_class('detail-drawer open',timeout=15000)
