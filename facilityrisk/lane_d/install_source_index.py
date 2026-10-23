@@ -53,6 +53,21 @@ SPECS = {
                              "source_row_sha256", "is_exact_duplicate_source_row",
                              "duplicate_of_source_line", "raw_json"),
     },
+    "oe417_annual_public": {
+        "database": "oe417_annual_staging.sqlite",
+        "publisher_source": "DOE_CESER_OE417_2023_ANNUAL_DISCOVERY",
+        "manifest_count": "normalized_accepted",
+        "manifest_kinds": None,
+        "receipt_source_sha": "original_json_sha256",
+        "receipt_db_sha": "staged_sqlite_sha256",
+        "receipt_count": "indexed_source_rows",
+        "kind_values": ("annual_source_rows",),
+        "native_key": "source_row_key",
+        "required_columns": ("source_row_key", "original_position", "event_date",
+                             "restoration_date", "source_area_text", "source_event_type",
+                             "reported_customers", "exact_duplicate_source",
+                             "duplicate_of_source_position", "original_row_sha256", "raw_json"),
+    },
     "odin_direct_public": {
         "database": "odin_direct_county_staging.sqlite",
         "publisher_source": "DOE_ORNL_ODIN_DIRECT_NON_AUTH_COUNTY",
@@ -126,7 +141,10 @@ def audit_source_bundle(source, dataset, expected_source_sha256, expected_db_sha
     dbfile = checked_path(source, spec["database"])
     if manifest.get("source") != spec["publisher_source"]:
         raise ValueError("Wrong publisher/source manifest for dataset family")
-    original_digest_key = "original_raw_json_sha256" if dataset == "odin_direct_public" else "archive_sha256"
+    original_digest_key = {
+        "odin_direct_public": "original_raw_json_sha256",
+        "oe417_annual_public": "downloaded_original_export_sha256",
+    }.get(dataset, "archive_sha256")
     archive_sha = validate_sha(manifest.get(original_digest_key))
     if archive_sha != expected_source_sha256:
         raise ValueError("Trusted raw-source archive SHA-256 does not match package")
@@ -145,9 +163,11 @@ def audit_source_bundle(source, dataset, expected_source_sha256, expected_db_sha
         raise ValueError("Rejection count is absent from publisher receipt")
     if manifest.get("source_rows_scanned", manifest_count + manifest["rejected"]) != manifest_count + manifest["rejected"]:
         raise ValueError("Original source scanned/accepted/rejected counts differ")
-    count_by_kind = ({"county_snapshot": manifest_count}
-                     if dataset == "odin_direct_public"
-                     else manifest.get(spec["manifest_kinds"]))
+    count_by_kind = (
+        {"county_snapshot": manifest_count} if dataset == "odin_direct_public"
+        else {"annual_source_rows": manifest_count} if dataset == "oe417_annual_public"
+        else manifest.get(spec["manifest_kinds"])
+    )
     if not isinstance(count_by_kind, dict) or any(
         kind not in spec["kind_values"] or type(count) is not int or count < 0
         for kind, count in count_by_kind.items()
@@ -171,10 +191,12 @@ def audit_source_bundle(source, dataset, expected_source_sha256, expected_db_sha
         rows = db.execute("SELECT COUNT(*) FROM source_observations").fetchone()[0]
         if rows != manifest_count:
             raise ValueError("Source index row count does not equal accepted source count")
-        kinds = ({"county_snapshot": rows}
-                 if dataset == "odin_direct_public"
-                 else dict(db.execute(
-                     "SELECT source_kind, COUNT(*) FROM source_observations GROUP BY source_kind")))
+        kinds = (
+            {"county_snapshot": rows} if dataset == "odin_direct_public"
+            else {"annual_source_rows": rows} if dataset == "oe417_annual_public"
+            else dict(db.execute(
+                "SELECT source_kind, COUNT(*) FROM source_observations GROUP BY source_kind"))
+        )
         expected = {k: v for k, v in count_by_kind.items() if v > 0}
         if kinds != expected:
             raise ValueError("Installed index source-kind count does not equal manifest")
@@ -198,6 +220,16 @@ def audit_source_bundle(source, dataset, expected_source_sha256, expected_db_sha
                 raise ValueError("ODIN native source-row duplicates differ from original publisher receipt")
             if manifest.get("original_https_download") is not True:
                 raise ValueError("ODIN received a local copy without independently authenticated official HTTPS")
+        elif dataset == "oe417_annual_public":
+            duplicate_count = db.execute(
+                "SELECT COUNT(*) FROM source_observations WHERE exact_duplicate_source=1"
+            ).fetchone()[0]
+            if duplicate_count != manifest.get("statistics", {}).get("exact_duplicate_source_rows"):
+                raise ValueError("OE417 publisher duplicate count changed")
+            if manifest.get("downloaded_official_original_json") is not True:
+                raise ValueError("OE417 source not authenticated as public original publisher JSON")
+            if manifest.get("metadata_declared_license") != "Public Domain":
+                raise ValueError("OE417 publisher-declared public-domain license missing or changed")
         else:
             duplicate_count = None
     return {
@@ -346,6 +378,11 @@ def query_install(destination, dataset, *, fips=None, year=None, state=None,
             raise ValueError("Current ODIN snapshots require native county FIPS only")
         from .query_staging import get_county_context
         result = get_county_context(fips, odin_direct_db=path, limit=limit)
+    elif dataset == "oe417_annual_public":
+        if fips is not None or state is not None or county is not None:
+            raise ValueError("OE417 annual discovery has no physical county FIPS/site assignment")
+        from .query_oe417_annual import annual_context
+        result = annual_context(path, event_year=year, limit=limit)
     else:
         from .query_eia_service_territory import service_territory_candidates
         result = service_territory_candidates(path, state, county, limit)
