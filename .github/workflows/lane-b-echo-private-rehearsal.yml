@@ -1,7 +1,7 @@
 name: Lane B official ECHO private-snapshot handoff rehearsal
 on:
   push:
-    branches: ['ingest/epa-echo-tri-echo-rmp-lane-b-20261023']
+    branches: ['ingest/epa-echo-tri-rcra-rmp-lane-b-20261023']
     paths: ['.github/workflows/lane-b-echo-private-rehearsal.yml']
   workflow_dispatch:
 permissions:
