@@ -2,11 +2,13 @@ import json
 import sqlite3
 import tempfile
 import unittest
+import urllib.error
+from unittest.mock import patch
 from pathlib import Path
 
 from scripts.lane_a_fema_query_smoke import validate as validate_native_query
 from scripts.lane_a_nfhl_paged import (
-    FEMA_LAYER, envelope, geometry_bbox, run, source_key,
+    FEMA_LAYER, envelope, geometry_bbox, query_http, run, source_key,
 )
 
 FIELDS = [{"name": x} for x in (
@@ -49,6 +51,46 @@ def responder(params, *, missing=False, count_offset=0, truncate=False):
 
 
 class FEMAPagedWindowsTests(unittest.TestCase):
+    def test_authorized_post_fallback_preserves_exact_successful_transport(self):
+        class Response:
+            def __init__(self, request):
+                self.request = request
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self, _limit):
+                return b'{"count":9}'
+
+            def geturl(self):
+                return self.request.full_url
+
+        attempted = []
+
+        def official_endpoint(request, timeout):
+            attempted.append((request.get_method(), request.full_url, request.data))
+            if request.get_method() == "GET":
+                raise urllib.error.URLError("connection reset by peer")
+            return Response(request)
+
+        with patch("scripts.lane_a_nfhl_paged.urllib.request.urlopen",
+                   side_effect=official_endpoint), patch(
+                   "scripts.lane_a_nfhl_paged.time.sleep"):
+            doc, raw, source_url, transport = query_http(
+                {"f": "json", "returnCountOnly": "true",
+                 "where": "1=1"}, attempts=2)
+        self.assertEqual(doc["count"], 9)
+        self.assertEqual(len(attempted), 2)
+        self.assertEqual(attempted[0][0], "GET")
+        self.assertEqual(attempted[1][0], "POST")
+        self.assertIn(b"returnCountOnly=true", attempted[1][2])
+        self.assertEqual(transport["http_method"], "POST")
+        self.assertEqual(transport["attempt_count"], 2)
+        self.assertTrue(source_url.endswith("/query"))
+
     def test_complete_enumeration_of_more_than_one_query_page(self):
         with tempfile.TemporaryDirectory() as folder:
             windows = {
