@@ -31,11 +31,13 @@ jobs:
         run: python -m unittest discover -s tests -p 'test_lane_a*.py' -v
       - name: Request actual FEMA flood polygons and USFS 2023 raster pixels
         run: python scripts/validate_lane_a_sources.py --output-dir data/lane_a/live_validation
-      - name: Validate separately attributed Massachusetts FEMA 2025 snapshot sample
+      - name: Probe optional Massachusetts FEMA 2025 derivative without substituting for national NFHL
         if: always()
+        continue-on-error: true
         run: python -m scripts.validate_lane_a_massgis --output-dir data/lane_a/massgis_2025
       - name: Diagnose official FEMA shorter GET and POST attribute queries
         if: always()
+        continue-on-error: true
         run: python -m scripts.diagnose_lane_a_fema_access --output-dir data/lane_a/fema_transport
       - name: Independently verify captured raw SHA256 and SQLite row reconciliations
         if: always()
