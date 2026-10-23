@@ -53,6 +53,23 @@ From the reviewed Python 3.12 repository checkout and on the protected host:
 
 The installer checks trusted original-source SHA, manifest/receipt, original acceptance/rejections and source kinds, required source ID columns, duplicate flags, SQLite size and complete integrity. It copies into dataset/versions and atomically moves current.json only after validation. Invalid source, active writer, changed digest or bad schema fails closed. An identical version re-install is idempotent. To roll back, re-install the original independently accepted version with its pinned original source SHA; do not overwrite SQLite by hand.
 
+## Extra review-only first-party issuer business-interruption evidence
+
+The private API can independently serve original first-party disclosures from Crane Company and Pebblebrook Hotel Trust as two separate reviewed case-study indexes. **These are not national insurer claims, insured premises or meter outages.** First-party Crane original 2024 annual and 2025 Q2 quarterly PDFs have 7 typed accounting observations (2 documents), with the issuer reporting USD 4,000,000 received for lost profits in Q2 2025. Other financial figures are property-damage expenses/recoveries/receivables under different reporting periods. First-party Pebblebrook 2024/2025 year-end investor publications have 5 typed accounting observations (2 documents), including FY2024 Hurricane Ian USD 23,800,000 recognized BI insurance income and FY2025 Helene/Milton USD 12,700,000 recognized BI income. Quarterly amounts are **already included in annual**, and recognized income alone does not establish a carrier-confirmed paid claim.
+
+The financial source installer validates exact original first-party document URLs/SHA-256 signatures, issuer CIK, every typed accounting figure, annual/quarter/cumulative source period, SQL row identity and absence of independent insured-site/claim verification. It fails closed on any new/changed unreviewed document.
+
+After reviewing data use terms and installing the separate pypdf PDF parser on an authorized private host:
+
+    python -m facilityrisk.lane_d.ingest_crane_bi_pdf --output /secure/transfers/crane --min-sources 2
+    python -m facilityrisk.lane_d.ingest_pebblebrook_bi --output /secure/transfers/pebblebrook --min-sources 2
+    python -m facilityrisk.lane_d.install_issuer_financial install --bundle /secure/transfers/crane --dest /srv/facilityrisk/source-index/lane-d/issuer_financial --case crane
+    python -m facilityrisk.lane_d.install_issuer_financial install --bundle /secure/transfers/pebblebrook --dest /srv/facilityrisk/source-index/lane-d/issuer_financial --case pebblebrook
+    python -m facilityrisk.lane_d.install_issuer_financial verify --dest /srv/facilityrisk/source-index/lane-d/issuer_financial --case crane
+    python -m facilityrisk.lane_d.install_issuer_financial verify --dest /srv/facilityrisk/source-index/lane-d/issuer_financial --case pebblebrook
+
+An issuer page digest or amount drift blocks the install, pending another official-source audit. Query the authenticated GET /api/source-context/issuer-bi?issuer=Crane%20Company or Pebblebrook%20Hotel%20Trust. The response preserves issuer-reported facts without insurer/policy verification. Its installed-source status appears separately in issuer_bi_financial_context; do not use it as a verified insured claim or underwriting rating.
+
 ## 4. Run the authenticated private backend using persistent mounts
 
 In an UNTRACKED .env or managed secrets, configure:
@@ -64,7 +81,15 @@ In an UNTRACKED .env or managed secrets, configure:
     FACILITY_RISK_LANE_D_INDEX_ROOT=/app/source-index/lane-d
     FACILITY_RISK_LANE_D_ODIN_USE_APPROVED=0
 
-The existing Compose server listens on host 127.0.0.1:8765 and mounts the source index read-only under /app/source-index. UID 10001 runs the private container. Remote customers require separate HTTPS/VPN, tenant-scoped identity-aware proxy and role authorization; a shared bearer token by itself is **not enterprise client-grade SSO**.
+The existing Compose server listens on host 127.0.0.1:8765 and mounts the source index read-only under /app/source-index. UID 10001 runs the private container.
+
+**Actual Docker permission gate:** the versioned source installer creates owner-only directories (0700); SQL files are read-only (0444). After verified source installation on an approved Linux host, grant the unprivileged container UID 10001 ownership/traversal before Docker startup:
+
+    sudo chown -R 10001:10001 /srv/facilityrisk/source-index/lane-d
+    sudo chown -R 10001:10001 ./data
+
+Keep source-index directory restricted to authorized operators and backed up, with the application bind mount explicitly read-only (:ro). The mutable insured workspace stays separate. An earlier Docker smoke exposed missing container rights to owner-only source-index directories; granting UID10001 ownership fixes access without granting mutable source storage inside the container. Do not use global-write permissions.
+ Remote customers require separate HTTPS/VPN, tenant-scoped identity-aware proxy and role authorization; a shared bearer token by itself is **not enterprise client-grade SSO**.
 
     docker compose up --build -d
     docker compose ps
@@ -80,6 +105,7 @@ The verifier reads FACILITY_RISK_AUTH_TOKEN from environment and does not log it
 - GET /api/source-context/annual-electric-disturbances?year=2023: source DOE annual reporting records; EIA EPM overlaps.
 - GET /api/source-context/current-outages?county_fips=48201: returns 503 until rights-approved first-party ORNL snapshot is installed and explicit source-use review gate enabled.
 - GET /api/source-indices/status: includes authenticated Lane D source-index status; no false public GitHub Pages deployed values.
+- GET /api/source-context/issuer-bi?issuer=Crane%20Company: reviewed issuer-published financial accounting observations with period and original SHA. Not insurer-confirmed paid claims.
 
 A configured but invalid/corrupt index must return 503 or unavailable; never treat missing evidence as zero risk. Every response preserves source-vintage identity and explicitly negates claims of verified insured meter, paid claim and actual insured loss.
 
