@@ -5,9 +5,27 @@
   const script = document.getElementById('public-api-script');
   const seedUrl = new URL('./public-demo.json', script?.src || document.baseURI);
   const statusUrl = new URL('./source-status.json', script?.src || document.baseURI);
+  const noaaStatusUrl = new URL('./ingestion/noaa-storm-events.json', script?.src || document.baseURI);
   let statusPromise = null;
+  function fetchOptionalJson(url) {
+    return fetch(url, {cache:'no-store'}).then(r => r.ok?r.json():null).catch(()=>null);
+  }
   function getStatus() {
-    if (!statusPromise) statusPromise = fetch(statusUrl, {cache:'no-store'}).then(r => r.ok?r.json():null).catch(()=>null);
+    if (!statusPromise) {
+      statusPromise = Promise.all([fetchOptionalJson(statusUrl), fetchOptionalJson(noaaStatusUrl)])
+        .then(([base, noaa]) => {
+          if (!base || base.schema_version !== '1.0') return null;
+          if (noaa?.schema_version !== '1.0' || noaa?.source !== 'NOAA Storm Events Details' ||
+              noaa?.state !== 'staged_source_artifact' || !Number.isSafeInteger(noaa.records) || noaa.records < 1) {
+            return base;
+          }
+          const existing = (base.ingestions||[]).filter(x => x.source !== noaa.source);
+          const vetted = {source:noaa.source, state:noaa.state, records:noaa.records,
+            checked_at:noaa.checked_at, scope:noaa.scope, details:noaa.details,
+            documentation:noaa.documentation, artifact_run_url:noaa.artifact_run_url};
+          return {...base, ingestions:[...existing,vetted]};
+        });
+    }
     return statusPromise;
   }
   const extendedCatalog = [["USCG National Response Center","High","Chemical spills and releases","https://nrc.uscg.mil/"],["U.S. Chemical Safety Board","High","Investigated process accidents","https://www.csb.gov/investigations/"],["NERIS Public Incident Basics","High","Current fire response reports","https://www.usfa.fema.gov/neris/public/"],["NFIRS historical fire incidents","High","Historical fire reports","https://www.usfa.fema.gov/data-insights/nfirs/data/"],["FDA inspections and compliance","High","FEI-scoped regulatory inspections","https://www.fda.gov/about-fda/performance-data/fda-data-dashboard"],["WRI Aqueduct Floods","High","Modeled inundation hazard","https://datasets.wri.org/datasets/aqueduct-floods-hazard-maps"],["EIA-861 Electricity Reliability","High","Utility SAIDI/SAIFI averages","https://www.eia.gov/electricity/data/eia861/"],["Ireland EPA LEAP","High","Irish licensed facility compliance","https://data.epa.ie/api-list/leap-open-data/"],["European Industrial Emissions Portal","Medium-High","European facility emissions","https://industry.eea.europa.eu/industrial-emissions/dataset"],["Canada National Pollutant Release Inventory","Medium-High","Canadian facility pollutant releases","https://open.canada.ca/data/en/dataset/40e01423-7728-429c-ac9d-2954385ccdfb"],["EPA Risk-Screening Environmental Indicators","Medium","Relative modeled pollution impact","https://www.epa.gov/rsei"],["USFS Wildfire Risk to Communities","Medium","Regional wildfire hazard","https://wildfirerisk.org/download/"],["UCDP Georeferenced Event Dataset","Medium","Conflict events and location precision","https://ucdp.uu.se/downloads/"],["PHMSA Hazmat Transportation Incidents","Medium","Transport disruption events","https://www.phmsa.dot.gov/hazmat-program-management-data-and-statistics/data-operations/incident-statistics"]] .map(([name,priority,category,documentation]) => ({name,priority,category,documentation,probe_state:'not_published',checked_at:null,access:'See official source for file/API access',test:'Site attribution, temporal evidence and dataset licensing require backend review.',limitation:'This public preview does not execute live source tests or contain private incident matches.',staged_candidates:0}));
