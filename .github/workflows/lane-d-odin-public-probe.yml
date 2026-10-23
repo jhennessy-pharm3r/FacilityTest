@@ -35,6 +35,7 @@ jobs:
             "https://odin.ornl.gov/odi/status",
             "https://odin.ornl.gov/v3/api-docs",
             "https://openenergyhub.ornl.gov/api/explore/v2.1/catalog/datasets/odin-real-time-outages-county/records?limit=5",
+            "https://openenergyhub.ornl.gov/api/explore/v2.1/catalog/datasets/odin-real-time-outages-county/exports/json",
             "https://openenergyhub.ornl.gov/api/explore/v2.1/catalog/datasets/eaglei_outages_2014/records?limit=5",
             "https://data.openei.org/files/6458/Outage_Dataset_R1.zip"
           ]
@@ -65,8 +66,15 @@ jobs:
                       if isinstance(obj,dict) and isinstance(obj.get("paths"),dict):
                           rec["public_paths"]=list(obj["paths"])[:120]
                       if isinstance(obj,dict) and isinstance(obj.get("results"),list):
+                          rec["total_count"]=obj.get("total_count")
                           rec["records_in_response"]=len(obj["results"])
                           rec["record_field_names"]=list(obj["results"][0].keys()) if obj["results"] else []
+                          if obj["results"]:
+                              r=obj["results"][0]
+                              rec["sample_typed_values"]={k:r.get(k) for k in ("communitydescriptor","metersaffected","reportedstarttime","utility_id","county","state")}
+                      if isinstance(obj,list):
+                          rec["list_length"]=len(obj)
+                          rec["first_record_field_names"]=list(obj[0])[:35] if obj and isinstance(obj[0],dict) else []
               except (HTTPError,URLError,TimeoutError,ElementTree.ParseError,ValueError) as e:
                   rec["status"]=getattr(e,"code","TRANSPORT_OR_SCHEMA_FAILURE")
                   rec["error_type"]=type(e).__name__
