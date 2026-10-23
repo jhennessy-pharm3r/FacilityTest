@@ -27,6 +27,8 @@ on:
       - 'tests/test_lane_a_whp_summary.py'
       - 'scripts/lane_a_fema_msc_bulk.py'
       - 'tests/test_lane_a_fema_msc_bulk.py'
+      - 'scripts/lane_a_whp_summaries_index.py'
+      - 'tests/test_lane_a_whp_summaries_index.py'
       - '.github/workflows/validate-lane-a-sources.yml'
 permissions:
   contents: read
@@ -56,6 +58,9 @@ jobs:
         if: always()
         continue-on-error: true
         run: python -m scripts.lane_a_whp_official_summary --out-dir data/lane_a/whp_official_summary
+      - name: Normalize and index complete real USDA WHP2023 county, state and ZIP source summary records
+        if: always()
+        run: python -m scripts.lane_a_whp_summaries_index --source data/lane_a/whp_official_summary/whp2023_official_summaries.zip --out-dir data/lane_a/whp_official_index
       - name: Probe documented FEMA Map Service Center official county NFHL product bulk download
         if: always()
         continue-on-error: true
@@ -99,6 +104,9 @@ jobs:
             data/lane_a/whp_official_summary/whp2023_official_summaries.zip
             data/lane_a/fema_msc_county/manifest.json
             data/lane_a/fema_msc_county/NFHL_51013C.zip
+            data/lane_a/whp_official_index/manifest.json
+            data/lane_a/whp_official_index/whp2023-source-geographies.sqlite
+            data/lane_a/whp_official_index/whp2023-source-geographies.ndjson.gz
           retention-days: 7
           compression-level: 5
           if-no-files-found: warn
