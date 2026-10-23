@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - integrate/lane-d-private-serving-20261023
+      - integration/utility-private-current-main-v2
     paths:
       - facilityrisk/lane_d/private_api.py
       - facilityrisk/lane_d/install_source_index.py
