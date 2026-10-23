@@ -11,7 +11,7 @@ permissions:
   contents: read
   actions: read
 concurrency:
-  group: source-index-api-real-data
+  group: source-index-api-real-data-${{ github.sha }}
   cancel-in-progress: false
 jobs:
   source-api:
