@@ -101,6 +101,30 @@ class OriginalEagleiTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,"MD5/length"):
                 source_metadata(meta,path,allow_fixture=True)
 
+    def test_missing_original_source_values_are_reconciled_as_rejections(self):
+        # DuckDB returns NULL for empty original CSV values. SQL NOT(NULL)
+        # is still NULL, so without COALESCE those rows disappear from BOTH
+        # accepted/rejected and break the real source population audit.
+        with tempfile.TemporaryDirectory() as t:
+            csv_path, metadata = write_source(t)
+            with csv_path.open("a", newline="", encoding="utf-8") as src:
+                writer = csv.writer(src)
+                writer.writerow(["01005", "Barbour", "Alabama", "3", ""])
+                writer.writerow(["01007", "Bibb", "Alabama", "", "2025-04-01 11:00:00"])
+                writer.writerow(["", "Unknown", "Alabama", "3", "2025-04-01 11:15:00"])
+            doc = json.loads(metadata.read_text())
+            doc["files"][0]["size"] = csv_path.stat().st_size
+            doc["files"][0]["computed_md5"] = hashlib.md5(csv_path.read_bytes()).hexdigest()
+            metadata.write_text(json.dumps(doc))
+            out = Path(t) / "stage"
+            result = run(csv_path, metadata, out, allow_fixture=True)
+            self.assertEqual(result["downloaded_original_source_rows"], 11)
+            self.assertEqual(result["accepted_normalized_source_readings"], 5)
+            self.assertEqual(result["rejected_original_source_rows"], 6)
+            self.assertEqual(result["staged_county_day_original_reading_reconciliation"], 5)
+            self.assertEqual(sum(result["rejected_original_reasons"].values()), 6)
+            self.assertEqual(result["persistent_backend_indexed"], 0)
+
     def test_second_run_requires_separate_immutable_stage(self):
         with tempfile.TemporaryDirectory() as t:
             path,meta=write_source(t)
