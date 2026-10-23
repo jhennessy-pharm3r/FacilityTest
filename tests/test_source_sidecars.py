@@ -28,6 +28,7 @@ def _frs_index(tmp_path):
         assert result["valid"]==2
         chosen=conn.execute("SELECT id FROM universal_sites WHERE name='Mountain Warehouse'").fetchone()[0]
         conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    conn.close()
     qa=tmp_path/"national-source-qa.json"
     qa.write_text(json.dumps({
        "source":"EPA FRS public reporting identities",
@@ -57,6 +58,7 @@ def _noaa_index(tmp_path):
            '2026-10-23','2026-10-23')""",("a"*64,"b"*64))
         conn.commit()
         conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    conn.close()
     manifest=tmp_path/"noaa-manifest.json"
     manifest.write_text(json.dumps({
         "publisher":"NOAA NCEI Storm Events Details",
