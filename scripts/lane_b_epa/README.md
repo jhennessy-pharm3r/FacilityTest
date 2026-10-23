@@ -31,4 +31,8 @@ Next gates: network-enabled complete official run; verify real member schemas an
 ## Verified national RCRA run — 2026-10-23
 - Original EPA archive checksum: `babf48b1e2388b7f27cfc186cb1e9eb0ecfa26f53476fc81908712e41dfe09f3`.
 - All 7,022,589 rows scanned/accepted/indexed; 0 rejected; SQLite integrity OK; 1,522,387 row coordinate pairs; 4,262,613 repeated facility IDs within table members (not an error: events/history are repeated by design).
-- Native handler ID: `ID_NUMBER`; NAD83 coordinate fields: `LATITUDE83`, `LONGITUDE83`. Counts by native table in `validation/rcra_20261023.json`. 1,630,839 facility-table records; do not equate total cross-table observations with physical properties. Indexed source is a **disposable Actions artifact** and has not been loaded into durable private serving.
+- Native handler ID: `ID_NUMBER`; NAD83 coordinate fields: `LATITUDE83`, `LONGITUDE83`. Counts by native table in `validation/rcra_20261023.md`. 1,630,839 facility-table records; do not equate total cross-table observations with physical properties. Indexed source is a **disposable Actions artifact** and has not been loaded into durable private serving.
+
+## Verified public RMP-linked source cohort (not restricted plan data)
+- Official public EPA GeoPlatform FRS RMP programme-interest layer: **21,853** object IDs fully paginated, indexed and reconciled; all 21,853 have native registry/program identifiers and valid reported coordinate pairs. Validated in [run 39971992625](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39971992625); ledger at `validation/rmp_frs_public_20261023.md`.
+- This is **not** a census of insurance properties, RMP plans, OCA, historical releases or hazards. Public FRS identities are separate from physical-site review; staging is not deployed.
