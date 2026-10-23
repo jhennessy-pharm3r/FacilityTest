@@ -13,6 +13,8 @@ on:
       - 'scripts/validate_lane_a_massgis.py'
       - 'scripts/diagnose_lane_a_fema_access.py'
       - 'tests/test_lane_a_fema_transport.py'
+      - 'scripts/verify_lane_a_archive.py'
+      - 'tests/test_lane_a_archive_verify.py'
       - '.github/workflows/validate-lane-a-sources.yml'
 permissions:
   contents: read
@@ -35,6 +37,9 @@ jobs:
       - name: Diagnose official FEMA shorter GET and POST attribute queries
         if: always()
         run: python -m scripts.diagnose_lane_a_fema_access --output-dir data/lane_a/fema_transport
+      - name: Independently verify captured raw SHA256 and SQLite row reconciliations
+        if: always()
+        run: python -m scripts.verify_lane_a_archive --root data/lane_a
       - name: Upload real source receipts, checksums and isolated source-only indexes
         if: always()
         uses: actions/upload-artifact@v4
