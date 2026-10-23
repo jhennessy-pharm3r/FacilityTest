@@ -68,7 +68,7 @@ class FirstPartyODINTests(unittest.TestCase):
             sample(metersAffected="nan"),
             sample(names=3),
         ]
-        a,b,counts=parse(json.dumps({"outage":[sample()]+bad]}).encode(),"2026-10-23T16:00:00+00:00")
+        a,b,counts=parse(json.dumps({"outage":[sample()]+bad}).encode(),"2026-10-23T16:00:00+00:00")
         self.assertEqual((len(a),len(b)),(2,7))
         self.assertEqual(sum(counts["reject_reasons"].values()),7)
         self.assertFalse(a[1]["site_meter_account_verified"])
