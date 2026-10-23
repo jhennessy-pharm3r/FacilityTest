@@ -4,6 +4,9 @@ on:
     branches:
       - 'ingest/industrial-events-nrc-csb-phmsa-*'
   workflow_dispatch:
+concurrency:
+  group: lane-c-official-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   lane-c-source-validation:
     runs-on: ubuntu-latest
