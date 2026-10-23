@@ -63,12 +63,15 @@ authenticated HTTPS entrypoint are required to serve external users.
    combining with another research database. **Never overwrite an existing
    `facility_risk.sqlite` containing analyst notes, insurance terms, review
    approvals or client records**.
-3. Point a separately controlled private deployment's `FACILITY_RISK_DB`
-   to the staged source-only SQLite. The public-source search endpoints are
-   `GET /api/universal-facilities`, `/{id}`, and `/stats`, available only
-   behind the application's private authentication boundary. Keep direct port
-   8765 bound to localhost; provision TLS, access logs, encrypted backups,
-   rate limits, SSO and tenant isolation before any insurer/client data.
+3. Configure the **separate read-only EPA index** through
+   FACILITY_RISK_FRS_INDEX_PATH and FACILITY_RISK_FRS_INDEX_QA on the authenticated
+   private host. Keep FACILITY_RISK_DB pointed at the independent writable
+   research workspace, never at the massive source-only index. The private
+   all-industry discovery endpoints are GET /api/universal-facilities?source=EPA_FRS,
+   GET /api/universal-facilities/stats and GET /api/source-indices/status.
+   Keep direct port 8765 bound to localhost; provision TLS, access logs,
+   encrypted backups, rate limits, SSO and tenant isolation before any
+   insurer/client data.
 4. Query name and exact source ID, compare API `/stats` to QA JSON, verify
    `/api/health` and a negative/unknown search. Record backup restore and
    rollback acceptance before swapping snapshots.
@@ -129,3 +132,7 @@ separately configuring an authenticated private API, persistent storage,
 backup/restore tests and firewall/TLS controls should the operator make the
 index available to appropriately authorized users. The benchmark remains a
 separate measurement of search performance on each full official source import.
+
+## Mounted readonly national index support (October 23, 2026)
+
+The private app now supports a **separate read-only EPA FRS SQLite index** plus a matching QA JSON, and a separate **NOAA Storm Events** index. The authenticated all-industry search shows a national EPA source search option, without loading millions of source identities into a writable client workspace. Only one source identity explicitly selected for investigation may be copied as an *unverified* local research candidate, with writes disabled by default. See [PRIVATE_SOURCE_INDEX_SERVICE.md](PRIVATE_SOURCE_INDEX_SERVICE.md) for full installation, source-manifest gates, API acceptance tests and operator rollback steps. This capability does not mean the indexes are already deployed to a durable host.
