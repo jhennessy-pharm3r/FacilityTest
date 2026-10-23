@@ -16,8 +16,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install requests
-      - name: Download PHMSA official enforcement raw data and inventory linked report IDs
+      - run: pip install requests openpyxl pytest
+      - name: Enforce case-grain native IDs and repeated-report reference tests
+        run: python -m pytest -q tests/test_phmsa_enforcement.py
+      - name: Download PHMSA official enforcement raw data, normalize, index temporarily, reconcile incident-reference links
         run: python scripts/probe_lane_c_phmsa_enforcement.py --output output
       - uses: actions/upload-artifact@v4
         if: always()
