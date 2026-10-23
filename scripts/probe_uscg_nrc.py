@@ -109,12 +109,40 @@ def probe(path,year,min_sheets=2):
             observed_header=(len(supported)>=2 and
                              len(supported)>=max(2,len([x for x in titles if x])//5))
             headers=titles[:80] if observed_header else []
+            key_column=next((i for i,header in enumerate(titles)
+                             if header.upper()=="SEQNOS"),None)
+            distinct=set()
+            nonempty=missing_key=repeat_count=0
+            if key_column is not None:
+                # Excel max_row may include formatting/padded cells. Audit
+                # observed primary IDs instead, without logging any record
+                # values or treating one-to-many child rows as incidents.
+                for number,row in enumerate(sheet.iter_rows(min_row=2,values_only=True),1):
+                    if number>1_000_000:
+                        raise ValueError("NRC workbook table exceeds safe row-scan bound")
+                    if not any(x is not None and x!="" for x in row):
+                        continue
+                    nonempty+=1
+                    raw=row[key_column] if key_column<len(row) else None
+                    if raw is None or str(raw).strip()=="":
+                        missing_key+=1
+                        continue
+                    key=str(int(raw)) if isinstance(raw,(int,float)) and float(raw).is_integer() else str(raw).strip()
+                    if key in distinct:
+                        repeat_count+=1
+                    else:
+                        distinct.add(key)
             tables.append({
                 "sheet":sheet.title[:100],
                 "excel_reported_rows":sheet.max_row,
                 "excel_reported_columns":sheet.max_column,
                 "header_recognized":observed_header,
                 "header_names":headers,
+                "seqnos_present":key_column is not None,
+                "nonempty_rows_scanned":nonempty if key_column is not None else None,
+                "unique_seqnos":len(distinct) if key_column is not None else None,
+                "repeated_seqnos_rows":repeat_count if key_column is not None else None,
+                "missing_seqnos_rows":missing_key if key_column is not None else None,
             })
     finally:
         book.close()
@@ -145,7 +173,10 @@ def main():
     print(json.dumps({"source":url,"schema_probe":result["state"],
         "year":args.year,"workbook_bytes":result["archive_bytes"],
         "sheets":[{"name":r["sheet"],"rows_reported":r["excel_reported_rows"],
-                   "columns":r["excel_reported_columns"],"headers":r["header_names"]}
+                   "columns":r["excel_reported_columns"],"headers":r["header_names"],
+                   "seqnos_present":r["seqnos_present"],"unique_seqnos":r["unique_seqnos"],
+                   "repeated_seqnos_rows":r["repeated_seqnos_rows"],
+                   "missing_seqnos_rows":r["missing_seqnos_rows"]}
                   for r in result["worksheets"]]},indent=2),flush=True)
 
 
