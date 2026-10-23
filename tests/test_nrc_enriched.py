@@ -73,6 +73,8 @@ def test_missing_child_report_keeps_master_but_forbids_unknown_severity(tmp_path
         rows = {row["source_id"]:row for row in csv.DictReader(source)}
     assert rows["00002"]["reported_fatalities"] == ""
     assert rows["00002"]["reported_injuries"] == ""
+    assert rows["00002"]["details_link_quality"] == "missing_or_ambiguous_child"
+    assert rows["00001"]["details_link_quality"] == "matched_unique"
     assert rows["00001"]["reported_injuries"] == "2.0"
     assert validate(exported, result)
 
@@ -93,6 +95,7 @@ def test_duplicate_child_severity_dropped_without_discarding_master(tmp_path):
         rows={row["source_id"]:row for row in csv.DictReader(stream)}
     assert rows["00001"]["reported_injuries"] == ""
     assert rows["00001"]["reported_damage_usd"] == ""
+    assert rows["00001"]["details_link_quality"] == "missing_or_ambiguous_child"
     assert rows["00002"]["reported_injuries"] == "0.0"
 
 def test_duplicate_master_source_id_still_fails_closed(tmp_path):
