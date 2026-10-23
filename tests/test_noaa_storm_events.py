@@ -164,3 +164,48 @@ def test_noaa_schema_or_date_mismatch_fails_closed(tmp_path):
     with pytest.raises(ValueError, match="omitted"):
         stage([2023], tmp_path / "bad.csv.gz", tmp_path / "bad.json",
               tmp_path / "raw", None, FakeNOAA(data), minimum_rows=1)
+
+
+
+def test_noaa_transient_connection_resets_retry_and_clean_partial_files(tmp_path, monkeypatch):
+    import requests
+    import scripts.build_noaa_storm_events as builder
+    monkeypatch.setattr(builder.time, "sleep", lambda _: None)
+
+    class FlakyNOAA(FakeNOAA):
+        attempts = 0
+        def get(self, url, **kwargs):
+            if url != INDEX:
+                self.attempts += 1
+                if self.attempts < 3:
+                    raise requests.ConnectionError("Remote end closed connection without response")
+            return super().get(url, **kwargs)
+
+    client = FlakyNOAA(_source_csv())
+    outcome = stage([2024], tmp_path / "new.csv.gz", tmp_path / "manifest.json",
+                    tmp_path / "raw", tmp_path / "summary.json",
+                    session=client, minimum_rows=2)
+    assert outcome["total_events"] == 2
+    assert client.attempts == 3
+    assert not list(tmp_path.rglob("*.part"))
+
+
+def test_noaa_rejects_permanent_http_error_without_retry(tmp_path, monkeypatch):
+    import requests
+    import scripts.build_noaa_storm_events as builder
+    monkeypatch.setattr(builder.time, "sleep", lambda _: None)
+
+    class DeniedNOAA(FakeNOAA):
+        attempts = 0
+        def get(self, url, **kwargs):
+            if url != INDEX:
+                self.attempts += 1
+                raise requests.HTTPError("403 access denied",
+                                         response=type("Resp", (), {"status_code": 403})())
+            return super().get(url, **kwargs)
+
+    client = DeniedNOAA(_source_csv())
+    with pytest.raises(requests.HTTPError, match="403"):
+        stage([2024], tmp_path / "new.csv.gz", tmp_path / "manifest.json",
+              tmp_path / "raw", None, session=client, minimum_rows=2)
+    assert client.attempts == 1

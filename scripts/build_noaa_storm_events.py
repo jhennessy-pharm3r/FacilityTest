@@ -16,6 +16,8 @@ from urllib.parse import urljoin, urlsplit
 
 import requests
 import json
+import sys
+import time
 
 INDEX = "https://www.ncei.noaa.gov/pub/data/swdi/stormevents/csvfiles/"
 PUBLISHER = "NOAA NCEI Storm Events Details"
@@ -62,30 +64,48 @@ def sha256(path: Path):
 
 
 def download_file(session, url: str, dest: Path):
+    """Bounded retries for upstream connection resets; never keep partial files."""
     if urlsplit(url).hostname != "www.ncei.noaa.gov" or not url.startswith(INDEX):
         raise ValueError("Source URL must use the official NOAA file directory")
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_suffix(dest.suffix + ".part")
-    try:
-        with session.get(url, stream=True, timeout=120) as response:
-            response.raise_for_status()
-            if urlsplit(response.url).hostname != "www.ncei.noaa.gov":
-                raise ValueError("NOAA archive unexpectedly redirected off official host")
-            size = 0
-            with tmp.open("wb") as handle:
-                for chunk in response.iter_content(chunk_size=1024 * 1024):
-                    if chunk:
-                        size += len(chunk)
-                        if size > MAX_RAW_BYTES:
-                            raise ValueError("Unexpectedly large NOAA yearly archive")
-                        handle.write(chunk)
-            if size < 50 or tmp.open("rb").read(2) != b"\x1f\x8b":
-                raise ValueError("Downloaded NOAA file is missing gzip content")
-        tmp.replace(dest)
-    finally:
-        tmp.unlink(missing_ok=True)
-    return dest
-
+    for attempt in range(5):
+        try:
+            with session.get(
+                url, stream=True, timeout=(20, 120),
+                headers={"User-Agent": "Pharm3r-FacilityRisk-NOAA/1.0",
+                         "Accept": "application/gzip", "Accept-Encoding": "identity"}
+            ) as response:
+                response.raise_for_status()
+                if urlsplit(response.url).hostname != "www.ncei.noaa.gov":
+                    raise ValueError("NOAA archive unexpectedly redirected off official host")
+                size = 0
+                with tmp.open("wb") as handle:
+                    for chunk in response.iter_content(chunk_size=1024 * 1024):
+                        if chunk:
+                            size += len(chunk)
+                            if size > MAX_RAW_BYTES:
+                                raise ValueError("Unexpectedly large NOAA yearly archive")
+                            handle.write(chunk)
+                with tmp.open("rb") as handle:
+                    if size < 50 or handle.read(2) != b"\x1f\x8b":
+                        raise ValueError("Downloaded NOAA file is missing gzip content")
+            tmp.replace(dest)
+            return dest
+        except requests.RequestException as exc:
+            # Only retry transient transport/429/5xx failures, not bad URLs,
+            # access denial, changed source format or an invalid gzip payload.
+            status = getattr(getattr(exc, "response", None), "status_code", None)
+            retryable = status is None or status == 429 or 500 <= status < 600
+            if not retryable or attempt == 4:
+                raise
+            delay = 2 ** attempt
+            print(f"NOAA transient transfer error on attempt {attempt + 1}/5; "
+                  f"retrying in {delay}s: {type(exc).__name__}", file=sys.stderr, flush=True)
+            time.sleep(delay)
+        finally:
+            tmp.unlink(missing_ok=True)
+    raise RuntimeError("Unreachable NOAA download retry boundary")
 
 def _number(value: str, limit: int):
     raw = str(value or "").strip()
