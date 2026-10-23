@@ -78,12 +78,13 @@ def pack(index_path,index_manifest,out_dir,chunk_bytes=CHUNK_BYTES):
         compressed.unlink(missing_ok=True)
         raise
 
-def restore(manifest_path,parts_dir,output_file):
+def restore(manifest_path,parts_dir,output_file=None,verify_only=False):
     meta=json.loads(Path(manifest_path).read_text())
     if meta.get("format")!="Lane B immutable indexed SQLite gzip chunks/v1":
         raise ValueError("Unrecognized source index staging format")
-    out=Path(output_file)
-    if out.exists():raise FileExistsError("Refusing to overwrite index")
+    if not verify_only and not output_file:raise ValueError("Output file required for reconstruction")
+    out=Path(output_file) if output_file else None
+    if out is not None and out.exists():raise FileExistsError("Refusing to overwrite index")
     parts=Path(parts_dir)
     chunks=meta.get("chunks",[])
     if not chunks or not isinstance(chunks,list):raise ValueError("No staged source parts")
@@ -95,8 +96,14 @@ def restore(manifest_path,parts_dir,output_file):
     if [p.name for p in parts.glob("source-index.part-*") if p.is_file()] and sorted(
             p.name for p in parts.glob("source-index.part-*") if p.is_file())!=expected:
         raise ValueError("Part-directory includes missing or unexpected source chunks")
-    out.parent.mkdir(parents=True,exist_ok=True)
-    tmpgz=out.with_name(out.name+".transit.gz")
+    if out is not None:out.parent.mkdir(parents=True,exist_ok=True)
+    import tempfile
+    temp_dir=None
+    if verify_only:
+        temp_dir=tempfile.TemporaryDirectory(prefix="lane_b_verified_chunks_")
+        tmpgz=Path(temp_dir.name)/"source-index.transit.gz"
+    else:
+        tmpgz=out.with_name(out.name+".transit.gz")
     dig=hashlib.sha256()
     try:
         with tmpgz.open("wb") as aggregate:
@@ -109,19 +116,28 @@ def restore(manifest_path,parts_dir,output_file):
                         dig.update(piece);aggregate.write(piece)
         if dig.hexdigest()!=meta["compressed_sha256"]:
             raise ValueError("Reassembled compressed data digest mismatch")
-        with gzip.open(tmpgz,"rb") as compressed,out.open("wb") as restored:
-            shutil.copyfileobj(compressed,restored,length=BLOCK)
-        if out.stat().st_size!=meta["sqlite_bytes"] or filehash(out)!=meta["sqlite_sha256"]:
+        raw_hash=hashlib.sha256()
+        raw_bytes=0
+        with gzip.open(tmpgz,"rb") as compressed:
+            if verify_only:
+                for block in iter(lambda:compressed.read(BLOCK),b""):
+                    raw_hash.update(block);raw_bytes+=len(block)
+            else:
+                with out.open("wb") as restored:
+                    for block in iter(lambda:compressed.read(BLOCK),b""):
+                        raw_hash.update(block);raw_bytes+=len(block);restored.write(block)
+        if raw_bytes!=meta["sqlite_bytes"] or raw_hash.hexdigest()!=meta["sqlite_sha256"]:
             raise ValueError("Reassembled source index mismatches original SQLite")
-        return dict(index_file=str(out),sqlite_bytes=out.stat().st_size,
-                    sqlite_sha256=meta["sqlite_sha256"],
+        return dict(index_file=str(out) if out else None,sqlite_bytes=raw_bytes,
+                    sqlite_sha256=raw_hash.hexdigest(),verified_only=verify_only,
                     source=meta["source"],indexed_rows=meta["indexed_rows"],
                     deployment_state="NOT_DEPLOYED")
     except Exception:
-        out.unlink(missing_ok=True)
+        if out is not None:out.unlink(missing_ok=True)
         raise
     finally:
         tmpgz.unlink(missing_ok=True)
+        if temp_dir is not None:temp_dir.cleanup()
 
 def main():
     p=argparse.ArgumentParser()
@@ -131,9 +147,10 @@ def main():
     a.add_argument("--out",required=True);a.add_argument("--chunk-bytes",type=int,default=CHUNK_BYTES)
     b=sub.add_parser("restore")
     b.add_argument("--chunks-manifest",required=True);b.add_argument("--parts",required=True)
-    b.add_argument("--output",required=True)
+    b.add_argument("--output")
+    b.add_argument("--verify-only",action="store_true",help="Validate decompressed SHA256 without allocating another large SQLite")
     x=p.parse_args()
     result=(pack(x.index,x.manifest,x.out,x.chunk_bytes) if x.mode=="pack" else
-            restore(x.chunks_manifest,x.parts,x.output))
+            restore(x.chunks_manifest,x.parts,x.output,x.verify_only))
     print(json.dumps(result,indent=2))
 if __name__=="__main__":main()
