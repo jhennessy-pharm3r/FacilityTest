@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'facilityrisk/source_sidecars.py'
+      - 'facilityrisk/universal_registry.py'
       - '.github/workflows/validate-mounted-source-apis.yml'
 permissions:
   contents: read
@@ -52,7 +53,7 @@ jobs:
       - name: Authenticate and query private API against both full real source indexes
         run: |
           python - <<'PY'
-          import json,os,secrets
+          import json,os,secrets,time
           from pathlib import Path
           from fastapi.testclient import TestClient
           root=Path.cwd()
@@ -101,8 +102,12 @@ jobs:
               assert detail.json()['source_identities'][0]['source_key']=='EPA_FRS'
               with frs_connection() as conn:
                   sample=conn.execute('SELECT source_identifier FROM universal_source_records LIMIT 1').fetchone()[0]
+              start=time.perf_counter()
               exact=client.get('/api/universal-facilities',params={'source':'EPA_FRS','q':sample,'limit':3})
+              exact_ms=round((time.perf_counter()-start)*1000,2)
               assert exact.status_code==200 and exact.json()['total']>0
+              assert exact_ms<10000, f'EPA FRS indexed source-ID lookup exceeded 10s: {exact_ms}ms'
+              print('Real-data indexed EPA identifier lookup:',exact_ms,'ms',flush=True)
               assert client.post('/api/universal-facilities/'+site+'/track').status_code==403
               for year in manifest['requested_years']:
                   response=client.get('/api/noaa/storm-events',params={'year':year,'limit':1})
