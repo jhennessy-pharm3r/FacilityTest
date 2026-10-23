@@ -3,6 +3,9 @@ on:
   push:
     branches:
       - 'ingest/industrial-events-nrc-csb-phmsa-*'
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 jobs:
   live-official-source-probe:
