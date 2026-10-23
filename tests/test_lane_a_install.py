@@ -60,6 +60,26 @@ class LaneAProductionArtifactInstallerTests(unittest.TestCase):
             self.assertEqual(rows["paged_windows/raw/ids.json"]["sha256"],
                              hashlib.sha256(raw).hexdigest())
 
+    def test_reject_symlinked_stage_component_and_release_directory(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            source = root / "source"
+            source.mkdir()
+            external = root / "outside"
+            external.mkdir()
+            try:
+                (source / "whp_regions").symlink_to(external, target_is_directory=True)
+            except (NotImplementedError, OSError):
+                self.skipTest("Symlink operations unsupported on this platform")
+            with self.assertRaisesRegex(ValueError, "symlinked source component"):
+                stage_sources(root / "staged", source_root=source)
+            destination = root / "persistent"
+            destination.mkdir()
+            (destination / "releases").symlink_to(external, target_is_directory=True)
+            with self.assertRaisesRegex(ValueError, "symlinked release storage"):
+                install(destination, source_root=root / "staged",
+                        required=["usda_summary"])
+
     def test_no_servable_pointer_after_failed_verification(self):
         with tempfile.TemporaryDirectory() as d:
             a = Path(d) / "bad.zip"
