@@ -26,6 +26,9 @@ services:
       FACILITY_RISK_LANE_B_TRI_ROOT: ${FACILITY_RISK_LANE_B_TRI_ROOT:-}
       FACILITY_RISK_LANE_B_TRI_YEARS: ${FACILITY_RISK_LANE_B_TRI_YEARS:-}
       FACILITY_RISK_LANE_B_RMP_DIRECTORY: ${FACILITY_RISK_LANE_B_RMP_DIRECTORY:-}
+      # Read-only index roots; ORNL current county serving denied until publisher rights approval.
+      FACILITY_RISK_LANE_D_INDEX_ROOT: ${FACILITY_RISK_LANE_D_INDEX_ROOT:-}
+      FACILITY_RISK_LANE_D_ODIN_USE_APPROVED: ${FACILITY_RISK_LANE_D_ODIN_USE_APPROVED:-0}
     ports:
       # Do not bind to 0.0.0.0; use a TLS + OIDC reverse proxy for remote access.
       - "127.0.0.1:8765:8765"
