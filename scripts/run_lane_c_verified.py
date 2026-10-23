@@ -18,11 +18,13 @@ try:
     from scripts.build_nrc_enriched import stage_nrc
     from scripts.build_csb_incidents import stage_csb
     from scripts.index_lane_c_incidents import index_sources, search_source
+    from scripts.lane_c_review_candidates import build_review_candidates
 except ModuleNotFoundError:  # direct script
     from probe_lane_c_sources import download
     from build_nrc_enriched import stage_nrc
     from build_csb_incidents import stage_csb
     from index_lane_c_incidents import index_sources, search_source
+    from lane_c_review_candidates import build_review_candidates
 
 URLS = {
     "nrc": "https://nrc.uscg.mil/FOIAFiles/CY25.xlsx",
@@ -206,6 +208,8 @@ def run(output):
             if (consolidated["total_indexed_ephemeral"] !=
                 audit["total_ephemeral_indexed_all_independent_cohorts"]):
                 raise ValueError("Consolidated index counts differ from separately checked source indices")
+            candidates=build_review_candidates(work/"lane-c-multiyear.sqlite")
+            audit["cross_agency_review_candidates"]=candidates
             audit["consolidated_multi_year_index"]={
                 "state":"INDEXED_EPHEMERAL_NOT_DEPLOYED",
                 "total_rows":consolidated["total_indexed_ephemeral"],
@@ -245,6 +249,7 @@ def run(output):
             "additional_nrc_cohorts":audit.get("additional_nrc_cohorts"),
             "total_ephemeral_indexed":audit.get("total_ephemeral_indexed_all_independent_cohorts"),
             "consolidated_index":audit.get("consolidated_multi_year_index"),
+            "cross_agency_review_candidates":audit.get("cross_agency_review_candidates"),
             "deterministic":audit.get("deterministic_repeated_sha256"),
             "phmsa":audit["phmsa"],
             "blocked_items":audit["blocked_items"],
