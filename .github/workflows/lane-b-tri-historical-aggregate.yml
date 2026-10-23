@@ -1,0 +1,71 @@
+name: Lane B independently reconcile full historical TRI annual artifacts
+on:
+  workflow_dispatch:
+    inputs:
+      producer_run_id:
+        required: true
+        type: string
+        description: "A successful full 1987–2019 official TRI yearly ingestion run"
+permissions:
+  contents: read
+  actions: read
+jobs:
+  reconcile_years:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Download official annual source QA artifacts independently
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ inputs.producer_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: lane-b-tri-historical-*-qa
+          merge-multiple: false
+          path: ${{ runner.temp }}/tri-history-source-qa
+      - name: Reconcile 33 independent official reporting-year source manifests
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/tri-history-source-qa"
+          canonical="$RUNNER_TEMP/tri-history-normalized-layout"
+          mkdir -p "$canonical"
+          for year in $(seq 1987 2019); do
+            dirname="lane-b-tri-historical-$year-qa"
+            observed="$root/$dirname"
+            folder="$canonical/$dirname"
+            mkdir -p "$folder"
+            report=$(find "$observed" -name year_qa.json -type f -print -quit)
+            manifest=$(find "$observed" -name tri.manifest.json -type f -print -quit)
+            if [ -z "$report" ] || [ -z "$manifest" ]; then
+              echo "MISSING_OFFICIAL_TRI_YEAR_$year" >&2
+              exit 1
+            fi
+            cp "$report" "$folder/year_qa.json"
+            cp "$manifest" "$folder/tri.manifest.json"
+          done
+          python -m scripts.lane_b_epa.summarize_tri --artifact-root "$canonical" --years 1987-2019 --output "$RUNNER_TEMP/full_historical_tri_ledger.json"
+          python - <<'PY'
+          import json,os,pathlib
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])
+          ledger=json.loads((root/'full_historical_tri_ledger.json').read_text())
+          assert ledger['covered_reporting_years']==list(range(1987,2020))
+          assert ledger['source_years_count']==33
+          assert ledger['source_downloaded_rows']==ledger['accepted_normalized_rows']+ledger['rejected_rows']
+          assert ledger['source_indexed_staging_rows']==ledger['accepted_normalized_rows']
+          assert ledger['deployed_private_service_rows']==0
+          print('VERIFIED_HISTORICAL_EPA_TRI',ledger['source_downloaded_rows'],
+                'SOURCE_NORMALIZED',ledger['accepted_normalized_rows'],
+                'TEMP_INDEXED',ledger['source_indexed_staging_rows'],
+                'REJECTED',ledger['rejected_rows'],'DEPLOYED',0)
+          for y in ledger['annual']:
+              print('OFFICIAL_YEAR',y['year'],y['downloaded_rows'],y['indexed_rows'],y['rejected_rows'],y['source_sha256'])
+          PY
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: lane-b-tri-historical-1987-2019-full-independent-ledger
+          path: ${{ runner.temp }}/full_historical_tri_ledger.json
+          retention-days: 14
