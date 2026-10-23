@@ -1,0 +1,97 @@
+name: Lane B TRI 2020-2024 complete official US annual-index validation
+on:
+  push:
+    branches: ['ingest/epa-echo-tri-rcra-rmp-lane-b-20261023']
+    paths: ['.github/workflows/lane-b-tri-2024.yml']
+  workflow_dispatch:
+jobs:
+  tri-national:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        year: [2020, 2021, 2022, 2023, 2024]
+    env:
+      YEAR: ${{ matrix.year }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Download original EPA TRI Basic US reporting-year file
+        run: |
+          python - <<'PY'
+          import urllib.request,csv,os,pathlib,shutil
+          y=os.environ['YEAR']
+          u='https://data.epa.gov/efservice/downloads/tri/mv_tri_basic_download/'+y+'_US/csv'
+          base=pathlib.Path(os.environ['RUNNER_TEMP'])/('tri_'+y)
+          base.mkdir(parents=True,exist_ok=True)
+          dest=base/('tri_'+y+'_US.csv')
+          with urllib.request.urlopen(urllib.request.Request(u,headers={'User-Agent':'FacilityRisk-LaneB/1.0'}),timeout=180) as r,dest.open('wb') as f:
+              shutil.copyfileobj(r,f)
+          with dest.open(encoding='utf-8-sig',errors='replace') as f:head=next(csv.reader(f))
+          assert '2. TRIFD' in head and '50. UNIT OF MEASURE' in head
+          print('OFFICIAL_TRI_URL',u,'YEAR',y,'BYTES',dest.stat().st_size,'HEADERS',len(head))
+          PY
+      - name: Build lossless source-identity SQLite and verify manifest
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/tri_$YEAR"
+          u="https://data.epa.gov/efservice/downloads/tri/mv_tri_basic_download/${YEAR}_US/csv"
+          python -m scripts.lane_b_epa.ingest --source tri --year "$YEAR" --input "$dir/tri_${YEAR}_US.csv" --url "$u" --output "$dir/index" > "$dir/output.json"
+          python - <<'PY'
+          import hashlib,json,os,pathlib,sqlite3
+          from scripts.lane_b_epa.read_index import source_status,lookup
+          year=os.environ['YEAR'];root=pathlib.Path(os.environ['RUNNER_TEMP'])/('tri_'+year)
+          db=root/'index'/'tri.sqlite';meta=root/'index'/'tri.manifest.json'
+          manifest=json.loads(meta.read_text())
+          facts=source_status(db,meta,'tri')
+          with sqlite3.connect(db) as con:
+              count=con.execute("SELECT COUNT(*) FROM observation WHERE source='tri'").fetchone()[0]
+              distinct=con.execute("SELECT COUNT(DISTINCT source_id) FROM observation").fetchone()[0]
+              year_counts=con.execute("SELECT json_extract(payload,'$.1_YEAR'),COUNT(*) FROM observation GROUP BY 1").fetchall()
+              units=con.execute("SELECT json_extract(payload,'$.50_UNIT_OF_MEASURE'),COUNT(*) FROM observation GROUP BY 1").fetchall()
+              distinct_chem=con.execute("SELECT COUNT(DISTINCT json_extract(payload,'$.39_TRI_CHEMICAL_COMPOUND_ID')) FROM observation").fetchone()[0]
+              example=con.execute("SELECT source_id FROM observation LIMIT 1").fetchone()[0]
+          assert count>0 and count==manifest['indexed_rows']==facts['indexed_rows']
+          assert manifest['rejected_rows']==0 and year_counts==[(year,count)]
+          found=lookup(db,meta,'tri',example,limit=2)
+          assert found['observations_available']>0 and found['rows'][0]['source_reported_findings']['reporting_year']==year
+          audit={'reporting_year':year,'official_source_rows':manifest['scanned_rows'],
+                 'accepted_indexed':count,'rejected':manifest['rejected_rows'],
+                 'distinct_tri_facility_ids':distinct,'distinct_chemical_identifiers':distinct_chem,
+                 'reported_unit_counts':dict(units),'reported_coordinate_pairs':manifest['valid_coordinate_pairs'],
+                 'archive_sha256':manifest['archive_sha256'],
+                 'index_sha256':manifest['index_sha256'],
+                 'deployment':'NOT_DEPLOYED',
+                 'note':'TRI chemicals reported per source form, not distinct sites or insured losses'}
+          (root/'index'/'source_audit.json').write_text(json.dumps(audit,indent=2)+'\n')
+          print('VALIDATED_OFFICIAL_TRI_YEAR',json.dumps(audit))
+          PY
+      - name: Prepare original-data and source-only index archive
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/tri_$YEAR"
+          gzip -1 -c "$dir/index/tri.sqlite" > "$dir/index/tri.sqlite.gz"
+          du -h "$dir"/tri*.csv "$dir"/index/tri.sqlite.gz
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lane-b-tri-${{ matrix.year }}-qa
+          path: |
+            ${{ runner.temp }}/tri_${{ matrix.year }}/index/tri.manifest.json
+            ${{ runner.temp }}/tri_${{ matrix.year }}/index/source_audit.json
+          if-no-files-found: warn
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: lane-b-tri-${{ matrix.year }}-source-index-staging
+          path: |
+            ${{ runner.temp }}/tri_${{ matrix.year }}/index/tri.sqlite.gz
+            ${{ runner.temp }}/tri_${{ matrix.year }}/tri_${{ matrix.year }}_US.csv
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 3

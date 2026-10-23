@@ -1,0 +1,143 @@
+name: Lane B actual TRI and public RMP private-source installation rehearsal
+on:
+  push:
+    branches: ['ingest/epa-echo-tri-rcra-rmp-lane-b-20261023']
+    paths: ['.github/workflows/lane-b-aux-private-rehearsal.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  tri_2024_private:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: 39980692415
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          name: lane-b-tri-2024-source-index-staging
+          path: ${{ runner.temp }}/tri_raw
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: 39980692415
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          name: lane-b-tri-2024-qa
+          path: ${{ runner.temp }}/tri_meta
+      - name: Restore full original TRI annual source into isolated private read-only snapshot and query
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/private_tri"
+          export TRI_RAW=$(find "$RUNNER_TEMP/tri_raw" -type f -name 'tri_2024_US.csv' -print -quit)
+          export TRI_INDEX_GZ=$(find "$RUNNER_TEMP/tri_raw" -type f -name 'tri.sqlite.gz' -print -quit)
+          export TRI_MANIFEST=$(find "$RUNNER_TEMP/tri_meta" -type f -name 'tri.manifest.json' -print -quit)
+          test -s "$TRI_RAW" && test -s "$TRI_INDEX_GZ" && test -s "$TRI_MANIFEST"
+          python -m scripts.lane_b_epa.install_auxiliary tri --year 2024 --official-csv "$TRI_RAW" --index-gz "$TRI_INDEX_GZ" --manifest "$TRI_MANIFEST" --destination "$RUNNER_TEMP/private_tri/tri_2024" > "$RUNNER_TEMP/tri_install.json"
+          python - <<'PY'
+          import json,os,pathlib,sqlite3,hashlib
+          from scripts.lane_b_epa.read_index import source_status,lookup
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])
+          dest=root/'private_tri'/'tri_2024'
+          audit=json.loads((dest/'install-receipt.json').read_text())
+          data=source_status(dest/'tri.sqlite',dest/'tri.manifest.json','tri')
+          assert audit['original_source_rows']==audit['accepted_normalized_rows']==audit['private_staged_index_rows']==77295
+          assert audit['rejected_rows']==0 and audit['production_deployed']==0
+          assert audit['source_original_sha256']=='06dfa3a67bb4c5bd38d9e9f0f7b8bff10b95254a63169423632d7f6f251e1506'
+          assert audit['source_sqlite_sha256']==data['index_sha256']
+          db=sqlite3.connect((dest/'tri.sqlite').as_uri()+'?mode=ro&immutable=1',uri=True)
+          distinct=db.execute('SELECT COUNT(DISTINCT source_id) FROM observation').fetchone()[0]
+          coords=db.execute('SELECT COUNT(*) FROM observation WHERE latitude IS NOT NULL AND longitude IS NOT NULL').fetchone()[0]
+          sample=db.execute('SELECT source_id FROM observation LIMIT 1').fetchone()[0]
+          db.close()
+          assert distinct==21482 and coords==77295
+          result=lookup(dest/'tri.sqlite',dest/'tri.manifest.json','tri',sample,limit=2)
+          assert result['observations_available']>=1
+          safe={'source':'tri','reporting_year':2024,'original_downloaded_rows':audit['original_source_rows'],
+              'accepted_normalized':audit['accepted_normalized_rows'],'indexed_private_staging':audit['private_staged_index_rows'],
+              'rejected_rows':audit['rejected_rows'],'distinct_native_tri_ids':distinct,'valid_coordinate_pairs':coords,
+              'original_source_sha256':audit['source_original_sha256'],'index_sha256':audit['source_sqlite_sha256'],
+              'sample_native_tri_id_sha256':hashlib.sha256(sample.encode()).hexdigest(),
+              'real_source_private_install':'PASSED','authenticated_production_deployed':0,'verified_physical_sites':0}
+          (root/'tri_real_private_qa.json').write_text(json.dumps(safe,indent=2)+'\n')
+          print('TRI_FULL_REAL_PRIVATE_STAGING_PASS',json.dumps(safe))
+          PY
+      - name: Remove temporary raw and source-index records
+        if: always()
+        run: |
+          set -euo pipefail
+          rm -rf "$RUNNER_TEMP/private_tri" "$RUNNER_TEMP/tri_raw" "$RUNNER_TEMP/tri_meta"
+          test ! -e "$RUNNER_TEMP/private_tri"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lane-b-tri-real-temporary-private-source-audit
+          path: ${{ runner.temp }}/tri_real_private_qa.json
+          if-no-files-found: warn
+          retention-days: 14
+  rmp_public_private:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: 39981171808
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          name: lane-b-public-frs-rmp-source-only-index
+          path: ${{ runner.temp }}/rmp_original
+      - name: Restore entire actual public FRS-RMP registry into private read-only source snapshot and query
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/private_rmp"
+          export RMP_ORIGINAL=$(find "$RUNNER_TEMP/rmp_original" -type f -name 'rmp_frs_public.raw.jsonl' -print -quit)
+          export RMP_INDEX=$(find "$RUNNER_TEMP/rmp_original" -type f -name 'rmp_frs_public.sqlite' -print -quit)
+          export RMP_MANIFEST=$(find "$RUNNER_TEMP/rmp_original" -type f -name 'rmp_frs_public.manifest.json' -print -quit)
+          test -s "$RMP_ORIGINAL" && test -s "$RMP_INDEX" && test -s "$RMP_MANIFEST"
+          python -m scripts.lane_b_epa.install_auxiliary rmp-public --original-jsonl "$RMP_ORIGINAL" --index "$RMP_INDEX" --manifest "$RMP_MANIFEST" --destination "$RUNNER_TEMP/private_rmp/public_rmp" > "$RUNNER_TEMP/rmp_install.json"
+          python - <<'PY'
+          import json,os,pathlib,sqlite3,hashlib
+          from scripts.lane_b_epa.rmp_lookup import status,lookup
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])
+          dest=root/'private_rmp'/'public_rmp'
+          audit=json.loads((dest/'install-receipt.json').read_text())
+          state=status(dest)
+          assert audit['original_source_rows']==audit['accepted_normalized_rows']==audit['private_staged_index_rows']==21853
+          assert audit['rejected_rows']==0 and audit['production_deployed']==0
+          assert audit['distinct_native_program_ids']==21853 and state['distinct_program_ids']==21853
+          db=sqlite3.connect((dest/'rmp_frs_public.sqlite').as_uri()+'?mode=ro&immutable=1',uri=True)
+          distinct_frs=db.execute('SELECT COUNT(DISTINCT registry_id) FROM rmp_frs_public').fetchone()[0]
+          coords=db.execute('SELECT COUNT(*) FROM rmp_frs_public WHERE latitude IS NOT NULL AND longitude IS NOT NULL').fetchone()[0]
+          sample=db.execute("SELECT program_id FROM rmp_frs_public LIMIT 1").fetchone()[0]
+          db.close()
+          assert distinct_frs==21567 and coords==21853
+          r=lookup(dest,sample,limit=3)
+          assert r['observations_available']>=1
+          safe={'source':'public_frs_rmp_interest','original_source_rows':audit['original_source_rows'],
+              'accepted_normalized':audit['accepted_normalized_rows'],'indexed_private_staging':audit['private_staged_index_rows'],
+              'rejected_rows':0,'distinct_native_program_ids':audit['distinct_native_program_ids'],
+              'distinct_native_frs_ids':distinct_frs,'valid_coordinate_pairs':coords,
+              'original_jsonl_sha256':audit['original_source_sha256'],'index_sha256':audit['source_sqlite_sha256'],
+              'sample_native_program_id_sha256':hashlib.sha256(sample.encode()).hexdigest(),
+              'real_source_private_install':'PASSED','authenticated_production_deployed':0,'verified_physical_sites':0,
+              'scope':'Public RMP programme interests, not restricted plans or OCA'}
+          (root/'rmp_real_private_qa.json').write_text(json.dumps(safe,indent=2)+'\n')
+          print('RMP_PUBLIC_FULL_PRIVATE_STAGING_PASS',json.dumps(safe))
+          PY
+      - name: Remove temporary raw records, source-index and original artifacts
+        if: always()
+        run: |
+          set -euo pipefail
+          rm -rf "$RUNNER_TEMP/private_rmp" "$RUNNER_TEMP/rmp_original"
+          test ! -e "$RUNNER_TEMP/private_rmp"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lane-b-public-rmp-real-temporary-private-source-audit
+          path: ${{ runner.temp }}/rmp_real_private_qa.json
+          if-no-files-found: warn
+          retention-days: 14

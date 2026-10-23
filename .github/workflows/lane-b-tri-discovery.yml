@@ -1,0 +1,29 @@
+name: Lane B TRI official annual archive discovery
+on:
+  push:
+    branches: ['ingest/epa-echo-tri-rcra-rmp-lane-b-20261023']
+    paths: ['.github/workflows/lane-b-tri-discovery.yml']
+  workflow_dispatch:
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect official TRI Basic data public download page markup
+        run: |
+          python - <<'PY'
+          import urllib.request,re,html
+          u='https://www.epa.gov/toxics-release-inventory-tri-program/tri-basic-data-files-calendar-years-1987-present'
+          request=urllib.request.Request(u,headers={'User-Agent':'FacilityTest-LaneB/1.0'})
+          with urllib.request.urlopen(request,timeout=45) as r:body=r.read(800000).decode('utf-8','replace')
+          print('PAGE_BYTES',len(body))
+          for keyword in ('tri_basic','tri_2024','tri_2025','downloads','downloadfile','download-data-file','select','file-path'):
+              matches=list(re.finditer(keyword,body,re.I))
+              print('PATTERN',keyword,'count',len(matches))
+              for m in matches[:7]:
+                  print('EXCERPT',html.unescape(body[max(0,m.start()-120):m.end()+240].replace('\\n',' '))[:450])
+          for u in re.findall(r'https?[^"<> ]+',body):
+              if any(x in u.lower() for x in ('tri','downloads','basic')):
+                  print('LINK',html.unescape(u)[:240])
+          PY

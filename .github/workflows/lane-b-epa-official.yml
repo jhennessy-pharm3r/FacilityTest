@@ -1,0 +1,137 @@
+name: Lane B EPA official archives and source-only index validation
+on:
+  push:
+    branches: ['ingest/epa-echo-tri-rcra-rmp-lane-b-20261023']
+    paths: ['.github/workflows/lane-b-epa-official.yml']
+  workflow_dispatch:
+jobs:
+  official-epa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 58
+    strategy:
+      fail-fast: false
+      matrix:
+        source: [echo, rcra]
+    env:
+      L: ${{ matrix.source }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run full EPA official export with original archive retained
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/lane_b/$L"
+          python -m scripts.lane_b_epa.ingest --source "$L" --raw-dir "$RUNNER_TEMP/lane_b/$L/raw" --output "$RUNNER_TEMP/lane_b/$L" > "$RUNNER_TEMP/lane_b/$L/output.json"
+          cat "$RUNNER_TEMP/lane_b/$L/output.json"
+          df -h "$RUNNER_TEMP"
+          du -h "$RUNNER_TEMP/lane_b/$L/"* | tail -n 8
+      - name: Verify source-only index, record checksum and exact native-ID query
+        run: |
+          python - <<'PY'
+          import hashlib,json,os,pathlib,sqlite3
+          from scripts.lane_b_epa.read_index import source_status,lookup
+          source=os.environ['L']
+          base=pathlib.Path(os.environ['RUNNER_TEMP'])/'lane_b'/source
+          dbpath=base/(source+'.sqlite')
+          manifest=base/(source+'.manifest.json')
+          data=json.loads(manifest.read_text())
+          assert data['schema_version']==2
+          assert data['accepted_rows']==data['indexed_rows']>0
+          assert data['accepted_rows']+data['rejected_rows']==data['scanned_rows']
+          assert len(data['index_sha256'])==64 and len(data['archive_sha256'])==64
+          assert data['raw_rejected_payloads_preserved'] is True
+          observed=source_status(dbpath,manifest,source)
+          conn=sqlite3.connect(dbpath)
+          target='RCRA_FACILITIES.csv' if source=='rcra' else 'ECHO_EXPORTER.csv'
+          sample=conn.execute('SELECT source_id,activity_location FROM observation WHERE member=? LIMIT 1',(target,)).fetchone()
+          assert sample
+          bad_rows=conn.execute('SELECT COUNT(*) FROM rejected').fetchone()[0]
+          con_tables={x[0] for x in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+          assert not con_tables.intersection({'facilities','insurance_terms','evidence','sec_findings'})
+          conn.close()
+          rows=lookup(dbpath,manifest,source,sample[0],activity_location=sample[1] if source=='rcra' else None,limit=5)
+          assert rows['observations_available']>0 and rows['rows'][0]['source_record_sha256']
+          assert bad_rows==data['rejected_rows']
+          check={'source':source,'readiness':'VALIDATED_CI_STAGING_NOT_DEPLOYED',
+                 'sample_source_id_sha256':hashlib.sha256(sample[0].encode()).hexdigest(),
+                 'sample_lookup_rows':rows['observations_available'],
+                 'rejected_rows':bad_rows,'source_records':observed['indexed_rows'],
+                 'database_sha256':data['index_sha256'],
+                 'archive_sha256':data['archive_sha256']}
+          (base/'live_content_qa.json').write_text(json.dumps(check,indent=2)+'\n')
+          print(json.dumps(check,indent=2))
+          PY
+      - name: Package original indexed SQLite as SHA-verified stable sub-750MB chunks
+        run: |
+          set -euo pipefail
+          python -m scripts.lane_b_epa.chunk_index pack --index "$RUNNER_TEMP/lane_b/$L/$L.sqlite" --manifest "$RUNNER_TEMP/lane_b/$L/$L.manifest.json" --out "$RUNNER_TEMP/lane_b/$L/chunks" > "$RUNNER_TEMP/lane_b/$L/chunks.out.json"
+          cat "$RUNNER_TEMP/lane_b/$L/chunks.out.json"
+          du -h "$RUNNER_TEMP/lane_b/$L/chunks/"*
+          cp "$RUNNER_TEMP/lane_b/$L/chunks/chunk-manifest.json" "$RUNNER_TEMP/lane_b/$L/chunk-manifest.json"
+      - name: Verify all chunks reconstruct same complete regulator source index
+        run: |
+          set -euo pipefail
+          python -m scripts.lane_b_epa.chunk_index restore --chunks-manifest "$RUNNER_TEMP/lane_b/$L/chunk-manifest.json" --parts "$RUNNER_TEMP/lane_b/$L/chunks" --verify-only > "$RUNNER_TEMP/lane_b/$L/restore-check.json"
+          cat "$RUNNER_TEMP/lane_b/$L/restore-check.json"
+          python - <<'PY'
+          import json,os,pathlib
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])/'lane_b'/os.environ['L']
+          m=json.loads((root/(os.environ['L']+'.manifest.json')).read_text())
+          r=json.loads((root/'restore-check.json').read_text())
+          assert r['sqlite_sha256']==m['index_sha256']
+          assert r['sqlite_bytes']==m['index_bytes']
+          assert r['indexed_rows']==m['indexed_rows']
+          print('RECONSTRUCTED_FULL_OFFICIAL_SQLITE',m['source'],m['indexed_rows'],r['sqlite_sha256'])
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lane-b-${{ matrix.source }}-complete-manifests
+          path: |
+            ${{ runner.temp }}/lane_b/${{ matrix.source }}/*.manifest.json
+            ${{ runner.temp }}/lane_b/${{ matrix.source }}/live_content_qa.json
+            ${{ runner.temp }}/lane_b/${{ matrix.source }}/chunk-manifest.json
+          if-no-files-found: warn
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: lane-b-${{ matrix.source }}-index-part-000
+          path: ${{ runner.temp }}/lane_b/${{ matrix.source }}/chunks/source-index.part-000
+          if-no-files-found: ignore
+          compression-level: 0
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: lane-b-${{ matrix.source }}-index-part-001
+          path: ${{ runner.temp }}/lane_b/${{ matrix.source }}/chunks/source-index.part-001
+          if-no-files-found: ignore
+          compression-level: 0
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: lane-b-${{ matrix.source }}-index-part-002
+          path: ${{ runner.temp }}/lane_b/${{ matrix.source }}/chunks/source-index.part-002
+          if-no-files-found: ignore
+          compression-level: 0
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: lane-b-${{ matrix.source }}-index-part-003
+          path: ${{ runner.temp }}/lane_b/${{ matrix.source }}/chunks/source-index.part-003
+          if-no-files-found: ignore
+          compression-level: 0
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: lane-b-${{ matrix.source }}-official-raw-zip
+          path: ${{ runner.temp }}/lane_b/${{ matrix.source }}/raw/*.zip
+          if-no-files-found: warn
+          compression-level: 0
+          retention-days: 3

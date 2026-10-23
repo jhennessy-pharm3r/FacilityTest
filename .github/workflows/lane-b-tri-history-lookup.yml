@@ -1,0 +1,100 @@
+name: Lane B independent two-year TRI source-identity query
+on:
+  push:
+    branches: ['ingest/epa-echo-tri-rcra-rmp-lane-b-20261023']
+    paths: ['.github/workflows/lane-b-tri-history-lookup.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  verify_multiyear_readonly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Retrieve original 2023 source-only indexed files from published producer
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 39980692415
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          name: lane-b-tri-2023-source-index-staging
+          path: ${{ runner.temp }}/tri_history/tri_2023
+      - name: Retrieve exact matching 2023 provenance manifest
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 39980692415
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          name: lane-b-tri-2023-qa
+          path: ${{ runner.temp }}/tri_history/tri_2023
+      - name: Retrieve original 2024 source-only indexed files from published producer
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 39980692415
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          name: lane-b-tri-2024-source-index-staging
+          path: ${{ runner.temp }}/tri_history/tri_2024
+      - name: Retrieve exact matching 2024 provenance manifest
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 39980692415
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          name: lane-b-tri-2024-qa
+          path: ${{ runner.temp }}/tri_history/tri_2024
+      - name: Restore two exact official producer indices and cross-year query by unchanged TRI source ID
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/tri_history"
+          for year in 2023 2024; do
+            echo "Published year $year files:"
+            find "$root/tri_$year" -maxdepth 3 -type f -print
+            archive=$(find "$root/tri_$year" -name 'tri.sqlite.gz' -type f -print -quit)
+            meta=$(find "$root/tri_$year" -name 'tri.manifest.json' -type f -print -quit)
+            if [ -z "$archive" ] || [ -z "$meta" ]; then
+              echo "Required published source ZIP/manifests missing for $year" >&2
+              exit 1
+            fi
+            gzip -dc "$archive" > "$root/tri_$year/tri.sqlite"
+            if [ "$meta" != "$root/tri_$year/tri.manifest.json" ]; then
+              cp "$meta" "$root/tri_$year/tri.manifest.json"
+            fi
+          done
+          python - <<'PY'
+          import hashlib,json,os,pathlib,sqlite3
+          from scripts.lane_b_epa.tri_history import lookup_history
+          from scripts.lane_b_epa.read_index import source_status
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])/'tri_history'
+          facts={}
+          for year in (2023,2024):
+              directory=root/('tri_'+str(year))
+              facts[year]=source_status(directory/'tri.sqlite',directory/'tri.manifest.json','tri')
+          with sqlite3.connect(root/'tri_2023'/'tri.sqlite') as db:
+              db.execute('ATTACH DATABASE ? AS other',(str(root/'tri_2024'/'tri.sqlite'),))
+              row=db.execute("SELECT a.source_id FROM observation a INNER JOIN other.observation b "+
+                             "ON a.source_id=b.source_id WHERE a.source='tri' AND b.source='tri' LIMIT 1").fetchone()
+              assert row is not None,'NO_CROSS_YEAR_NATIVE_TRI_ID_INTERSECTION'
+              trifd=row[0]
+          checked=lookup_history(root,trifd,[2023,2024],per_year_limit=4)
+          assert checked['all_requested_year_indices_validated'] is True
+          assert checked['total_matched_reporting_forms']>=2
+          assert all(x['matching_chemical_form_rows']>0 and x['source_index_sha256']==facts[x['year']]['index_sha256'] for x in checked['years'])
+          assert checked['physical_site_linkage']=='NOT_REVIEWED' and checked['deployment_state']=='NOT_DEPLOYED'
+          evidence={'producer_run_id':39980692415,'verification':'SOURCE_YEAR_REPLAY_AND_EXACT_TRI_ID_QUERY_PASSED',
+                'native_TRIFD_sha256':hashlib.sha256(trifd.encode()).hexdigest(),
+                'source_years':[2023,2024],
+                'native_ID_observations_across_years':checked['total_matched_reporting_forms'],
+                'separate_full_year_index_rows':{str(y):facts[y]['indexed_rows'] for y in facts},
+                'source_index_hashes':{str(y):facts[y]['index_sha256'] for y in facts},
+                'production_deployed_rows':0,'verified_physical_property_links':0}
+          (root/'actual_year_lookup_qa.json').write_text(json.dumps(evidence,indent=2)+'\n')
+          print('FULL_OFFICIAL_TWO_YEAR_TRI_QUERY_VERIFIED',json.dumps(evidence))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: lane-b-tri-full-index-independent-2023-2024-query
+          path: ${{ runner.temp }}/tri_history/actual_year_lookup_qa.json
+          retention-days: 14
