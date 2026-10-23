@@ -179,7 +179,7 @@ def _raster_metadata(path, source_name, full_audit=False):
                 "exact_full_grid_audit":bool(full_audit)}
         for region,(lon,lat) in REGIONS.items():
             x,y=transform("EPSG:4326",ds.crs,[lon],[lat])
-            column,row=ds.index(x[0],y[0])
+            row,column=ds.index(x[0],y[0])
             if not 0<=column<ds.width or not 0<=row<ds.height:
                 continue
             value=next(ds.sample([(x[0],y[0])],masked=True))[0]
