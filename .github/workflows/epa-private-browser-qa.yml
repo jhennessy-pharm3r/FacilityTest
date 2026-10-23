@@ -1,0 +1,67 @@
+name: Coordinator private EPA native-source browser smoke
+on:
+  push:
+    branches: ['integration/epa-lane-b-private-api-20261023']
+    paths: ['.github/workflows/epa-private-browser-qa.yml']
+  pull_request:
+    paths:
+      - web/epa-ui.js
+      - web/index.html
+      - web/app.js
+      - web/styles.css
+      - tests/smoke_epa_private.py
+      - .github/workflows/epa-private-browser-qa.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  private_browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    env:
+      FACILITY_RISK_AUTH_TOKEN: ci-epa-private-browser-fixture-token-012345678901
+      FACILITY_RISK_REQUIRE_AUTH: "1"
+      FACILITY_RISK_LANE_B_ROUTES_ENABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Install private source/Playwright test tools
+        run: |
+          python -m pip install -r requirements-dev.txt 'playwright>=1.54,<2'
+          python -m playwright install --with-deps chromium
+      - name: Create clearly synthetic single source-program identity for private UI test
+        run: |
+          python - <<'PY'
+          import os,pathlib
+          from scripts.lane_b_epa.rmp_public import import_public
+          def fixture(p):
+              if "returnCountOnly" in p:return {"count":1}
+              if "returnIdsOnly" in p:return {"objectIds":[1]}
+              return {"features":[{"attributes":{
+                  "OBJECTID":1,"REGISTRY_ID":"FRSFIXTURE100",
+                  "PGM_SYS_ID":"RMPFIXTURE100","LATITUDE83":44.5,"LONGITUDE83":-64.5,
+                  "STATE_CODE":"ME","ACTIVE_STATUS":"ACTIVE"}}]}
+          path=pathlib.Path(os.environ["RUNNER_TEMP"])/"epa_fixture_rmp"
+          m=import_public(path,fetch=fixture)
+          assert m["indexed_rows"]==1
+          print("SYNTHETIC_BROWSER_FIXTURE_INDEXED",m["indexed_rows"])
+          PY
+          echo "FACILITY_RISK_LANE_B_RMP_DIRECTORY=$RUNNER_TEMP/epa_fixture_rmp" >> "$GITHUB_ENV"
+          echo "FACILITY_RISK_DB=$RUNNER_TEMP/facilityrisk-private-ui-fixture.sqlite" >> "$GITHUB_ENV"
+      - name: Start authenticated actual FastAPI app on loopback and exercise EPA tab
+        run: |
+          set -euo pipefail
+          python -m facilityrisk serve --host 127.0.0.1 --port 8767 > /tmp/facility-epa-private-app.log 2>&1 &
+          for n in $(seq 1 30); do
+            if curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $FACILITY_RISK_AUTH_TOKEN" http://127.0.0.1:8767/api/epa/lane-b/status | grep -q 200; then break; fi
+            sleep 1
+          done
+          python tests/smoke_epa_private.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coordinator-private-epa-evidence-browser
+          path: /tmp/epa-private-browser-qa.png
+          if-no-files-found: warn
+          retention-days: 7

@@ -1,0 +1,51 @@
+name: Lane A - authoritative FEMA NFHL complete bounded windows QA
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - ingest/fema-wildfire-lane-a-20261023
+    paths:
+      - 'scripts/lane_a_nfhl_paged.py'
+      - 'scripts/lane_a_fema_query_smoke.py'
+      - 'scripts/verify_lane_a_archive.py'
+      - 'facilityrisk/lane_a_geospatial.py'
+      - 'facilityrisk/lane_a_source_query.py'
+      - 'tests/test_lane_a_nfhl_paged.py'
+      - 'tests/test_lane_a_geospatial.py'
+      - 'tests/test_lane_a_source_query.py'
+      - '.github/workflows/lane-a-fema-windows.yml'
+permissions:
+  contents: read
+jobs:
+  fema-nfhl-paged:
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test FEMAs native IDs geometry/CRS missing data and read-only source queries
+        run: |
+          python -m unittest discover -s tests -p 'test_lane_a_nfhl_paged.py' -v
+          python -m unittest discover -s tests -p 'test_lane_a_geospatial.py' -v
+          python -m unittest discover -s tests -p 'test_lane_a_source_query.py' -v
+      - name: Enumerate all official FEMA IDs and fetch every polygon for six bounded source windows
+        run: python -m scripts.lane_a_nfhl_paged --out-dir data/lane_a/paged_windows --max-per-window 250 --batch-size 4
+      - name: Re-query native FEMA polygon keys with SQLite RTree/index reconciliation
+        run: python -m scripts.lane_a_fema_query_smoke --directory data/lane_a/paged_windows
+      - name: Independently re-hash retained official FEMA query responses and indexed records
+        run: python -m scripts.verify_lane_a_archive --root data/lane_a
+      - name: Export Lane A-only coordinator source availability/coverage handoff
+        if: always()
+        run: python -m scripts.lane_a_integration_handoff --root data/lane_a --output data/lane_a/paged_windows/lane_a_integration_handoff.json
+      - name: Archive real FEMA polygons and official source page receipts with SHA256
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-a-official-fema-nfhl-bounded-index-qa
+          path: |
+            data/lane_a/paged_windows/
+          retention-days: 7
+          compression-level: 6
+          if-no-files-found: warn

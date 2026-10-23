@@ -1,0 +1,66 @@
+name: Lane B EPA historical and latest TRI national schema discovery
+on:
+  push:
+    branches: ['ingest/epa-echo-tri-rcra-rmp-lane-b-20261023']
+    paths: ['.github/workflows/lane-b-tri-historical-probe.yml']
+  workflow_dispatch:
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        year: [1987, 1995, 2005, 2015, 2019, 2025]
+    env:
+      YEAR: ${{ matrix.year }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read complete official EPA historical/latest TRI release and exact CSV schema
+        run: |
+          python - <<'PY'
+          import csv,hashlib,io,json,os,pathlib,shutil,urllib.request,urllib.error,datetime
+          year=os.environ['YEAR']
+          url=f'https://data.epa.gov/efservice/downloads/tri/mv_tri_basic_download/{year}_US/csv'
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])/'tri_history_probe'
+          root.mkdir(parents=True,exist_ok=True)
+          raw=root/f'{year}.csv'
+          report={'year':int(year),'source_url':url,'checked_utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                  'scope':'official US national TRI Basic, schema/row-count discovery, not indexed or deployed',
+                  'indexed_rows':0,'deployed_rows':0}
+          try:
+              req=urllib.request.Request(url,headers={'User-Agent':'FacilityRisk-LaneB/1.0'})
+              with urllib.request.urlopen(req,timeout=135) as response, raw.open('wb') as target:
+                  report['publisher_last_modified']=response.headers.get('Last-Modified')
+                  report['http_status']=response.status
+                  shutil.copyfileobj(response,target)
+              sha=hashlib.sha256()
+              with raw.open('rb') as binary:
+                  for block in iter(lambda:binary.read(1<<20),b''):sha.update(block)
+              report['source_sha256']=sha.hexdigest()
+              report['downloaded_bytes']=raw.stat().st_size
+              with raw.open('r',encoding='utf-8-sig',errors='replace',newline='') as f:
+                  reader=csv.DictReader(f)
+                  fields=reader.fieldnames or []
+                  report['reported_headers']=fields
+                  report['header_columns']=len(fields)
+                  report['native_facility_keys']=[k for k in fields if 'TRIFD' in k.upper() or 'TRI FACILITY' in k.upper()]
+                  report['scanned_rows']=sum(1 for _ in reader)
+                  report['discovery_state']='COMPLETE_OFFICIAL_HEADER_AND_ROW_CENSUS' if report['native_facility_keys'] and report['scanned_rows']>0 else 'PUBLISHER_SCHEMA_NOT_ACCEPTED'
+          except (OSError,urllib.error.HTTPError,UnicodeError,csv.Error) as exc:
+              report['discovery_state']='OFFICIAL_SOURCE_UNAVAILABLE_OR_UNPARSEABLE'
+              report['error_type']=type(exc).__name__
+              report['error']=str(exc)[:300]
+              report['http_status']=getattr(exc,'code',None)
+              report['scanned_rows']=None
+          (root/'probe.json').write_text(json.dumps(report,indent=2)+'\n')
+          print('TRI_OFFICIAL_HISTORY_DISCOVERY',json.dumps({k:v for k,v in report.items() if k!='reported_headers'}))
+          print('TRI_HEADERS',json.dumps(report.get('reported_headers')))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lane-b-tri-historical-${{ matrix.year }}-source-schema
+          path: ${{ runner.temp }}/tri_history_probe/probe.json
+          if-no-files-found: warn
+          retention-days: 14

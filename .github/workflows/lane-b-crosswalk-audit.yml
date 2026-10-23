@@ -1,0 +1,73 @@
+name: Lane B official ECHO TRI exact source-ID candidate QA
+on:
+  push:
+    branches: ['ingest/epa-echo-tri-rcra-rmp-lane-b-20261023']
+    paths: ['.github/workflows/lane-b-crosswalk-audit.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  verify_native_id_candidates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Independently recover exact official ECHO exporter ZIP from source-validated run
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 39982893655
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          name: lane-b-echo-official-raw-zip
+          path: ${{ runner.temp }}/echo_authoritative
+      - name: Independently recover 2024 TRI official CSV from source-validated run
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 39980692415
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          name: lane-b-tri-2024-source-index-staging
+          path: ${{ runner.temp }}/tri_authoritative
+      - name: Validate original regulator publisher bytes and exact native ID intersections
+        run: |
+          set -euo pipefail
+          echo_zip=$(find "$RUNNER_TEMP/echo_authoritative" -type f -name '*.zip' -print -quit)
+          tri_csv=$(find "$RUNNER_TEMP/tri_authoritative" -type f -name 'tri_2024_US.csv' -print -quit)
+          if [ -z "$echo_zip" ] || [ -z "$tri_csv" ]; then
+            echo "Missing one official source archive; cannot infer overlap" >&2
+            exit 1
+          fi
+          export ECHO_ZIP="$echo_zip" TRI_CSV="$tri_csv"
+          python - <<'PY'
+          import hashlib,os
+          from pathlib import Path
+          expected={'ECHO_ZIP':'116f6e53117b52f7891c6d2466d662f4ee5e29946b065fdb7b97eaf095615899',
+                    'TRI_CSV':'06dfa3a67bb4c5bd38d9e9f0f7b8bff10b95254a63169423632d7f6f251e1506'}
+          for key,sha in expected.items():
+              p=Path(os.environ[key]);h=hashlib.sha256()
+              with p.open('rb') as f:
+                  for block in iter(lambda:f.read(1048576),b''):h.update(block)
+              assert h.hexdigest()==sha,(key,'publisher source checksum differs')
+              print('EXACT_OFFICIAL_SOURCE_CONFIRMED',key,p.stat().st_size,h.hexdigest())
+          PY
+          python -m scripts.lane_b_epa.crosswalk_audit --echo-zip "$echo_zip" --tri-csv "$tri_csv" --year 2024 --output "$RUNNER_TEMP/epa_native_id_candidates.json"
+          python - <<'PY'
+          import json,os,pathlib
+          obj=json.loads((pathlib.Path(os.environ['RUNNER_TEMP'])/'epa_native_id_candidates.json').read_text())
+          assert obj['echo_raw_rows']==3229311 and obj['echo_native_registry_ids']==3208008
+          assert obj['echo_rows_missing_registry_id']==21303
+          assert obj['tri_raw_reports']==77295 and obj['tri_distinct_native_trifd']==21482
+          assert obj['tri_reports_exact_frs_key_in_echo']+obj['tri_reports_frs_key_absent_in_echo']+obj['tri_missing_reported_frs_id_rows']==obj['tri_raw_reports']
+          assert obj['physical_property_matches_verified']==0
+          assert obj['production_deployed_records']==0
+          print('COMPLETE_OFFICIAL_NATIVE_FRS_ID_INTERSECTION_QA',obj['tri_reports_exact_frs_key_in_echo'],obj['tri_reports_frs_key_absent_in_echo'],obj['tri_missing_reported_frs_id_rows'])
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lane-b-national-echo-tri-regulator-native-key-candidate-review
+          path: ${{ runner.temp }}/epa_native_id_candidates.json
+          if-no-files-found: warn
+          retention-days: 14

@@ -9,6 +9,8 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt \
     && useradd --uid 10001 --create-home --shell /usr/sbin/nologin facility
 COPY facilityrisk ./facilityrisk
+# EPA Lane B is imported by the private FastAPI app; include only this vetted source package.
+COPY scripts/lane_b_epa ./scripts/lane_b_epa
 COPY web ./web
 EXPOSE 8765
 USER 10001:10001

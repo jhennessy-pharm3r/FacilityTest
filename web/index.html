@@ -18,39 +18,40 @@
     <div class="workspace"><div class="workspace-mark">FR</div><div class="workspace-text"><strong>Facility Risk</strong><small>Research workspace <span class="down-caret">&#8964;</span></small></div></div>
     <div class="side-label">ASSESS</div>
     <nav aria-label="assess navigation">
-      <button class="nav-item active" data-page="workbench"><span class="nav-symbol">◈</span> Assessment workbench</button>
-      <button class="nav-item" data-page="policy-review"><span class="nav-symbol">▣</span> Verified policy review</button>
-      <button class="nav-item" data-page="insurance"><span class="nav-symbol">▣</span> Coverage & parametric</button>
-      <button class="nav-item" data-page="bi-scenarios"><span class="nav-symbol">↻</span> Interruption scenarios</button>
-      <button class="nav-item" data-page="underwriting"><span class="nav-symbol">▥</span> Operations & BI</button>
-      <button class="nav-item" data-page="map"><span class="nav-symbol">◎</span> Natural hazards</button>
+      <a class="nav-item active" data-page="workbench" href="?page=workbench"><span class="nav-symbol">◈</span> Assessment workbench</a>
+      <a class="nav-item" data-page="policy-review" href="?page=policy-review"><span class="nav-symbol">▣</span> Verified policy review</a>
+      <a class="nav-item" data-page="insurance" href="?page=insurance"><span class="nav-symbol">▣</span> Coverage & parametric</a>
+      <a class="nav-item" data-page="bi-scenarios" href="?page=bi-scenarios"><span class="nav-symbol">↻</span> Interruption scenarios</a>
+      <a class="nav-item" data-page="underwriting" href="?page=underwriting"><span class="nav-symbol">▥</span> Operations & BI</a>
+      <a class="nav-item" data-page="map" href="?page=map"><span class="nav-symbol">◎</span> Natural hazards</a>
     </nav>
     <div class="side-label side-label-spaced">DISCOVER</div>
     <nav aria-label="discover navigation">
-      <button class="nav-item" data-page="universal"><span class="nav-symbol">⌕</span> All-industry facilities</button>
-      <button class="nav-item" data-page="registry"><span class="nav-symbol">▦</span> Public source registry</button>
-      <button class="nav-item" data-page="facilities"><span class="nav-symbol">▤</span> Research cases <span id="side-facility-count" class="nav-count"></span></button>
-      <button class="nav-item" data-page="cases"><span class="nav-symbol">◷</span> Loss event studies</button>
+      <a class="nav-item" data-page="universal" href="?page=universal"><span class="nav-symbol">⌕</span> All-industry facilities</a>
+      <a class="nav-item" data-page="registry" href="?page=registry"><span class="nav-symbol">▦</span> Public source registry</a>
+      <a class="nav-item" data-page="facilities" href="?page=facilities"><span class="nav-symbol">▤</span> Research cases <span id="side-facility-count" class="nav-count"></span></a>
+      <a class="nav-item" data-page="cases" href="?page=cases"><span class="nav-symbol">◷</span> Loss event studies</a>
     </nav>
     <div class="side-label side-label-spaced">RESEARCH</div>
     <nav aria-label="research navigation">
-      <button class="nav-item" data-page="evidence"><span class="nav-symbol">≡</span> Evidence search</button>
-      <button class="nav-item" data-page="disclosures"><span class="nav-symbol">§</span> SEC disclosures</button>
-      <button class="nav-item" data-page="sources"><span class="nav-symbol">◫</span> Data source inventory</button>
-      <button class="nav-item" data-page="identity"><span class="nav-symbol">◇</span> Site identity review</button>
+      <a class="nav-item" data-page="evidence" href="?page=evidence"><span class="nav-symbol">≡</span> Evidence search</a>
+      <a class="nav-item" data-page="disclosures" href="?page=disclosures"><span class="nav-symbol">§</span> SEC disclosures</a>
+      <a class="nav-item" data-page="sources" href="?page=sources"><span class="nav-symbol">◫</span> Data source inventory</a>
+      <a class="nav-item" data-page="epa" href="?page=epa"><span class="nav-symbol">♧</span> EPA regulatory evidence</a>
+      <a class="nav-item" data-page="identity" href="?page=identity"><span class="nav-symbol">◇</span> Site identity review</a>
     </nav>
     <div class="side-label side-label-spaced">GOVERNANCE</div>
     <nav aria-label="governance navigation">
-      <button class="nav-item" data-page="feeds"><span class="nav-symbol">↻</span> Source health</button>
-      <button class="nav-item" data-page="quality"><span class="nav-symbol">✓</span> Data quality</button>
-      <button class="nav-item" data-page="overview"><span class="nav-symbol">▧</span> Research overview</button>
-      <button class="nav-item" data-page="reviews"><span class="nav-symbol">✓</span> Independent approvals</button>
-      <button class="nav-item" data-page="methodology"><span class="nav-symbol">ⓘ</span> Methodology</button>
+      <a class="nav-item" data-page="feeds" href="?page=feeds"><span class="nav-symbol">↻</span> Source health</a>
+      <a class="nav-item" data-page="quality" href="?page=quality"><span class="nav-symbol">✓</span> Data quality</a>
+      <a class="nav-item" data-page="overview" href="?page=overview"><span class="nav-symbol">▧</span> Research overview</a>
+      <a class="nav-item" data-page="reviews" href="?page=reviews"><span class="nav-symbol">✓</span> Independent approvals</a>
+      <a class="nav-item" data-page="methodology" href="?page=methodology"><span class="nav-symbol">ⓘ</span> Methodology</a>
     </nav>
     <div class="sidebar-bottom"><div class="side-status-dot"></div><div><strong>Research environment</strong><span>Prototype v0.8 &middot; Private research</span></div></div>
   </aside>
   <div class="main-area">
-    <header class="topbar"><div class="breadcrumbs">PANDORA <span>/</span> FACILITY RISK <span>/</span> <strong id="breadcrumb-page">OVERVIEW</strong></div><div class="topbar-actions"><span class="top-indicator"><span></span> ANALYST RESEARCH</span><span class="top-divider"></span><div class="top-avatar">P3</div></div></header>
+    <header class="topbar"><div class="breadcrumbs">PANDORA <span>/</span> FACILITY RISK <span>/</span> <strong id="breadcrumb-page">OVERVIEW</strong></div><div class="topbar-actions"><button class="btn tiny" id="copy-view-link" type="button" aria-label="Copy a shareable link to the current view">Copy link ↗</button><span class="top-indicator"><span></span> ANALYST RESEARCH</span><span class="top-divider"></span><div class="top-avatar">P3</div></div></header>
     <main id="view-root" aria-live="polite"><div class="loading-card">Loading facility research...</div></main>
     <footer class="app-footer"><span>PHARM3R &middot; FACILITY RISK INTELLIGENCE</span><span>Evidence-based research only. Policies, payouts and actuarial risk scores are not verified.</span></footer>
   </div>
@@ -66,6 +67,7 @@
 <script defer src="/assets/workbench-ui.js"></script>
 <script defer src="/assets/coverage-review-ui.js"></script>
 <script defer src="/assets/bi-scenario-ui.js"></script>
+<script defer src="/assets/epa-ui.js"></script>
 <script defer src="/assets/app.js"></script>
 </body>
 </html>

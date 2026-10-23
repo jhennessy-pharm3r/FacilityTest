@@ -8,6 +8,16 @@ The public preview opens on an **interactive insurance exposure workbench** for 
 
 A facility source identity from the public regulatory catalog or authenticated universal registry can prefill the workbench without carrying over previous sites' hazard/coverage assumptions. The research case and private API/SQLite backend are separate from the public Pages preview. Read [current authoritative backlog](docs/NEXT_STEPS.md) for production and hazard-verification gates.
 
+## FEMA flood and USFS wildfire: installed-source private API
+
+The official-source Lane A ingestion code is merged (PR #75). An optional **authenticated, read-only source index** can now expose the original FEMA NFHL and USDA WHP2023 source records from an operator-installed immutable release. It does **not** generate a facility risk score, legal FEMA map determination, or insured loss.
+
+The verified frozen Lane A source release contains **34 FEMA flood polygons (six small QA windows only)**, **70 continuous + 70 classified USFS 2023 raster QA pixels**, and **35,304 nationally published county/state/ZIP/management aggregate rows**. In the ZIP cohort, **60** records have unknown hazard acreage. The 2023 original nationwide raster and 5.8M-record national FEMA polygon corpus are **not** installed. These counts describe government-source grain, not insured buildings.
+
+For a controlled private host, install the verified source bundle under `./source-index/lane-a` using `python -m scripts.lane_a_install`, set `FACILITY_RISK_LANE_A_INDEX_ROOT=/app/source-index/lane-a` in the untracked Compose `.env`, and validate `GET /api/lane-a/status` with authentication. The private Source Health view lists all four cohorts and the hazards panel permits a **read-only** FEMA polygon check only for sites whose **current coordinates are independently reviewed in the private workspace**. Missing/failed source data remain UNKNOWN. All static GitHub Pages counts remain staging-only; **not publicly hosted as a private source database**.
+
+Complete commands, authenticated endpoints, refresh/rollback, source SHA receipts and the remaining host/security gates: [Lane A private API integration](docs/LANE_A_PRIVATE_API_INTEGRATION.md), [source handoff](docs/LANE_A_INSTALLATION_HANDOFF.md), and [secure deployment requirements](docs/SECURE_DEPLOYMENT.md).
+
 ## GitHub Pages public preview
 
 The repository root `index.html` hosts a **read-only public preview** at
@@ -180,3 +190,9 @@ Private facility reports show a deliberate 250-row preview limit so large record
 The private v0.7 registry provides indexed cross-industry source searches, audited manual identity linkage, authorized CSV/GeoJSONSeq imports, and a separate insurance coverage reference taxonomy (including property, business interruption, utility disruption and parametric options). The public Pages preview does not execute this backend and must not imply all commercial or industrial facilities are already loaded. See [universal facility documentation](docs/UNIVERSAL_FACILITIES.md).
 
 An official **EPA FRS National** staging pipeline now downloads the published national ZIP and, only after schema/row checks, creates a temporary GitHub Actions artifact with the normalized, source-only data and checksum manifest. It does not automatically publish millions of facility records to Pages or a production service. Use the artifact with the private importer and verify the resulting registry counts and source vintage. See [EPA import workflow](.github/workflows/build-epa-frs.yml).
+
+## EPA source-index integration (private service)
+
+EPA ECHO, RCRAInfo, all 38 official TRI Basic reporting years (1987–2024), and the **public** FRS-RMP interests are included as **regulator-source-only** importer/index artifacts. [Lane B PR #76](https://github.com/jhennessy-pharm3r/FacilityTest/pull/76) was merged after full official-source checksum, replay and read-only installation QA; [coordinator integration](https://github.com/jhennessy-pharm3r/FacilityTest/pull/82) wires optional authenticated source-native-ID routes and an **EPA regulatory evidence** page into the private app. GitHub Pages is static and does not deploy those multi-GB source indexes. No regulator observation is automatically a verified insured property, pollution damage, claim or paid loss.
+
+See [private EPA installation + complete retrieval/recovery instructions](docs/EPA_LANE_B_DEPLOYMENT.md), [original publisher and data QA](scripts/lane_b_epa/INTEGRATION_RELEASE.md), and [durable hosting prerequisite #39](https://github.com/jhennessy-pharm3r/FacilityTest/issues/39). Production-deployed and independently approved insured-property-match counts remain **zero** until real private-host service, security and site QA are verified.
