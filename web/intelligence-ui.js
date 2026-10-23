@@ -139,7 +139,7 @@
         `<td><span class="pill ${source.stage === 'access_blocked' ? 'orange' : 'gray'}">${esc(stages[source.stage]||'Unknown')}</span></td>`+
         `<td>${amount(source.scanned)}</td><td>${amount(source.accepted)}</td><td>${amount(source.rejected)}</td>`+
         `<td>${amount(source.indexed_ci)}</td><td><strong>${amount(source.deployed)}</strong></td>`+
-        `<td>${esc(source.notes)}${esc(coords)}<br><small>${safeLink(source.run_url,'Source run')} · ${safeLink(lane.pr_url,'Draft PR')}</small></td></tr>`;
+        `<td>${esc(source.notes)}${esc(coords)}<br><small>${safeLink(source.run_url,'Source run')} · ${safeLink(lane.pr_url,'Source PR')}</small></td></tr>`;
     })).join('');
     const laneRows = summary.lanes.map(lane => `<div class="qa-box"><span class="title">Lane ${esc(lane.id)} · ${esc(lane.name)}</span>`+
       `<b>${lane.sources.length} source streams</b><span>${esc(lane.gate)}</span></div>`).join('');
