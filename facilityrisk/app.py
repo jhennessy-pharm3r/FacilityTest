@@ -35,6 +35,7 @@ from .universal_registry import (search as universal_search, detail as universal
 from .site_workspace import (SOURCES as REGULATOR_SOURCES, intake_site, search_external_registry,
                              track_external_registry_site, stage_identity_candidate,
                              suggest_regulatory_matches)
+from scripts.lane_b_epa.integration_api import build_router as lane_b_router, status as lane_b_status
 
 ROOT=Path(__file__).resolve().parent.parent
 WEB=ROOT/'web'
@@ -42,6 +43,9 @@ app=FastAPI(title='Pharm3r Facility Risk Intelligence',version='0.8.0',
             description='Evidence research prototype; not an actuarially calibrated risk score.')
 app.mount('/assets',StaticFiles(directory=WEB),name='assets')
 add_security(app)
+# Optional, exact native-ID lookups; middleware authenticates all source-bearing routes.
+# FACILITY_RISK_LANE_B_ROUTES_ENABLED is disabled by default until mounted snapshots are approved.
+app.include_router(lane_b_router())
 
 
 def conn_dependency():
@@ -63,7 +67,8 @@ def health(c=Depends(conn_dependency)):
 
 @app.get('/api/source-indices/status')
 def private_source_indices():
-    return source_index_status()
+    # Source readiness is not evidence of actual insurer deployment or verified properties.
+    return {**source_index_status(), 'lane_b_epa': lane_b_status()}
 
 
 @app.get('/api/noaa/storm-events/status')
