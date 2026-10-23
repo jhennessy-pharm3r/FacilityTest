@@ -92,6 +92,7 @@ def _date(value):
         try:
             dt=datetime.strptime(text,fmt)
             if dt.year<1900 or dt.year>2100:return None,"out_of_plausible_range"
+            if dt.year<1970:return None,"legacy_date_requires_manual_review"
             return dt.strftime("%Y-%m-%d") if prec=="day" else (
                 dt.strftime("%Y-%m") if prec=="month" else dt.strftime("%Y")),prec
         except ValueError:pass
