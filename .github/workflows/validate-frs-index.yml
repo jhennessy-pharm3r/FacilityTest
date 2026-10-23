@@ -30,6 +30,8 @@ jobs:
           python-version: '3.12'
       - name: Install backend dependencies for database initialization
         run: python -m pip install -r requirements.txt
+      - name: Validate benchmark CLI import path before building 5M records
+        run: python scripts/benchmark_frs_search.py --help > /dev/null
       - name: Download completed full official EPA FRS source artifact
         uses: actions/download-artifact@v4
         with:
@@ -51,6 +53,7 @@ jobs:
           print('Rejected raw source rows:',m['rejected_rows'])
           PY
       - name: Load all source identities into indexed SQLite
+        id: full_index
         run: |
           python -u - <<'PY'
           import json,sqlite3,time
@@ -59,6 +62,7 @@ jobs:
           from scripts.import_universal import csv_rows
           from facilityrisk.registry_catalog import FIELDS
           started=time.monotonic()
+          manifest=json.load(open('data/epa-frs-national-manifest.json'))
           c=connect()
           initialize(c)
           # This database is a disposable, rebuildable source-only validation
@@ -73,7 +77,7 @@ jobs:
           source='https://www.epa.gov/frs/epa-frs-facilities-state-single-file-csv-download'
           result=import_records(c,'EPA_FRS',
              csv_rows('data/epa-frs-national.csv.gz',mapping),
-             source,vintage='2026-10-01',
+             source,vintage=manifest['generated_at'][:10],
              notes='Complete EPA national source identity import; not verified properties')
           stats=statistics(c)
           assert result['read']>=5000000, result
@@ -91,6 +95,9 @@ jobs:
                   'site_candidates':stats['site_candidates'],
                   'warehouse_search_matches':first['total'],
                   'sqlite_quick_check':index_ok,
+                  'source_vintage':manifest['generated_at'],
+                  'source_archive_sha256':manifest['sha256'],
+                  'normalized_source_sha256':manifest['output_sha256'],
                   'database_bytes':os.stat('data/full-frs-index.sqlite').st_size,
                   'elapsed_seconds':round(time.monotonic()-started,2),
                   'property_verified_count':0,
@@ -106,6 +113,7 @@ jobs:
           python scripts/benchmark_frs_search.py data/full-frs-index.sqlite \
             --out data/frs-search-benchmark.json --repeats 3 --concurrency 4
       - name: Publish validated source-only SQLite for private-host import
+        if: ${{ always() && steps.full_index.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
           name: epa-frs-indexed-registry
