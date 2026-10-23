@@ -227,6 +227,16 @@ def install(bundle,store_root,*,release_id=None,repo_root=None):
             installed=verify_bundle(staging)
             if installed["index_sha256"]!=proven["index_sha256"]:
                 raise ValueError("Original and installed index checksum mismatch")
+            # A completed release is immutable to accidental service writes.
+            # Administrators can install a NEW release or roll back the pointer.
+            for installed_file in staging.rglob("*"):
+                if installed_file.is_file():
+                    installed_file.chmod(0o400)
+            for installed_dir in sorted(
+                    [p for p in staging.rglob("*") if p.is_dir()],
+                    key=lambda p:len(p.parts),reverse=True):
+                installed_dir.chmod(0o500)
+            staging.chmod(0o500)
             staging.rename(target)
             result={"installation":"PRIVATE_RELEASE_INSTALLED_READ_ONLY_NOT_APP_DEPLOYED",
                     "release_id":release_id,**installed}
@@ -243,7 +253,8 @@ def install(bundle,store_root,*,release_id=None,repo_root=None):
     })
     result["active_release_id"]=release_id
     result["previous_release_id"]=previous["release_id"] if previous else None
-    result["persisted_on_configured_private_mount"]=True
+    result["installed_to_private_path"]=True
+    result["durable_production_indexed"]=0  # CI/test mount is not a verified production service
     result["authenticated_service_connected"]=False
     result["app_deployed_records"]=0
     return result
@@ -263,9 +274,21 @@ def active_status(store_root,*,repo_root=None):
             "app_deployed_records":0}
 
 def query(store_root,*,source,state=None,since=None,page=1,page_size=50,repo_root=None):
-    status=active_status(store_root,repo_root=repo_root)
-    if source not in status["source_counts"]:
-        raise ValueError("Unknown source namespace; must use one of active release sources")
+    # Every request uses the already verified immutable release pointed to by
+    # an atomically installed pointer. Re-hashing all 17 original XLSX files
+    # on *every* page request is not acceptable query performance; the full
+    # original/normalized/index SHA audit is performed during install/status.
+    root=_store_root(store_root,repo_root or Path(__file__).resolve().parents[1])
+    active=_active(root)
+    if not active:
+        raise ValueError("No active Lane C release installed")
+    if not re.fullmatch(r"(?:nrc_20[0-9]{2}|csb)",source or ""):
+        raise ValueError("Unknown source namespace")
+    source_counts=_read_json(
+        _safe_file(root/"releases"/active["release_id"],"private-bundle-manifest.json")
+    ).get("source_counts",{})
+    if source not in source_counts:
+        raise ValueError("Unknown source namespace; not present in active release")
     if (not isinstance(page,int) or page<1 or not isinstance(page_size,int)
         or not 1<=page_size<=200):
         raise ValueError("Unsupported source query paging")
@@ -273,8 +296,7 @@ def query(store_root,*,source,state=None,since=None,page=1,page_size=50,repo_roo
         raise ValueError("Query incident date must be ISO YYYY-MM-DD")
     if state is not None and (not isinstance(state,str) or len(state)>12):
         raise ValueError("Invalid source state filter")
-    root=Path(store_root).resolve()
-    path=root/"releases"/status["active_release_id"]/"indexes"/"lane-c-source.sqlite"
+    path=root/"releases"/active["release_id"]/"indexes"/"lane-c-source.sqlite"
     filters=["source=?" ]
     args=[source]
     if state is not None:
@@ -295,7 +317,7 @@ def query(store_root,*,source,state=None,since=None,page=1,page_size=50,repo_roo
     return {"source":source,"total":count,"page":page,"page_size":page_size,
             "items":[dict(zip(fields,row)) for row in records],
             "classification":"REVIEW_ONLY_UNVERIFIED_SOURCE_OBSERVATIONS",
-            "source_release":status["active_release_id"],
+            "source_release":active["release_id"],
             "authenticated_api_exposure":"NOT_IMPLEMENTED_LANE_E_OWNED"}
 
 def rollback(store_root,release_id,*,repo_root=None):
