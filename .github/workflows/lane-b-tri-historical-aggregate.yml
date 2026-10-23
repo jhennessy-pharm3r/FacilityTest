@@ -1,5 +1,8 @@
 name: Lane B independently reconcile full historical TRI annual artifacts
 on:
+  push:
+    branches: ['ingest/epa-echo-tri-rcra-rmp-lane-b-20261023']
+    paths: ['.github/workflows/lane-b-tri-historical-aggregate.yml']
   workflow_dispatch:
     inputs:
       producer_run_id:
@@ -21,7 +24,7 @@ jobs:
       - name: Download official annual source QA artifacts independently
         uses: actions/download-artifact@v4
         with:
-          run-id: ${{ inputs.producer_run_id }}
+          run-id: ${{ inputs.producer_run_id || '39985627343' }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           pattern: lane-b-tri-historical-*-qa
           merge-multiple: false
