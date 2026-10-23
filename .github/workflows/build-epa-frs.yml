@@ -1,6 +1,8 @@
 name: EPA FRS national source staging
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '17 4 * * 1'
   push:
     branches: [main]
     paths:
