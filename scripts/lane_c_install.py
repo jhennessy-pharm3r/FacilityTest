@@ -209,6 +209,16 @@ def install(bundle,store_root,*,release_id=None,repo_root=None):
         current=verify_bundle(target)
         if current["index_sha256"]!=proven["index_sha256"]:
             raise ValueError("An immutable release ID already exists with different source data")
+        # A source SQLite may be byte-identical even when the official original
+        # workbook bytes or publisher provenance change. Do not silently reuse
+        # an existing release ID for a different set of source originals.
+        existing_prov=_read_json(_safe_file(target,"private-bundle-manifest.json"))["source_provenance"]
+        incoming_prov=_read_json(_safe_file(source,"private-bundle-manifest.json"))["source_provenance"]
+        for name in proven["source_counts"]:
+            for kind in ("original","normalized"):
+                if (existing_prov[name][kind]["sha256"] !=
+                    incoming_prov[name][kind]["sha256"]):
+                    raise ValueError("Existing immutable release ID conflicts with changed official source provenance")
         # Idempotent only when source data are unchanged, never overwrite.
         result={"installation":"ALREADY_INSTALLED_CHECKSUM_VERIFIED","release_id":release_id,**current}
     else:
