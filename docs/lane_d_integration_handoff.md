@@ -50,7 +50,7 @@ From a checked-out PR branch with Python 3.12:
 
 PNNL uses the same CLI, but a **successful latest** full-source Actions run and its large attached artifact (1.59 GB uncompressed SQLite):
 
-    gh run download PNNL_RUN_ID --repo jhennessy-pharm3r/FacilityTest -n lane-d-pnnl-2014-2023-readonly-staging-index -D /secure/transfers/pnnl
+    gh run download 39999800430 --repo jhennessy-pharm3r/FacilityTest -n lane-d-pnnl-2014-2023-readonly-staging-index -D /secure/transfers/pnnl
     python -m facilityrisk.lane_d.install_source_index install --bundle /secure/transfers/pnnl --dest /srv/facilityrisk/private/sources/lane-d --dataset pnnl_2014_2023 --source-sha256 44557bae7a5c8e02c611a14f75fe9e123d81d286f700b9fd88ac538edd910fe7 --role private-backend-candidate
     python -m facilityrisk.lane_d.install_source_index verify --dest /srv/facilityrisk/private/sources/lane-d --dataset pnnl_2014_2023
     python -m facilityrisk.lane_d.install_source_index query --dest /srv/facilityrisk/private/sources/lane-d --dataset pnnl_2014_2023 --fips 01001 --year 2023 --limit 10
@@ -90,7 +90,7 @@ PNNL publisher OEDI page https://data.openei.org/submissions/6458 links to **CC 
 
 ## 5. Remaining coordinator gates — do not declare DEPLOYED early
 
-- Verify successful **PNNL complete artifact download → installed index → immutable SQLite/query** Actions job and record link/receipt.
+- [x] PNNL complete original-source → upload/download artifact → SHA-verified immutable SQLite installation → FIPS query passed ([run #39999800430](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39999800430)).
 - Deploy these transferred private indexes plus verified original-source archives to a **durable backed-up authenticated backend**, not an Actions runner or static GitHub Pages.
 - Review ORNL licensing; keep live current feeds separate and freshness-aware.
 - Independently corroborate insured location, meter/circuit/service provider and outages before physical-site scoring. Current verified site-to-meter links **zero**.
@@ -99,4 +99,4 @@ PNNL publisher OEDI page https://data.openei.org/submissions/6458 links to **CC 
 
 Detailed source sheets, member SHA, original rejections and CI links: [Lane D source ledger](lane_d_utility_reliability.md).
 
-**Release state: SOURCE-VALIDATED / READONLY INSTALL HANDOFF TESTED FOR EIA / PNNL ARTIFACT QA PENDING; app deployed count = 0.**
+**Release state: REAL OFFICIAL SOURCE + EIA AND PNNL ARTIFACT-TRANSFER/IMMUTABLE-READONLY-INSTALL/QUERY VALIDATED. Production backend/app deployed source rows = 0.**
