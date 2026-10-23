@@ -207,9 +207,11 @@ def install(source, destination, dataset, expected_source_sha256,
     # Fail fast for parallel installers; never overwrite the currently served
     # pointer while another staging promotion is in progress.
     fd = None
+    owns_lock = False
     temporary = None
     try:
         fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        owns_lock = True
         os.write(fd, b"lane-d-exclusive-source-install\n")
         os.close(fd)
         fd = None
@@ -237,6 +239,8 @@ def install(source, destination, dataset, expected_source_sha256,
             os.replace(temporary, index_path)
             temporary = None
         else:
+            if index_path.is_symlink() or not index_path.is_dir():
+                raise ValueError("Version target is not a trusted installed source directory")
             existing = json_file(index_path / "installation.json")
             if (existing.get("index_sha256") != report["index_sha256"]
                 or existing.get("source_archive_sha256") != report["source_archive_sha256"]
@@ -264,7 +268,8 @@ def install(source, destination, dataset, expected_source_sha256,
             os.close(fd)
         if temporary is not None:
             shutil.rmtree(temporary, ignore_errors=True)
-        lock.unlink(missing_ok=True)
+        if owns_lock:
+            lock.unlink(missing_ok=True)
 
 
 def resolve_current(destination, dataset):
