@@ -13,6 +13,8 @@ from pathlib import Path
 import re
 import sqlite3
 
+from .findings import tri_reported_measures, rcra_enforcement_measures, echo_summary_measures
+
 SOURCE_KINDS={
     "RCRA_FACILITIES.csv":("rcra_handler_identity",None,None),
     "RCRA_ENFORCEMENTS.csv":("rcra_enforcement","ENFORCEMENT_ACTION_DATE","ENFORCEMENT_IDENTIFIER"),
@@ -140,6 +142,12 @@ def _classify(source,row):
             "reported_total_penalties_raw":d.get("FAC_TOTAL_PENALTIES"),
             "reported_program_flags":{k:d.get(k) for k in ("AIR_FLAG","NPDES_FLAG","RCRA_FLAG","TRI_FLAG")},
         }
+    if source=="tri":
+        fields["normalized_reported_measures"]=tri_reported_measures(d)
+    elif source=="rcra" and kind=="rcra_enforcement":
+        fields["normalized_reported_measures"]=rcra_enforcement_measures(d)
+    elif source=="echo":
+        fields["normalized_reported_measures"]=echo_summary_measures(d)
     return {"source":source,"source_identifier":row["source_id"],
             "activity_location":row["activity_location"] or None,
             "regulatory_observation_kind":kind,
