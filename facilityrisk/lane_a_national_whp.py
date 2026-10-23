@@ -175,7 +175,7 @@ def _sample_one(path,lon,lat):
     with rasterio.open(path) as ds:
         xs,ys=transform("EPSG:4326",ds.crs,[lon],[lat])
         x,y=xs[0],ys[0]
-        col,row=ds.index(x,y)
+        row,col=ds.index(x,y)
         if not 0<=col<ds.width or not 0<=row<ds.height:
             return None
         pix=next(ds.sample([(x,y)],masked=True))[0]
