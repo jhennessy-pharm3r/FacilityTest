@@ -22,24 +22,24 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           run-id: 39982893655
-          github-token: \${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           name: lane-b-rcra-complete-manifests
-          path: \${{ runner.temp }}/lane_b_rcra/meta
+          path: ${{ runner.temp }}/lane_b_rcra/meta
       - name: Independently download official EPA original ZIP
         uses: actions/download-artifact@v4
         with:
           run-id: 39982893655
-          github-token: \${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           name: lane-b-rcra-official-raw-zip
-          path: \${{ runner.temp }}/lane_b_rcra/raw
+          path: ${{ runner.temp }}/lane_b_rcra/raw
       - name: Independently download complete checksum-delimited SQLite chunks
         uses: actions/download-artifact@v4
         with:
           run-id: 39982893655
-          github-token: \${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           pattern: lane-b-rcra-index-part-*
           merge-multiple: true
-          path: \${{ runner.temp }}/lane_b_rcra/parts
+          path: ${{ runner.temp }}/lane_b_rcra/parts
       - name: Verify official source snapshot installation and read-only native-ID querying
         run: |
           set -euo pipefail
@@ -112,6 +112,6 @@ jobs:
         if: always()
         with:
           name: lane-b-rcra-real-temporary-private-snapshot-audit-only
-          path: \${{ runner.temp }}/lane_b_rcra/private_staging_qa.json
+          path: ${{ runner.temp }}/lane_b_rcra/private_staging_qa.json
           if-no-files-found: warn
           retention-days: 14
