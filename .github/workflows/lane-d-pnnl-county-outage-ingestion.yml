@@ -96,6 +96,52 @@ jobs:
           print("Read-only FIPS county query passed", county[0], "source rows", county[1],
                 "returned",len(result["returned_findings"]))
           PY
+      - name: Create independently checkable coordinator handoff for public CC BY 4.0 PNNL index
+        shell: bash
+        run: |
+          python - <<'PY'
+          import hashlib,json,pathlib,sqlite3
+          root=pathlib.Path("/tmp/lane-d/pnnl/staged")
+          path=root/"pnnl_county_outage_staging.sqlite"
+          m=json.loads((root/"manifest.json").read_text())
+          with sqlite3.connect("file:"+str(path)+"?mode=ro",uri=True) as db:
+              assert db.execute("PRAGMA integrity_check").fetchone()[0]=="ok"
+              rows=db.execute("SELECT COUNT(*) FROM source_observations").fetchone()[0]
+              assert rows==m["accepted"]==m["locally_indexed"]
+          h=hashlib.sha256()
+          with path.open("rb") as f:
+              for chunk in iter(lambda:f.read(1024*1024),b""):
+                  h.update(chunk)
+          details={
+            "artifact_role":"SOURCE_ONLY_COORDINATOR_HANDOFF_NOT_PRODUCTION",
+            "primary_publisher":"Pacific Northwest National Laboratory (PNNL)",
+            "authors":"Buxin She, Veronica Adetola, Ji Young Yun (2024)",
+            "source_dataset_url":"https://data.openei.org/submissions/6458",
+            "source_license":"CC BY 4.0, retain original attribution and relevant notices",
+            "source_zip_sha256":m["archive_sha256"],
+            "source_zip_bytes":m["archive_bytes"],
+            "staged_sqlite_sha256":h.hexdigest(),
+            "staged_sqlite_bytes":path.stat().st_size,
+            "sqlite_rows_verified":rows,
+            "stage_only":True,
+            "durable_backend_indexed":0,
+            "deployed":0,
+            "instructions":"Download this short-retention artifact, verify staged_sqlite_sha256, keep source-vintage manifest, install on separately approved authenticated backend read-only; do not modify live Source Health from artifact alone.",
+          }
+          (root/"coordinator_handoff.json").write_text(json.dumps(details,indent=2)+"\n")
+          print(json.dumps(details,indent=2))
+          PY
+      - name: Upload validated source-only PNNL staging SQLite for coordinator retrieval
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-d-pnnl-2014-2023-readonly-staging-index
+          retention-days: 3
+          compression-level: 3
+          if-no-files-found: error
+          path: |
+            /tmp/lane-d/pnnl/staged/pnnl_county_outage_staging.sqlite
+            /tmp/lane-d/pnnl/staged/coordinator_handoff.json
+            /tmp/lane-d/pnnl/staged/manifest.json
       - name: Publish provenance and source QA ledger only; source CSV data remain in isolated runner
         if: always()
         uses: actions/upload-artifact@v4
