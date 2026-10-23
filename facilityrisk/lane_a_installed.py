@@ -76,13 +76,14 @@ def query_raster_probe(destination, source, *, region, grid_index):
     dbpath = index_file(destination, source)
     table = ("whp_geographic_probes" if source == "usda_continuous"
              else "usfs_whp_classified_probes")
-    cols = ("pixel_state,pixel_value" if source == "usda_continuous"
-            else "class_state,class_value,class_label")
+    cols = ("whp_release AS raster_release,pixel_state,pixel_value"
+            if source == "usda_continuous" else
+            "raster_release,class_state,class_value,class_label")
     with sqlite3.connect("file:" + str(dbpath.resolve()) + "?mode=ro", uri=True) as db:
         db.row_factory = sqlite3.Row
         db.execute("PRAGMA query_only=ON")
         row = db.execute(
-            "SELECT region,probe_index,longitude,latitude,raster_release,"
+            "SELECT region,probe_index,longitude,latitude,"
             "source_url,raw_sha256," + cols + " FROM " + table +
             " WHERE region=? AND probe_index=?", (region, grid_index)
         ).fetchone()
