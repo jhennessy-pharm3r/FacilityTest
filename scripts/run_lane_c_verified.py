@@ -143,7 +143,7 @@ def run(output):
         # its own source-native SEQNOS namespace, so do NOT coalesce identical
         # identifiers from different years or silently double count events.
         audit["additional_nrc_cohorts"] = {}
-        for year in (2024, 2023, 2022, 2021, 2020):
+        for year in (2024, 2023, 2022, 2021, 2020, 2019, 2018, 2017, 2016, 2015):
             url = f"https://nrc.uscg.mil/FOIAFiles/CY{year%100:02d}.xlsx"
             yearly = {"source_url":url, "year":year, "dataset_role":"annual_report_cohort",
                       "cross_year_auto_dedup":"NOT_PERFORMED"}
@@ -194,7 +194,7 @@ def run(output):
                 ("nrc_2025",work/"nrc.csv.gz",output/"nrc-manifest.json"),
                 ("csb",work/"csb.csv.gz",output/"csb-manifest.json"),
             ]
-            for year in (2024,2023,2022,2021,2020):
+            for year in (2024,2023,2022,2021,2020,2019,2018,2017,2016,2015):
                 if audit["additional_nrc_cohorts"].get(str(year),{}).get("ephemeral_indexed"):
                     inputs.append((f"nrc_{year}",work/f"nrc-{year}.csv.gz",
                                    output/f"nrc-{year}-manifest.json"))
