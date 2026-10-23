@@ -74,3 +74,21 @@ The public Pages workbench supports only scenario and policy-review preparation.
 The private insurance policy metadata and coverage-term review module now supports independently authenticated reviewer/approver decisions, document SHA-256 references and versioned invalidation of earlier approval after coverage edits. The facility-level crosswalk connects **current, independently reviewed** hazard screenings to relevant **document-reviewed** terms only. It does not certify policy authenticity, coverage applicability, or claim payment. The public Pages version has no policy-storage access. Production deployment, multi-tenant security, client-provided contracts, real coverage review, national index hosting, geospatial production QA, and 25 independent facility case studies are still outstanding; do not claim otherwise.
 
 Private viewer navigation now includes a **Verified policy review** workspace for reviewing per-facility policy metadata, terms, verified point screening crosswalks, and independent reviewer approval decisions. This is not available in public Pages and does not eliminate the need for SSO, tenant isolation or authentic policy-document evidence.
+
+
+## Physical-property identity separation — partial implementation
+
+The private backend now stores distinct source-observed campuses, buildings,
+parcels, leased units, warehouses and utility nodes under a research facility.
+Child assets explicitly reference a parent asset within the same research
+facility; parent links are immutable. Identity corroboration requires a named
+reviewer, independent approver and corroborating HTTPS reference; any asset
+revision invalidates its prior approval. Observed latitude/longitude remains
+**source_observed_unverified**, even after identity corroboration. The private
+facility Risk evidence drawer and printable report show this inventory.
+
+This does **not** resolve cadastral/property geocodes, tenants/landlords,
+corporate ultimate parents, actual insurer schedules, insured interests,
+replacement values, loss probabilities or tenant-level production access.
+Complete those gates before claiming site-level underwriting readiness.
+See `docs/PHYSICAL_PROPERTY_IDENTITY.md`.
