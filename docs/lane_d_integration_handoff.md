@@ -66,7 +66,13 @@ PNNL uses the same CLI, but a **successful latest** full-source Actions run and 
 | ORNL direct: odin_direct_county_staging.sqlite / source_observations (still source-only staging; publishing rights pending) | source_row_key, native MRID, county FIPS, EIA-authority utility ID, snapshot time, original row, duplicate flags | get_county_context(fips, odin_direct_db=..., limit=...), source-only; never combine mirror and direct snapshot |
 | Crane/Pebblebrook separate financial source indexes / source_financial_observations | evidence_key, issuer CIK, native report, source document SHA, accounting period, monetary type, event key | facilityrisk.lane_d.query_issuer_bi_context.get_issuer_bi_context(crane_db=..., pebblebrook_db=..., limit=...), no annual/quarter double count |
 
-The first two families have the **atomic, source-SHA-pinned CLI installer** and Actions artifact transfer acceptance tests. Other source index families retain their isolated, tested SQLite staging/query adapters and are **not yet approved for installed production serving**; coordinator must gate licensing/security and source-document terms before promotion.
+**EIA-861 and PNNL** have complete independent GitHub artifact-transfer plus atomic installation/query acceptance runs; **ORNL direct public /odi** has isolated source-pinned atomic installation/query acceptance (without publishing a raw ODIN artifact pending rights review). Financial, legacy EPM, participant and mirror indexes remain independent staging/query contexts. None is approved for live production serving without coordinator storage/security and source-use gates.
+
+### Native ORNL active county outage private-install test (rights gate still applies)
+
+The current ODIN source data change between runs. The original ORNL public GET /odi snapshot captured during [Actions run #40001295225](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/40001295225) has **481 accepted actual source observations** with official publisher raw JSON SHA-256 **260682b6872aff22319a54773a2a5f14bcfea022227caf796f69a04e58246fd0**. The job independently verifies original first-party HTTP, original JSON row hashes, missing/native MRID and county FIPS, accepted/rejected totals, SQLite, and a bounded source-only county query. It now also **creates a source-pinned handoff receipt, performs atomic read-only installation into an isolated CI private path, verifies the installed index and performs an installed FIPS query**, without uploading the raw ORNL dataset as a public artifact. [Safe installation acceptance pointer artifact](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/40001295225/artifacts/12522585933).
+
+The installer additionally supports the dataset option **odin_direct_public**. The same installation method applies to a publisher-approved private dataset transfer, but commercial use/redistribution and production serving are explicitly **NOT licensed or accepted by this CI test**. First-party ODIN direct and the OpenEnergyHub mirror are **overlapping alternate distributions**; only one should be selected for current outage context, and 481 must NOT be added to any previous 558/423-row snapshots. **Insured facility outages remain 0 verified.**
 
 ### Proposed coordinator-only API (not implemented or deployed)
 
@@ -99,4 +105,4 @@ PNNL publisher OEDI page https://data.openei.org/submissions/6458 links to **CC 
 
 Detailed source sheets, member SHA, original rejections and CI links: [Lane D source ledger](lane_d_utility_reliability.md).
 
-**Release state: REAL OFFICIAL SOURCE + EIA AND PNNL ARTIFACT-TRANSFER/IMMUTABLE-READONLY-INSTALL/QUERY VALIDATED. Production backend/app deployed source rows = 0.**
+**Release state: REAL OFFICIAL SOURCE + EIA AND PNNL ARTIFACT TRANSFER/READ-ONLY INSTALL/QUERY VALIDATED, PLUS FIRST-PARTY ORNL PRIVATE INSTALL SMOKE VALIDATED. Production backend/app deployed source rows = 0.**
