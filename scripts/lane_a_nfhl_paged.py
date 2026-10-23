@@ -41,15 +41,29 @@ def envelope(bbox):
                        "spatialReference": {"wkid": 4326}}, separators=(",", ":"))
 
 
-def query_http(params, *, timeout=25, attempts=3):
-    url = FEMA_LAYER + "/query?" + urllib.parse.urlencode(params)
+def query_http(params, *, timeout=23, attempts=4):
+    """Official ArcGIS GET+POST transport retries (same authenticated-free endpoint).
+
+    The POST method is explicitly supported by ArcGIS REST. A successful attempt
+    retains its actual transport and the exact application/x-www-form-urlencoded
+    request parameters in the archived receipt. No caching or alternate mirror.
+    """
+    encoded = urllib.parse.urlencode(params).encode("ascii")
+    endpoint = FEMA_LAYER + "/query"
     last_error = None
     for attempt in range(attempts):
+        method = "GET" if attempt % 2 == 0 else "POST"
         try:
-            req = urllib.request.Request(url, headers={
-                "User-Agent": "FacilityRisk-FEMA-NFHL-Paged-Source-QA/1.0",
-                "Accept": "application/json",
-            })
+            req = urllib.request.Request(
+                endpoint + "?" + encoded.decode("ascii") if method == "GET" else endpoint,
+                data=None if method == "GET" else encoded,
+                method=method,
+                headers={
+                    "User-Agent": "FacilityRisk-FEMA-NFHL-Paged-Source-QA/1.1",
+                    "Accept": "application/json",
+                    "Content-Type": "application/x-www-form-urlencoded",
+                }
+            )
             with urllib.request.urlopen(req, timeout=timeout) as response:
                 raw = response.read(15_000_001)
                 final_url = response.geturl()
@@ -57,14 +71,20 @@ def query_http(params, *, timeout=25, attempts=3):
                 raise ValueError("JSON response exceeds 15 MB per-batch limit")
             result = json.loads(raw)
             if not isinstance(result, dict) or result.get("error"):
-                raise ValueError("ArcGIS error: " + str(result.get("error") if isinstance(result, dict) else type(result))[:300])
-            return result, raw, final_url
-        except (urllib.error.URLError, TimeoutError, OSError, ValueError, json.JSONDecodeError) as exc:
+                raise ValueError("ArcGIS error: " + str(
+                    result.get("error") if isinstance(result, dict) else type(result))[:300])
+            return result, raw, final_url, {
+                "http_method": method, "attempt_count": attempt + 1,
+                "official_arcgis_query_endpoint": endpoint,
+            }
+        except (urllib.error.URLError, TimeoutError, OSError, ValueError,
+                json.JSONDecodeError) as exc:
             last_error = exc
             if attempt < attempts - 1:
-                time.sleep(attempt + 1)
-    raise RuntimeError("FEMA official request failed after " + str(attempts) +
-                       " attempts: " + str(last_error)[:450])
+                time.sleep(min(attempt + 1, 2))
+    raise RuntimeError(
+        "FEMA official GET+POST request failed after " + str(attempts) +
+        " authorized attempts: " + str(last_error)[:450])
 
 
 def source_key(attrs):
@@ -128,10 +148,17 @@ def init_db(path):
 
 
 def capture(fetch, params, target):
-    doc, raw, url = fetch(params)
+    response = fetch(params)
+    if len(response) == 4:
+        doc, raw, url, transport = response
+    else:
+        doc, raw, url = response
+        transport = {"http_method": "fixture_or_unspecified"}
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(raw)
     return doc, {"source_url": url,
+                 "original_request_parameters": params,
+                 "transport": transport,
                  "raw_file": target.name,
                  "sha256": hashlib.sha256(raw).hexdigest(),
                  "bytes": len(raw)}
