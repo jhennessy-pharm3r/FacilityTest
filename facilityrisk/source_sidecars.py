@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 import re
 import sqlite3
+import time
 
 from .db import get_db_path
 from .universal_registry import search as universal_search, detail as universal_detail
@@ -204,8 +205,23 @@ def noaa_connection():
 
 
 def frs_search(**filters):
+    """Bound national indexed queries: a malformed/broad query must not hang."""
     with frs_connection() as conn:
-        results = universal_search(conn, source="EPA_FRS", **filters)
+        started = time.monotonic()
+        # SQLite's progress callback runs within query execution rather than
+        # relying on socket/request timeouts that do not interrupt SQLite.
+        # A slow query fails closed; never substitute an empty safe/zero result.
+        def enforce_budget():
+            return 1 if time.monotonic() - started > 15.0 else 0
+        conn.set_progress_handler(enforce_budget, 10_000)
+        try:
+            results = universal_search(conn, source="EPA_FRS", **filters)
+        except sqlite3.OperationalError as exc:
+            if time.monotonic() - started > 15.0:
+                raise SourceIndexUnavailable("National source query exceeded a 15-second budget") from exc
+            raise SourceIndexUnavailable("National source query failed on read-only index") from exc
+        finally:
+            conn.set_progress_handler(None, 0)
     results["index"] = "EPA_FRS"
     results["property_verification"] = "unassessed"
     return results
