@@ -85,14 +85,18 @@
     }).join('');
     return `${info('These are evidence-based exposure summaries, not underwriting acceptance recommendations. Missing engineering reports, asset values, policy terms or loss runs remain explicitly unknown.')}<div class="intel-case-grid">${rows}</div>`;
   }
-  function feedsPage(src,checks,extended=[]){
+  function feedsPage(src,checks,extended=[],ledger=[],generatedAt=null,runUrl=''){
+    const reportAge = generatedAt ? (Date.now()-Date.parse(generatedAt))/86400000 : Infinity;
+    const aged = !Number.isFinite(reportAge)||reportAge>3;
+    const statusText = generatedAt ? ('Last published public-source check: '+generatedAt+(aged?' (STALE, older than 72 hours)':'')) : 'No published public-source check available';
+    const importRows=ledger.map(x=>`<tr><td><strong>${esc(x.source)}</strong><small>${esc(x.scope||'')}</small></td><td>${esc(String(x.state||'unknown').replaceAll('_',' '))}</td><td>${x.records==null?'Not verified':Number(x.records).toLocaleString()}</td><td>${esc(x.checked_at||'Not published')}</td><td>${esc(x.details||'')}</td></tr>`).join('');
     const q=Array.isArray(checks)?checks:[];
     const rows=(src.length?src:[{source:'EPA FRS'},{source:'EPA ECHO'},{source:'FEMA NFHL'},{source:'USGS'},{source:'NOAA Storm Events'},{source:'FDA inspections'},{source:'WRI Aqueduct'}]).map(s=>{
-      const v=q.find(x=>x.source===s.source);const status=v?.state||'not_tested';
-      return `<tr><td><strong>${esc(s.source)}</strong></td><td><span class="pill ${status==='reachable'?'':'orange'}">${esc(status.replaceAll('_',' '))}</span></td><td>${esc(v?.checked_at||'No recorded check')}</td><td>${esc(v?.details||'Connection status not verified in this browser preview')}</td><td>${safeLink(s.documentation,'Docs')}</td></tr>`;
+      const v=q.find(x=>x.source===s.source);const status=v?.state||'not_published';
+      return `<tr><td><strong>${esc(s.source)}</strong></td><td><span class="pill ${status==='reachable'?'':'orange'}">${esc(status.replaceAll('_',' '))}</span></td><td>${esc(v?.checked_at||'No published check')}</td><td>${esc(v?.details||'Connection status not verified in this browser preview')}</td><td>${safeLink(s.documentation,'Docs')}</td></tr>`;
     }).join('');
-    const extraRows=extended.map(s=>`<tr><td><strong>${esc(s.name)}</strong><small>${esc(s.category)} · ${esc(s.priority)}</small></td><td><span class="pill ${s.probe_state==='schema_reachable'?'':'orange'}">${esc((s.probe_state||'not_tested').replaceAll('_',' '))}</span></td><td>${esc(s.checked_at||'Not run')}</td><td>${esc(s.probe_details||s.test)}<br><small>${esc(s.access)} · ${esc(s.limitation)}</small></td><td>${safeLink(s.documentation,'Official source')}</td></tr>`).join('');
-    return `${info('GitHub Pages cannot ingest data or schedule a Python/SQLite refresh. Server-side probes and ingestion must run in a separate controlled environment. A successful HTTP probe is not proof of matching or complete source coverage.')}
+    const extraRows=extended.map(s=>`<tr><td><strong>${esc(s.name)}</strong><small>${esc(s.category)} · ${esc(s.priority)}</small></td><td><span class="pill ${s.probe_state==='schema_reachable'?'':'orange'}">${esc((s.probe_state||'not_published').replaceAll('_',' '))}</span></td><td>${esc(s.checked_at||'Not run')}</td><td>${esc(s.probe_details||s.test)}<br><small>${esc(s.access)} · ${esc(s.limitation)}</small></td><td>${safeLink(s.documentation,'Official source')}</td></tr>`).join('');
+    return `${info('GitHub Actions can refresh public-source health metadata, but GitHub Pages is a static viewer. A successful HTTP probe means only that a publisher endpoint responded; it does not mean facility data, matching or insurance exposure was ingested.')}\n      ${card(`${title('Published checks and freshness','Separate reachability, identities imported and verified property exposure')}<div class="intel-card-body">${esc(statusText)}${runUrl?' · '+safeLink(runUrl,'Inspect workflow') : ''}${aged?'<p><strong>These checks are stale or missing and must not be interpreted as current availability.</strong></p>':''}</div>`) }\n      ${card(`${title('Actual published data ingestion','Published identities are not verified properties, incidents, or hazard overlays')}<div class="table-wrap"><table><thead><tr><th>Dataset</th><th>Ingestion state</th><th>Source identities</th><th>Snapshot date</th><th>Limitations</th></tr></thead><tbody>${importRows||'<tr><td colspan="5">No published ingestion ledger available.</td></tr>'}</tbody></table></div>`)}
       ${card(`${title('Source health and ingestion readiness','Source connection is separate from data validation')}<div class="table-wrap"><table><thead><tr><th>Source</th><th>State</th><th>Last checked</th><th>Notes</th><th>Reference</th></tr></thead><tbody>${rows}</tbody></table></div>`)}
       ${card(`${title('Additional dataset evaluations','Access checks do not establish facility linkage')}<div class="table-wrap"><table><thead><tr><th>Source</th><th>Probe state</th><th>Checked</th><th>Testing and limitations</th><th>Reference</th></tr></thead><tbody>${extraRows||'<tr><td colspan="5">No extended sources loaded</td></tr>'}</tbody></table></div>`)}
       ${card(`${title('Ingestion gates','All required before use in an underwriting decision')}<div class="intel-card-body"><div class="intel-gate-list">${['Endpoint or official export is accessible','Original response archived with retrieval time','Source schema validated and normalized','Correct facility identified and independently reviewed','Event/validity/publication dates separated','Hazard proximity distinguished from confirmed loss','Quality checks and refresh status pass'].map((x,i)=>`<div><span class="intel-step">${String(i+1).padStart(2,'0')}</span>${esc(x)}</div>`).join('')}</div></div>`)}`;
@@ -125,7 +129,7 @@
       if(page==='feeds'){
         let extra=[];
         try{const res=await api('source-extensions');extra=res.items||[];}catch(e){/* Older snapshots may omit this optional catalog. */}
-        root.innerHTML=feedsPage(intel.source_catalog||[],intel.source_health||[],extra);
+        root.innerHTML=feedsPage(intel.source_catalog||[],intel.source_health||[],extra,intel.ingestions||[],intel.public_status_generated_at,intel.source_run_url);
       }
     }catch(e){if(root.isConnected)root.innerHTML=`<div class="loading-card">Unable to load research panel: ${esc(e.message)}</div>`;}
   }
