@@ -81,6 +81,26 @@ class IssuerReleaseTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 inspect_issuer_html(case, data, case["source_url"], 200)
 
+    def test_company_q4_sales_forecast_distinct_from_actual_claim(self):
+        c=SOURCE_RECORDS[1]
+        issuer_guidance=(
+            "Hurricane Helene caused extensive damage at the North Cove site. "
+            "Baxter reports a production shutdown and an expected shortage of product. "
+            "Financial Outlook: As a result of the hurricane, Baxter expects total company "
+            "fourth-quarter sales to be negatively impacted by approximately $200 million, "
+            "including other business segments. This is an estimate, not a paid claim."
+        )
+        doc=html(c,body=issuer_guidance)
+        r=inspect_issuer_html(c,doc,c["source_url"],200)
+        forecast=r["issuer_prospective_sales_guidance"]
+        self.assertEqual(forecast["as_reported_approximate_amount"],200000000)
+        self.assertEqual(forecast["scope"],"TOTAL_COMPANY_Q4_2024")
+        self.assertTrue(forecast["estimated_not_realized"])
+        self.assertTrue(forecast["not_covered_loss"])
+        self.assertTrue(forecast["not_paid_insurance"])
+        self.assertIsNone(r["reported_financial_impact_amount"])
+        self.assertFalse(r["claims_paid_verified"])
+
     def test_multiple_documents_one_underlying_event(self):
         cases=[SOURCE_RECORDS[0], SOURCE_RECORDS[1]]
         def fake_urlopen(req,timeout=0):
