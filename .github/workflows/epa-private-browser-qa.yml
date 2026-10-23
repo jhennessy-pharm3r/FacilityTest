@@ -8,6 +8,9 @@ on:
       - web/epa-ui.js
       - web/index.html
       - web/app.js
+      - web/source-insights.js
+      - web/source-insights.css
+      - web/coordination/parallel-ingestion.json
       - web/styles.css
       - tests/smoke_epa_private.py
       - .github/workflows/epa-private-browser-qa.yml
