@@ -1,5 +1,6 @@
 """Public EPA FRS RMP-interest GeoPlatform import ONLY: no restricted RMP plans/OCA."""
 import argparse,datetime,hashlib,json,sqlite3,time,urllib.parse,urllib.request
+from collections import Counter
 from pathlib import Path
 URL="https://services.arcgis.com/cJ9YHowT8TU7DUyn/arcgis/rest/services/FRS_INTERESTS_RMP/FeatureServer/0/query"
 def request(params,retries=3):
@@ -33,7 +34,8 @@ def import_public(output,fetch=request,page_size=100):
     db.execute("CREATE TABLE rmp_frs_public(object_id INTEGER PRIMARY KEY,registry_id TEXT,program_id TEXT,raw_sha256 TEXT,latitude REAL,longitude REAL,attributes_json TEXT NOT NULL)")
     db.execute("CREATE INDEX rmp_registry ON rmp_frs_public(registry_id)")
     db.execute("CREATE INDEX rmp_program ON rmp_frs_public(program_id)")
-    observed=set();missing_registry=missing_program=valid_coords=0
+    observed=set();registry_ids=set();program_ids=set();states=Counter();active=Counter();missing_registry=missing_program=valid_coords=zero_coord=0
+    bounds=[90,-90,180,-180]
     sha=hashlib.sha256()
     try:
         with raw.open("wb") as out:
@@ -50,10 +52,17 @@ def import_public(output,fetch=request,page_size=100):
                     registry=str(a.get("REGISTRY_ID") or "").strip()
                     program=str(a.get("PGM_SYS_ID") or "").strip()
                     if not registry:missing_registry+=1
+                    else:registry_ids.add(registry)
                     if not program:missing_program+=1
+                    else:program_ids.add(program)
+                    states[str(a.get("STATE_CODE") or "<empty>").strip()]+=1
+                    active[str(a.get("ACTIVE_STATUS") or "<empty>").strip()]+=1
                     lat=coord(a.get("LATITUDE83"),-90,90)
                     lon=coord(a.get("LONGITUDE83"),-180,180)
-                    if lat is not None and lon is not None:valid_coords+=1
+                    if lat is not None and lon is not None:
+                        valid_coords+=1
+                        bounds=[min(bounds[0],lat),max(bounds[1],lat),min(bounds[2],lon),max(bounds[3],lon)]
+                        if lat==0 and lon==0:zero_coord+=1
                     canonical=json.dumps(rec,sort_keys=True,separators=(",",":"),ensure_ascii=False)
                     line=(canonical+"\n").encode("utf-8")
                     sha.update(line);out.write(line)
@@ -63,7 +72,11 @@ def import_public(output,fetch=request,page_size=100):
         indexed=db.execute("SELECT COUNT(*) FROM rmp_frs_public").fetchone()[0]
         integrity=db.execute("PRAGMA integrity_check").fetchone()[0]
         if indexed!=count or integrity!="ok":raise AssertionError("EPA record/SQLite mismatch")
-        manifest=dict(source="EPA FRS RMP program interest",scope="Public EPA FRS RMP-linked facility identity records only; NO RMP plans, release quantities, accident outcomes or OCA",state="INDEXED",deployment_state="NOT_DEPLOYED",source_url=URL,utc_retrieved=datetime.datetime.now(datetime.timezone.utc).isoformat(),reported_feature_count=count,indexed_rows=indexed,object_id_coverage=len(observed),missing_registry_id=missing_registry,missing_program_id=missing_program,valid_coordinate_pairs=valid_coords,missing_coordinate_pairs=indexed-valid_coords,raw_jsonl_sha256=sha.hexdigest(),sqlite_integrity=integrity,site_match_status="NOT_REVIEWED")
+        dbsize=dbpath.stat().st_size
+        dbdigest=hashlib.sha256()
+        with dbpath.open("rb") as dbfile:
+            for block in iter(lambda:dbfile.read(1048576),b""):dbdigest.update(block)
+        manifest=dict(schema_version=2,index_sha256=dbdigest.hexdigest(),index_bytes=dbsize,distinct_program_ids=len(program_ids),distinct_registry_ids=len(registry_ids),state_counts=dict(states),active_status_counts=dict(active),zero_zero_coordinate_pairs=zero_coord,coordinate_bounds_minlat_maxlat_minlon_maxlon=bounds if valid_coords else None,source="EPA FRS RMP program interest",scope="Public EPA FRS RMP-linked facility identity records only; NO RMP plans, release quantities, accident outcomes or OCA",state="INDEXED",deployment_state="NOT_DEPLOYED",source_url=URL,utc_retrieved=datetime.datetime.now(datetime.timezone.utc).isoformat(),reported_feature_count=count,indexed_rows=indexed,object_id_coverage=len(observed),missing_registry_id=missing_registry,missing_program_id=missing_program,valid_coordinate_pairs=valid_coords,missing_coordinate_pairs=indexed-valid_coords,raw_jsonl_sha256=sha.hexdigest(),sqlite_integrity=integrity,site_match_status="NOT_REVIEWED")
         (output/"rmp_frs_public.manifest.json").write_text(json.dumps(manifest,indent=2)+"\n")
         return manifest
     except Exception:
