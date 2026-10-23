@@ -148,6 +148,10 @@ def install(bundle,root,release_id=None,*,repo_root=None):
         old=verify(target)
         if old["index_sha256"]!=checked["index_sha256"]:
             raise ValueError("PHMSA WMS immutable release ID conflicts with different source")
+        old_files=json.loads(_safe_file(target,BUNDLE_NAME).read_text(encoding="utf-8"))["files"]
+        new_files=json.loads(_safe_file(src,BUNDLE_NAME).read_text(encoding="utf-8"))["files"]
+        if any(old_files[name]["sha256"]!=new_files[name]["sha256"] for name in ("raw","normalized")):
+            raise ValueError("PHMSA WMS immutable release ID conflicts with changed first-party source bytes")
         state="ALREADY_INSTALLED_CHECKSUM_VERIFIED"
     else:
         staging=Path(tempfile.mkdtemp(prefix=".wms-staging-",dir=releases))
@@ -215,6 +219,24 @@ def query(root,*,operator_id=None,case_number=None,page=1,page_size=50,repo_root
             "release_id":active["release_id"],
             "app_deployed":0}
 
+def rollback(root,release_id,*,repo_root=None):
+    root=_store_root(root,repo_root or Path(__file__).resolve().parents[1])
+    if not RELEASE.fullmatch(release_id):
+        raise ValueError("Unsafe PHMSA WMS rollback release ID")
+    previous=_active(root)
+    if not previous:raise ValueError("No active PHMSA WMS release")
+    checked=verify(root/"releases"/release_id)
+    _write_active(root,{
+        "release_id":release_id,"index_sha256":checked["index_sha256"],
+        "installed_at":datetime.now(timezone.utc).isoformat(),
+        "previous_release_id":previous["release_id"],
+        "state":"PRIVATE_WMS_CASE_SOURCE_NOT_APP_DEPLOYED"
+    })
+    return {"state":"VERIFIED_PRIVATE_WMS_CASE_ROLLBACK",
+            "active_release_id":release_id,
+            "indexed_case_rows":checked["accepted_enforcement_case_rows"],
+            "app_deployed":0}
+
 def main():
     p=argparse.ArgumentParser()
     sub=p.add_subparsers(dest="cmd",required=True)
@@ -222,6 +244,9 @@ def main():
     a.add_argument("--bundle",type=Path,required=True)
     a.add_argument("--root",type=Path,required=True)
     a.add_argument("--release-id")
+    a=sub.add_parser("rollback")
+    a.add_argument("--root",type=Path,required=True)
+    a.add_argument("--release-id",required=True)
     a=sub.add_parser("query")
     a.add_argument("--root",type=Path,required=True)
     a.add_argument("--operator-id")
@@ -238,6 +263,7 @@ def main():
         result=package(args.raw,args.normalized,args.manifest,args.db,args.destination)
     elif args.cmd=="verify":result=verify(args.bundle)
     elif args.cmd=="install":result=install(args.bundle,args.root,args.release_id)
+    elif args.cmd=="rollback":result=rollback(args.root,args.release_id)
     else:result=query(args.root,operator_id=args.operator_id,case_number=args.case_number,
                       page=args.page,page_size=args.page_size)
     print(json.dumps(result,indent=2))
