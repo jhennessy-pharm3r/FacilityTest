@@ -25,7 +25,11 @@ STATE_KEYS={"echo":("FAC_STATE","FAC_STATE_CODE","FAC_STATE_NAME","STATE_CODE"),
 COORD_KEYS={"echo":(("FAC_LAT","LATITUDE","FAC_LATITUDE"),("FAC_LONG","LONGITUDE","FAC_LONGITUDE")),
             "rcra":(("LATITUDE83","LATITUDE"),("LONGITUDE83","LONGITUDE")),
             "tri":(("12_LATITUDE","LATITUDE"),("13_LONGITUDE","LONGITUDE"))}
-ALT_IDS=("PGM_SYS_ID","FAC_PGM_SYS_ID","NPDES_ID","RCRA_ID","FAC_NAME","FACILITY_NAME","FAC_DFR_URL","TRIFD")
+ALT_IDS=("PGM_SYS_ID","FAC_PGM_SYS_ID","NPDES_ID","NPDES_IDS","RCRA_ID","RCRA_IDS",
+         "AIR_IDS","SDWA_IDS","TRI_IDS","GHG_IDS","FAC_NAME","FACILITY_NAME","DFR_URL")
+ENUM_FIELDS={"echo":("FAC_ACTIVE_FLAG","FAC_COMPLIANCE_STATUS","FAC_SNC_FLG","RCRA_FLAG","AIR_FLAG","NPDES_FLAG","TRI_FLAG"),
+             "rcra":("ENFORCEMENT_TYPE","EVALUATION_TYPE","FOUND_VIOLATION","VIO_FLAG","SNC_FLAG","ACTIVE_SITE","FED_WASTE_GENERATOR"),
+             "tri":("49_FORM_TYPE","50_UNIT_OF_MEASURE","48_PFAS","43_CLASSIFICATION")}
 DATE_EXACT={"ENFORCEMENT_ACTION_DATE","EVALUATION_START_DATE","DATE_VIOLATION_DETERMINED",
            "ACTUAL_RTC_DATE","SCHEDULED_COMPLIANCE_DATE","YRMONTH","1_YEAR","CREATE_DATE",
            "UPDATE_DATE","LAST_REPORTED_DATE"}
@@ -62,6 +66,7 @@ def survey(source,source_file,publisher_url,year=None,last_modified=None):
            "retrieved_utc":dt.datetime.now(dt.timezone.utc).isoformat(),"archive_sha256":hashfile(source_file),
            "archive_bytes":Path(source_file).stat().st_size,"members":{}}
     try:
+        facility_keys=set()
         for m in members:
             filename=m.filename if m else Path(source_file).name
             stream=archive.open(m) if m else open(source_file,"rb")
@@ -73,10 +78,13 @@ def survey(source,source_file,publisher_url,year=None,last_modified=None):
                 skey=next((k for k in STATE_KEYS[source] if k in keys),None)
                 lk=next((k for k in COORD_KEYS[source][0] if k in keys),None)
                 ok=next((k for k in COORD_KEYS[source][1] if k in keys),None)
-                relevant=[k for k in keys if k in DATE_EXACT or (k.endswith("_DATE") and ("FAC_" in k or source=="rcra"))]
+                relevant=[k for k in keys if k in DATE_EXACT or (source=="echo" and "DATE" in k) or (k.endswith("_DATE") and source=="rcra")]
+                enum_keys=[k for k in ENUM_FIELDS[source] if k in keys]
                 rows=missing_id=malformed=valid_coords=zero_coords=invalid_coords=0
                 observed=set();duplicate_id=0;coord_bounds=[90,-90,180,-180]
+                missing_key_geocoded=0;unmatched_facility_join=0
                 states=collections.Counter();alts=collections.Counter();dates={k:collections.Counter() for k in relevant}
+                enum_values={k:collections.Counter() for k in enum_keys}
                 for raw in reader:
                     rows+=1
                     obj={name(k):(v or "").strip() for k,v in raw.items() if k is not None}
@@ -86,13 +94,20 @@ def survey(source,source_file,publisher_url,year=None,last_modified=None):
                         missing_id+=1
                         for k in ALT_IDS:
                             if obj.get(k):alts[k]+=1
-                    elif sid in observed:duplicate_id+=1
-                    else:observed.add(sid)
+                    elif (sid,obj.get("ACTIVITY_LOCATION","") if source=="rcra" else "") in observed:duplicate_id+=1
+                    else:observed.add((sid,obj.get("ACTIVITY_LOCATION","") if source=="rcra" else ""))
+                    if source=="rcra" and sid:
+                        key=(sid,obj.get("ACTIVITY_LOCATION",""))
+                        if filename.upper().endswith("RCRA_FACILITIES.CSV"):
+                            facility_keys.add(key)
+                        elif key not in facility_keys:
+                            unmatched_facility_join+=1
                     if skey:states[obj.get(skey,"") or "<empty>"]+=1
                     if lk and ok:
                         lat=coordinate(obj.get(lk),-90,90)
                         lon=coordinate(obj.get(ok),-180,180)
                         if lat is not None and lon is not None:
+                            if not sid:missing_key_geocoded+=1
                             valid_coords+=1
                             coord_bounds[0]=min(coord_bounds[0],lat)
                             coord_bounds[1]=max(coord_bounds[1],lat)
@@ -100,6 +115,8 @@ def survey(source,source_file,publisher_url,year=None,last_modified=None):
                             coord_bounds[3]=max(coord_bounds[3],lon)
                             if lat==0 and lon==0:zero_coords+=1
                         elif obj.get(lk) or obj.get(ok):invalid_coords+=1
+                    for k in enum_keys:
+                        enum_values[k][obj.get(k,"") or "<empty>"]+=1
                     for k in relevant:
                         val=obj.get(k,"")
                         if val:
@@ -108,6 +125,8 @@ def survey(source,source_file,publisher_url,year=None,last_modified=None):
                 audit["members"][filename]={
                     "headers":keys,"rows":rows,"native_key":ident,
                     "distinct_native_ids":len(observed),"duplicate_native_id_rows":duplicate_id,
+                    "rows_without_native_id_but_with_valid_coordinates":missing_key_geocoded,
+                    "nonfacility_rows_unmatched_by_two_native_join_keys":unmatched_facility_join if source=="rcra" and not filename.upper().endswith("RCRA_FACILITIES.CSV") else None,
                     "missing_native_id":missing_id,"malformed_overwide_rows":malformed,
                     "alternate_fields_on_missing_native_id":dict(alts),
                     "coordinate_columns":[lk,ok],"valid_coordinate_pairs":valid_coords,
@@ -116,6 +135,7 @@ def survey(source,source_file,publisher_url,year=None,last_modified=None):
                     "coordinate_bounds_minlat_maxlat_minlon_maxlon":coord_bounds if valid_coords else None,
                     "state_field":skey,"jurisdiction_counts":dict(states.most_common()),
                     "date_year_counts":{k:dict(v) for k,v in dates.items()},
+                    "reported_field_value_counts":{k:dict(v) for k,v in enum_values.items()},
                 }
         audit["total_member_rows"]=sum(v["rows"] for v in audit["members"].values())
         audit["missing_native_id_rows"]=sum(v["missing_native_id"] for v in audit["members"].values())
@@ -147,5 +167,7 @@ def main():
         print("HEADERS",json.dumps(data["headers"]))
         print("JURISDICTIONS",json.dumps(data["jurisdiction_counts"]))
         print("MISSING_KEY_ALTERNATIVES",json.dumps(data["alternate_fields_on_missing_native_id"]))
+        print("ENUM_FIELDS",json.dumps(data["reported_field_value_counts"]))
+        print("UNMATCHED_RCRA_HANDLER_RELATIONS",data["nonfacility_rows_unmatched_by_two_native_join_keys"])
     print("ARCHIVE_SHA256",result["archive_sha256"])
 if __name__=="__main__":main()
