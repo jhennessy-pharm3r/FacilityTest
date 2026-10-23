@@ -58,7 +58,10 @@ class PrimaryFilingTests(unittest.TestCase):
 
     def test_fail_when_event_missing(self):
         with self.assertRaisesRegex(ValueError, "Event phrase absent"):
-            inspect_filing(ENTRY, html("A reported North Cove site outage led to business interruption."))
+            inspect_filing(ENTRY, html("A reported North Cove site outage led to business interruption. "
+                                       "A detailed preliminary investigation is ongoing at this reporting site. "
+                                       "No specific event classification or actual insured loss can be inferred. "
+                                       "Company results are not attributable without primary evidence."))
 
     def test_no_source_html_if_download_not_authorized(self):
         with tempfile.TemporaryDirectory() as temp:
