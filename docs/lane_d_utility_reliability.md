@@ -143,3 +143,12 @@ Run tests: python -m unittest discover -s tests -p 'test_lane_d_*.py' -v . CI va
 5. Shared backend interface integration, actual service query benchmark, authentication and live browser smoke. These belong to coordinator Lane E; this branch changes no other lane/shared UI/registry files.
 
 All recorded counts distinguish downloaded, accepted/rejected, ephemeral SQLite indexed, durable backend indexed, facility verified, and deployed. Success of synthetic tests, official data download or staging does not satisfy deployment or insured-claim verification.
+
+
+### Quantified issuer guidance is NOT an insured interruption claim
+
+The issuer November 8, 2024 Baxter Q3 results source explicitly forecasts that Hurricane Helene would negatively affect its **total company 2024 Q4 sales by approximately USD 200 million** (not necessarily North Cove alone). The source was independently downloaded with original publisher title/date and event/site/operational-disruption anchors, and the source text quantitative anchor was confirmed using explicit near-text matching for hurricane + company fourth-quarter sales + negative forecast. Actual CI [issuer forecast evidence #39982196570](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39982196570) PASS.
+
+The value is published MANAGEMENT GUIDANCE AS OF NOVEMBER 8, 2024, not retrospectively verified lost profit, property damage, insurer reserve, covered business-interruption amount, or claim paid. The February 2025 annual release notes a smaller adverse impact than anticipated; the November estimate must not be reinterpreted as realized full-year results. Original November source: https://investor.baxter.com/investors/events-and-news/news/press-release-details/2024/Baxter-Reports-Third-Quarter-2024-Results/default.aspx . Later 2025 source: https://investor.baxter.com/investors/events-and-news/news/press-release-details/2025/Baxter-Reports-Fourth-Quarter-and-Full-Year-2024-Results/default.aspx .
+
+There is **one** anchored companywide negative SALES forecast (approximately USD 200m) across the three Baxter releases, **zero independently confirmed realized margin losses, and zero insured loss payments**. Issuer-release HTML may include dynamically changing page elements: even with the same publisher URL/byte count a later original HTML SHA-256 can differ. Preserve download-specific archive hash, URL/date and source extracted text/excerpt hashes on each run; do not assume an old HTML hash is immutable while publication text remains unchanged.
