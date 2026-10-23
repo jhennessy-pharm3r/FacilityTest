@@ -5,6 +5,8 @@ on:
     branches:
       - ingest/eia861-utility-bi-lane-d-20261023
     paths:
+      - facilityrisk/lane_d/install_source_index.py
+      - tests/test_lane_d_install_source_index.py
       - facilityrisk/lane_d/ingest_oe417_annual.py
       - facilityrisk/lane_d/query_oe417_annual.py
       - tests/test_lane_d_query_oe417_annual.py
@@ -121,6 +123,63 @@ jobs:
                 "Vandalism",vandalism["matching_content_distinct_source_rows"],
                 "verified site events",0)
           PY
+      - name: Prepare original-source-pinned DOE OE417 readonly SQLite handoff
+        shell: bash
+        run: |
+          python - <<'PY'
+          import pathlib,json,hashlib,sqlite3
+          root=pathlib.Path("/tmp/lane-d/oe417-2023")
+          source=(root/"original_export.json").read_bytes()
+          meta=json.loads((root/"original_metadata.json").read_text())
+          m=json.loads((root/"manifest.json").read_text())
+          idx=root/"oe417_annual_staging.sqlite"
+          with sqlite3.connect(idx) as db:
+              assert db.execute("PRAGMA integrity_check").fetchone()[0]=="ok"
+              assert db.execute("SELECT COUNT(*) FROM source_observations").fetchone()[0]==m["normalized_accepted"]
+          assert m["downloaded_official_original_json"] is True
+          assert m["metadata_declared_license"]=="Public Domain"
+          assert hashlib.sha256(source).hexdigest()==m["downloaded_original_export_sha256"]
+          receipt={
+              "source_dataset":"oe417_annual_public",
+              "original_json_sha256":hashlib.sha256(source).hexdigest(),
+              "staged_sqlite_sha256":hashlib.sha256(idx.read_bytes()).hexdigest(),
+              "staged_sqlite_bytes":idx.stat().st_size,
+              "indexed_source_rows":m["normalized_accepted"],
+              "publisher_declared_license":"Public Domain",
+              "deployed":0,
+          }
+          (root/"coordinator_handoff.json").write_text(json.dumps(receipt,indent=2)+"\n")
+          PY
+      - name: Package published public-domain OE417 source-only index
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-d-oe417-2023-public-domain-readonly-staging-index
+          retention-days: 3
+          if-no-files-found: error
+          path: |
+            /tmp/lane-d/oe417-2023/oe417_annual_staging.sqlite
+            /tmp/lane-d/oe417-2023/coordinator_handoff.json
+            /tmp/lane-d/oe417-2023/manifest.json
+      - name: Recover original publisher OE417 dataset handoff independently
+        uses: actions/download-artifact@v4
+        with:
+          name: lane-d-oe417-2023-public-domain-readonly-staging-index
+          path: /tmp/lane-d-oe417-transferred
+      - name: Install pinned public-domain DOE OE417 source index and query event context
+        shell: bash
+        run: |
+          HASH=$(sha256sum /tmp/lane-d/oe417-2023/original_export.json | cut -d' ' -f1)
+          python -m facilityrisk.lane_d.install_source_index install --bundle /tmp/lane-d-oe417-transferred --dest /tmp/lane-d-oe417-private-install-smoke --dataset oe417_annual_public --source-sha256 "$HASH"
+          python -m facilityrisk.lane_d.install_source_index verify --dest /tmp/lane-d-oe417-private-install-smoke --dataset oe417_annual_public
+          python -m facilityrisk.lane_d.install_source_index query --dest /tmp/lane-d-oe417-private-install-smoke --dataset oe417_annual_public --year 2023 --limit 5
+      - name: Save OE417 source-only install acceptance pointer
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-d-oe417-install-smoke
+          retention-days: 7
+          if-no-files-found: warn
+          path: /tmp/lane-d-oe417-private-install-smoke/oe417_annual_public/current.json
       - name: Upload source-only published SHA provenance and original row/duplicate QA manifest
         if: always()
         uses: actions/upload-artifact@v4
