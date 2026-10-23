@@ -8,11 +8,19 @@ services:
       FACILITY_RISK_AUTH_TOKEN: ${FACILITY_RISK_AUTH_TOKEN:?Set an unpredictable 32-plus-character token in your untracked .env}
       FACILITY_RISK_BASIC_USER: ${FACILITY_RISK_BASIC_USER:-analyst}
       FACILITY_RISK_ENABLE_WRITES: "0"
+      # Read-only, independently validated public-authority source databases.
+      # Absent variables mean no mounted national index; never silently assume all facilities.
+      FACILITY_RISK_FRS_INDEX_PATH: ${FACILITY_RISK_FRS_INDEX_PATH:-}
+      FACILITY_RISK_FRS_INDEX_QA: ${FACILITY_RISK_FRS_INDEX_QA:-}
+      FACILITY_RISK_NOAA_INDEX_PATH: ${FACILITY_RISK_NOAA_INDEX_PATH:-}
+      FACILITY_RISK_NOAA_INDEX_MANIFEST: ${FACILITY_RISK_NOAA_INDEX_MANIFEST:-}
     ports:
       # Do not bind to 0.0.0.0; use a TLS + OIDC reverse proxy for remote access.
       - "127.0.0.1:8765:8765"
     volumes:
       - ./data:/app/data
+      # Indexes are immutable, source-only, and separate from the client workspace.
+      - ./source-index:/app/source-index:ro
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=64m
