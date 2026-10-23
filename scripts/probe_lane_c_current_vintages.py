@@ -131,6 +131,10 @@ def main(output):
                 "accepted":result["accepted_rows"],
                 "missing_child_links":result["missing_cross_table_links"],
                 "coordinates":result["coordinate_records"],
+                "normalized_sha256":result["normalized_sha256"],
+                "earliest_incident_date":result.get("earliest_incident_date"),
+                "latest_incident_date":result.get("latest_incident_date"),
+                "year_completeness":"OPEN_PARTIAL_REPORTING_YEAR",
                 "report_is_not_verified_incident":True})
         except Exception as e:
             audit["current_year_nrc"].update({"state":"OFFICIAL_PUBLISHER_UNAVAILABLE_OR_SCHEMA_BLOCKED",
@@ -145,6 +149,18 @@ def main(output):
                 audit[key].update(receipt)
                 audit[key]["state"]="DOWNLOADED_AND_SCHEMA_VALIDATED_RELEASE_ONLY"
                 audit[key]["release_rows_with_unique_number"]=len(q[key])
+                if key == "csb_prior_quarter":
+                    normalized=stage_csb(path,wd/"csb-prior-quarter.csv.gz",
+                        output/"csb-2026-06-normalization.json",
+                        release="2026-06-01",minimum_rows=500)
+                    audit[key]["normalization"]={
+                        "raw_data_rows":normalized["raw_data_rows"],
+                        "accepted_rows":normalized["accepted_rows"],
+                        "rejected_rows":normalized["rejected_rows"],
+                        "rejection_reasons":normalized["rejection_reasons"],
+                        "normalized_sha256":normalized["normalized_sha256"],
+                        "status":"VINTAGE_ONLY_NOT_CURRENT_OR_DEPLOYED"
+                    }
             except Exception as e:
                 audit[key].update({"state":"UNAVAILABLE_OR_SCHEMA_BLOCKED",
                     "error":type(e).__name__+": "+str(e)[:300],
