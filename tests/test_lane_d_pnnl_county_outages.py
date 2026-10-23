@@ -70,6 +70,7 @@ class PNNLTests(unittest.TestCase):
                 "correlation_24h_sensitivity":1})
             self.assertEqual((m["source_rows_scanned"],m["accepted"],m["rejected"],m["locally_indexed"]), (7,7,0,7))
             self.assertEqual(m["unique_county_fips"],2)
+            self.assertEqual(m["exact_duplicate_source_rows_within_same_table"],0)
             self.assertEqual(m["unique_native_correlated_event_id_year_pairs"],1)
             self.assertEqual(m["durable_backend_indexed"],0)
             self.assertEqual(m["verified_insured_facility_outages"],0)
@@ -93,6 +94,24 @@ class PNNLTests(unittest.TestCase):
             self.assertEqual(m["accepted"],5)
             self.assertEqual(set(m["rejection_reasons"]),{"invalid_county_fips","invalid_metric_duration"})
             self.assertEqual(len((root/"out"/"rejected.jsonl").read_text().splitlines()),2)
+
+    def test_exact_duplicate_source_rows_tracked_but_not_auto_dropped(self):
+        with tempfile.TemporaryDirectory() as t:
+            root=Path(t);original=root/"original.zip";modified=root/"duplicate.zip"
+            sample_zip(original)
+            with zipfile.ZipFile(original) as src, zipfile.ZipFile(modified,"w") as dst:
+                for info in src.infolist():
+                    contents=src.read(info.filename)
+                    if info.filename.endswith("eaglei_outages_2014_merged.csv"):
+                        first_data_line=contents.splitlines(keepends=True)[1]
+                        contents+=first_data_line
+                    dst.writestr(info.filename,contents)
+            result=normalize(modified,root/"out",years=(2014,))
+            self.assertEqual(result["accepted"],8)
+            self.assertEqual(result["locally_indexed"],8)
+            self.assertEqual(result["exact_duplicate_source_rows_within_same_table"],1)
+            self.assertEqual(result["rejected"],0)
+            self.assertEqual(sum(s["exact_duplicate_source_rows_in_member"] for s in result["source_members"]),1)
 
     def test_missing_published_member_fails_closed(self):
         with tempfile.TemporaryDirectory() as root:
