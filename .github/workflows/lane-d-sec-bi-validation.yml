@@ -44,17 +44,17 @@ jobs:
         shell: bash
         run: |
           python -m facilityrisk.lane_d.ingest_sec_bi \
-            --catalog facilityrisk/lane_d/primary_filing_cases.json \
+            --catalog facilityrisk/lane_d/public_sec_filing_cases.toml \
             --case baxter-helene-north-cove-2024q3 \
             --html /tmp/lane-d/sec-primary/baxter-2024-q3.html \
             --output /tmp/lane-d/sec-primary/results/baxter
           python -m facilityrisk.lane_d.ingest_sec_bi \
-            --catalog facilityrisk/lane_d/primary_filing_cases.json \
+            --catalog facilityrisk/lane_d/public_sec_filing_cases.toml \
             --case pebblebrook-laplaya-2025q3 \
             --html /tmp/lane-d/sec-primary/pebblebrook-2025-q3.html \
             --output /tmp/lane-d/sec-primary/results/pebblebrook
           python -m facilityrisk.lane_d.ingest_sec_bi \
-            --catalog facilityrisk/lane_d/primary_filing_cases.json \
+            --catalog facilityrisk/lane_d/public_sec_filing_cases.toml \
             --case crane-marion-2026q1 \
             --html /tmp/lane-d/sec-primary/crane-2026-q1.html \
             --output /tmp/lane-d/sec-primary/results/crane
