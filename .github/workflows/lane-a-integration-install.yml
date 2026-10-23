@@ -1,0 +1,60 @@
+name: Lane A - end-to-end VERIFIED artifact install and source query QA
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - ingest/fema-wildfire-lane-a-20261023
+    paths:
+      - 'scripts/lane_a_install.py'
+      - 'facilityrisk/lane_a_installed.py'
+      - 'scripts/lane_a_installed_smoke.py'
+      - 'scripts/verify_lane_a_archive.py'
+      - 'scripts/verify_lane_a_whp_index.py'
+      - 'tests/test_lane_a_install.py'
+      - 'tests/test_lane_a_installed.py'
+      - '.github/workflows/lane-a-integration-install.yml'
+permissions:
+  actions: read
+  contents: read
+jobs:
+  install-verified-source-data:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate transactional Lane A artifact installer, rollback and native source query tests
+        run: |
+          python -m unittest discover -s tests -p 'test_lane_a_install.py' -v
+          python -m unittest discover -s tests -p 'test_lane_a_installed.py' -v
+      - name: Download separately retained complete official-source FEMA and USDA proof artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: lane-a-fema-usfs-massgis-source-qa
+          run-id: 39987050225
+          github-token: ${{ github.token }}
+          path: original-official-source-artifact
+      - name: Install official source archive into versioned, locally persistent read-only indexes
+        run: |
+          python -m scripts.lane_a_install --source-root original-official-source-artifact --destination '${{ runner.temp }}/facility-lane-a-installed' --require fema_nfhl --require usda_continuous --require usda_classified --require usda_summary
+      - name: Prove installed read-only native polygon, geographic key and 270m sample queries
+        run: |
+          python -m scripts.lane_a_installed_smoke --destination '${{ runner.temp }}/facility-lane-a-installed' --receipt data/lane_a/installed_real_source_query_qa.json
+      - name: Reinstall same exact source artifact and prove deterministic stable release identifier
+        run: |
+          python -m scripts.lane_a_install --source-root original-official-source-artifact --destination '${{ runner.temp }}/facility-lane-a-installed' --require fema_nfhl --require usda_continuous --require usda_classified --require usda_summary
+          python -m scripts.lane_a_installed_smoke --destination '${{ runner.temp }}/facility-lane-a-installed'
+          python -c "import json,os,pathlib; d=pathlib.Path(os.environ['RUNNER_TEMP'])/'facility-lane-a-installed'; p=json.loads((d/'current.json').read_text()); assert len(list((d/'releases').iterdir()))==1; assert p['source_health_for_main_app']=='NOT_DEPLOYED_UNTIL_COORDINATOR_VERIFIES'; print('LANE_A_REINSTALL_STABLE_AND_NOT_DEPLOYED',p['release_id'])"
+      - name: Archive complete verified read-only source release for coordinator import
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-a-verified-installed-source-release-qa
+          path: |
+            ${{ runner.temp }}/facility-lane-a-installed/
+            data/lane_a/installed_real_source_query_qa.json
+          retention-days: 7
+          compression-level: 5
+          if-no-files-found: warn
