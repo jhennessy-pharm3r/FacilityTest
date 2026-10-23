@@ -12,7 +12,10 @@ import json
 import math
 from pathlib import Path
 from openpyxl import load_workbook
-from build_industrial_incidents import as_date, digest
+try:
+    from scripts.build_industrial_incidents import as_date, digest
+except ModuleNotFoundError:  # direct scripts/probe_lane_c_sources.py execution
+    from build_industrial_incidents import as_date, digest
 
 SHEETS = ("CALLS", "INCIDENT_COMMONS", "INCIDENT_DETAILS")
 FIELDS = ("source_id", "incident_date", "date_precision", "company_as_reported",
