@@ -27,7 +27,7 @@ jobs:
     steps:
       - id: select
         env:
-          SOURCES: ${{ inputs.source || 'rcra' }}
+          SOURCES: ${{ inputs.source || 'echo' }}
           PRODUCER_RUN: ${{ inputs.producer_run_id || '39982893655' }}
         run: |
           set -euo pipefail
