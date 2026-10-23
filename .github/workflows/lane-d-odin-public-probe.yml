@@ -65,6 +65,24 @@ jobs:
                   elif rec.get("content_type","").startswith("application/json") and not rec.get("truncated_at_probe_ceiling"):
                       obj=json.loads(data)
                       rec["json_top_level"]=list(obj)[:30] if isinstance(obj,dict) else type(obj).__name__
+                      if isinstance(obj,dict) and "outage" in obj:
+                          top=obj["outage"]
+                          rec["outage_collection_type"]=type(top).__name__
+                          if isinstance(top,list):
+                              rec["outage_collection_length"]=len(top)
+                              rec["native_element_fields"]=list(top[0].keys()) if top and isinstance(top[0],dict) else []
+                              if top and isinstance(top[0],dict):
+                                  rec["native_element_value_types"]={k:type(v).__name__ for k,v in top[0].items()}
+                                  rec["native_first_element_nested"]={
+                                      k:{"type":type(v).__name__,
+                                         "length":len(v) if isinstance(v,(list,dict)) else None,
+                                         "child_keys":list(v[0])[:40] if isinstance(v,list) and v and isinstance(v[0],dict) else list(v)[:40] if isinstance(v,dict) else []}
+                                      for k,v in top[0].items() if isinstance(v,(list,dict))
+                                  }
+                          elif isinstance(top,dict):
+                              rec["outage_collection_fields"]=list(top)[:45]
+                              rec["outage_collection_value_types"]={k:type(v).__name__ for k,v in list(top.items())[:45]}
+
                       if isinstance(obj,dict) and isinstance(obj.get("paths"),dict):
                           rec["public_paths"]=list(obj["paths"])[:120]
                       if isinstance(obj,dict) and isinstance(obj.get("results"),list):
