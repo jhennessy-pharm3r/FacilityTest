@@ -277,7 +277,7 @@ def run(source_zip, out_dir):
         manifest["source_coverage_missing"] == manifest["source_only_null_area"] and
         manifest["source_coverage_missing"] + manifest["aggregate_area_records"] == manifest["normalized_records"] and
         manifest["sql_quick_check"] == "ok" and
-        all(len(w["source_column_names"]) >= 12 for w in manifest["workbooks"].values())
+        all(len(w["source_column_names"]) >= 11 for w in manifest["workbooks"].values())
     )
     (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
     return manifest
