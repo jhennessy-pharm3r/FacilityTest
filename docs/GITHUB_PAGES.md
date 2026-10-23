@@ -40,6 +40,41 @@ research findings. A browser-imported private snapshot is not available to
 another recipient and cannot be shared merely by copying its page URL.
 Sharing a source reference does not grant access to private server data.
 
+## Source-backed sitewide evidence panels
+
+The public app now uses the independently reviewed
+[20-stream official source ledger](../web/coordination/parallel-ingestion.json)
+for *contextual research evidence* on the overview, workbench, insurance,
+hazard geography, regulatory registry, facility research, incident, underwriting,
+data quality, disclosure and methodology screens. The data inventory includes
+a searchable and filterable **Source evidence explorer** with the correct
+source grain, source QA state, blockers, and GitHub Actions evidence.
+
+- **Overview** organizes flood/wildfire, EPA compliance, industrial accidents,
+  and utilities/BI without adding unlike rows into a site or loss total.
+- **Insurance** identifies relevant source data for trigger research, but
+  does not assert terms, limits, contract coverage, claims, or actual site events.
+- **Assessment workbench** maps chosen scenarios to original-source follow-up
+  IDs and includes those review tasks in the exported assessment JSON, with
+  site_evidence_status explicitly marked not_verified.
+- **Hazard/map pages** distinguish six small FEMA QA windows, USDA raster
+  samples and administrative wildfire aggregates from property-specific risk.
+- **Identity, incidents, evidence, and BI** show native source populations
+  and matching limits; not verified property links.
+- **Quality** separates temporary normalized/CI indexes from private
+  persistent deployment, approved property identity and underwriting acceptance.
+- Direct source explorer example: ?page=sources&record=epa_echo.
+
+GitHub Pages serves only vetted **aggregate source metadata**. National
+EPA/FEMA/NRC/utility SQLite rows are not loaded into browsers or hosted as
+an authenticated property-level risk service here. Every new-source
+stream in this dated ledger has deployed=0 and verified_insured_sites=0,
+regardless of successful official-source jobs. If a separate private host
+is installed, verify its actual mounted source releases independently.
+
+Missing publisher access, unmatched facilities or unavailable geographies
+are UNKNOWN exposure, not an observed absence of risk.
+
 ## Load private analyst data without publishing it
 
 1. In the project root after ingesting the workbook, run
