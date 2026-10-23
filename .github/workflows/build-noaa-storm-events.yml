@@ -106,5 +106,8 @@ jobs:
           git add web/ingestion/noaa-storm-events.json
           if git diff --cached --quiet; then exit 0; fi
           git commit -m 'Data: publish NOAA storm source ingestion manifest [skip ci]'
+          git status --short
+          # Discard only uncommitted changes to tracked files; uploaded source artifacts remain separate.
+          git restore --worktree .
           git pull --rebase origin main
           git push origin HEAD:main
