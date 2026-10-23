@@ -19,12 +19,14 @@ try:
     from scripts.build_csb_incidents import stage_csb
     from scripts.index_lane_c_incidents import index_sources, search_source, audit_multiyear_source_coverage
     from scripts.lane_c_review_candidates import build_review_candidates
+    from scripts.lane_c_private_handoff import private_bundle
 except ModuleNotFoundError:  # direct script
     from probe_lane_c_sources import download
     from build_nrc_enriched import stage_nrc
     from build_csb_incidents import stage_csb
     from index_lane_c_incidents import index_sources, search_source, audit_multiyear_source_coverage
     from lane_c_review_candidates import build_review_candidates
+    from lane_c_private_handoff import private_bundle
 
 URLS = {
     "nrc": "https://nrc.uscg.mil/FOIAFiles/CY25.xlsx",
@@ -76,7 +78,7 @@ def fetch_official_phmsa(name, url, work):
         temp.unlink(missing_ok=True)
     return report
 
-def run(output):
+def run(output,*,private_bundle_dir=None):
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
     audit = {"run_started_at":datetime.now(timezone.utc).isoformat(),
@@ -212,6 +214,15 @@ def run(output):
             audit["nrc_geography_and_incident_year_audit"]=audit_multiyear_source_coverage(work/"lane-c-multiyear.sqlite")
             candidates=build_review_candidates(work/"lane-c-multiyear.sqlite")
             audit["cross_agency_review_candidates"]=candidates
+            if private_bundle_dir:
+                raw_sources={"nrc_2025":raw_nrc,"csb":raw_csb}
+                for source_name,_,_ in inputs:
+                    if source_name.startswith("nrc_") and source_name!="nrc_2025":
+                        vintage=int(source_name[4:])
+                        raw_sources[source_name]=work/f"nrc-CY{vintage%100:02d}.xlsx"
+                audit["opt_in_private_handoff"]=private_bundle(
+                    work/"lane-c-multiyear.sqlite",inputs,raw_sources,
+                    private_bundle_dir,repo_root=Path(__file__).resolve().parents[1])
             audit["consolidated_multi_year_index"]={
                 "state":"INDEXED_EPHEMERAL_NOT_DEPLOYED",
                 "total_rows":consolidated["total_indexed_ephemeral"],
@@ -266,8 +277,10 @@ def run(output):
 def main():
     ap=argparse.ArgumentParser()
     ap.add_argument("--output",type=Path,required=True)
+    ap.add_argument("--private-bundle-dir",type=Path,
+        help="Explicit pre-provisioned secure outside-repository path for original XLSX, normalized gzip, manifests, and SQLite; NEVER under public Pages/CI artifact directory")
     a=ap.parse_args()
-    run(a.output)
+    run(a.output,private_bundle_dir=a.private_bundle_dir)
 
 if __name__=="__main__":
     main()
