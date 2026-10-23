@@ -73,7 +73,7 @@ jobs:
       - name: Verify all chunks reconstruct same complete regulator source index
         run: |
           set -euo pipefail
-          python -m scripts.lane_b_epa.chunk_index restore --chunks-manifest "$RUNNER_TEMP/lane_b/$L/chunk-manifest.json" --parts "$RUNNER_TEMP/lane_b/$L/chunks" --output "$RUNNER_TEMP/lane_b/$L/restored.sqlite" > "$RUNNER_TEMP/lane_b/$L/restore-check.json"
+          python -m scripts.lane_b_epa.chunk_index restore --chunks-manifest "$RUNNER_TEMP/lane_b/$L/chunk-manifest.json" --parts "$RUNNER_TEMP/lane_b/$L/chunks" --verify-only > "$RUNNER_TEMP/lane_b/$L/restore-check.json"
           cat "$RUNNER_TEMP/lane_b/$L/restore-check.json"
           python - <<'PY'
           import json,os,pathlib
@@ -85,7 +85,6 @@ jobs:
           assert r['indexed_rows']==m['indexed_rows']
           print('RECONSTRUCTED_FULL_OFFICIAL_SQLITE',m['source'],m['indexed_rows'],r['sqlite_sha256'])
           PY
-          rm "$RUNNER_TEMP/lane_b/$L/restored.sqlite"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
