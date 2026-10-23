@@ -10,6 +10,7 @@
 | --- | ---: | ---: | ---: | ---: | ---: |
 | EIA-861 2025 utility reliability/state/county source rows | 12,926 rows | 12,923 | 3 | 12,923 | 0 / 0 |
 | EIA Electric Power Monthly 2023 annual plus partial 2024 disturbances | 230 publisher table rows | 230 | 0 | 230 | 0 / 0 |
+| **DOE CESER OE-417 original annual summary dataset, 2023 discovery vintage** | **341 original published report rows** | **341** (309 dated; **32 unknown event start dates retained**) | **0** | **341** | **0 / 0** |
 | DOE/PNNL 2014–2023 historical outage research table rows | 2,124,183 | 2,124,183, of which **277,360 literal same-table row repeats flagged** | 0 | 2,124,183 | 0 / 0 |
 | ORNL **direct** first-party county-status feed, 17:53 UTC public snapshot | 484 source status rows | 484 (2 exact repeats flagged) | 0 | 484 | 0 / 0 |
 | ORNL OpenEnergyHub **mirror**, separately observed 15:42 UTC snapshot | 424 separate mirror status rows | 423 | 1 invalid timestamp | 423 | 0 / 0 |
@@ -20,6 +21,19 @@
 | SEC EDGAR directly hosted filing documents | 0 (official archive HTTP 403 from authorized CI) | 0 | Not an ingested source; blocked | 0 | 0 / 0 |
 
 **Source-specific multiplicity:** PNNL has 1,385,389 merged county outage episode observations, **none literal same-table duplicated**; across all 50 historical CSVs 277,360 source-content duplicates and 1,846,823 distinct source-table row contents (not unique events). The PNNL 8h and 24h correlation variants are alternate relationships. ORNL **direct** and **mirror** are overlapping distributions of active county outage status, and *individual snapshots may gain/lose rows over minutes*: never add 484 + 423, nor accumulate a fresh ODIN snapshot as independent historic outages. ORNL participant statuses are utility *feed health*, not property or outage counts: **10 of 157 source feeds reported error flags**. Current source-provider candidates such as 15 EIA utilities in WA/Pierce are county/utility reporting context, not an automatic physical property service connection.
+
+### Additional authorized primary DOE OE-417 annual disturbance distribution — public domain
+
+Official DOE CESER dataset mirrored by ORNL Open Energy Hub, **dataset ID \`oe-417-annual-summaries\`**: [original public publisher page](https://openenergyhub.ornl.gov/explore/dataset/oe-417-annual-summaries/), original source export \`https://openenergyhub.ornl.gov/api/explore/v2.1/catalog/datasets/oe-417-annual-summaries/exports/json\`, original metadata \`https://openenergyhub.ornl.gov/api/explore/v2.1/catalog/datasets/oe-417-annual-summaries\`. Metadata explicitly says **Public Domain**, publication describing a **2023 data-discovery vintage**, not a national 2024–2026 census. [Official 2023 original-source ingest/row-by-row SHA/index/reproducible SQL + real index query gate 40000353894](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/40000353894) PASS.
+
+Original official JSON **165,640 bytes, SHA256 \`5329d272544e9164692f08b34a5079d3f89a2095f1a77a8fa8dfca8923b06d18\`**, publisher metadata **7,192 bytes, SHA256 \`603e1eeba802e50b7f2f0ea6069e896db0010481a147ee3247bd4e658e1bdee1\`**. **341 source rows downloaded, 341 accepted and separately temporary SQLite indexed, 0 rejected, 0 exact duplicates**; original/accepted/rejected/SQL counts and row hashes reconciled; rerunning the saved original source produced byte-identical normalized JSONL and SQL source-only index. **309 rows report a 2023 incident start date; 32 contain NULL source event start date**. Initial strict importer had rejected all 32; corrected and independently rerun to *retain* them as \`NOT_REPORTED\`, without inventing a year or zero-day outage. Original source additionally contains **47 missing restoration dates, 34 missing affected-customer counts, 78 missing MW demand-loss values**, and **no geocoded site coordinates**. It has only original free-text affected area, reported NERC region/type/alert, event/start/restoration fields; **no official native stable incident ID**. Position+original row hash is a DERIVED source row key, not an incident ID.
+
+New \`facilityrisk/lane_d/query_oe417_annual.py\` supports bounded read-only exact original event type, explicit event year and **undated-only** queries: genuine 341-row official SQL returned **309 2023-dated, 32 source-undated and 40 source event_type "Vandalism"** observations when queried separately; zero site power-outage claims. It is separate from EPM disturbance 2023 table **158 records**: both are DOE-417-derived distributions, coverage criteria differ, and **event counts must not be summed or considered independent without case-level corroboration**. This supplementary annual source is not a facility dataset, utility-provider-to-building proof, insurer loss file, or complete all-industry power interruption census.
+
+\`\`\`bash
+python -m facilityrisk.lane_d.ingest_oe417_annual --output /private/lane-d/doe-oe417-2023
+python -m facilityrisk.lane_d.query_oe417_annual --db /private/lane-d/doe-oe417-2023/oe417_annual_staging.sqlite --date-state undated --limit 50
+\`\`\`
 
 ### Verified financial evidence by interpretation, NOT a common insured-loss denominator
 
