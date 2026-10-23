@@ -157,7 +157,7 @@ def _raster_metadata(path, source_name, full_audit=False):
     import rasterio
     from rasterio.warp import transform
 
-    kind,domain=source_name.split("_")[1:3]
+    kind,domain=Path(source_name).stem.split("_")[1:3]
     with rasterio.open(path) as ds:
         if (ds.driver!="GTiff" or ds.count!=1 or ds.crs is None or
                 ds.width<20 or ds.height<20 or
