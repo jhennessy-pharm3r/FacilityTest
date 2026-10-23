@@ -19,6 +19,10 @@ import re
 import zipfile
 
 from openpyxl import load_workbook
+try:
+    from scripts.industrial_incident_io import gzip_csv_writer
+except ModuleNotFoundError:  # direct python scripts/ entrypoint
+    from industrial_incident_io import gzip_csv_writer
 
 PUBLISHERS = {
     "nrc": ("USCG National Response Center", "reported_unverified",
@@ -184,7 +188,7 @@ def stage(source, raw, normalized, manifest, *, source_url, sheet=None, member=N
     failures = {}
     selected = None
     try:
-        with gzip.open(temp, "wt", encoding="utf-8", newline="") as target:
+        with gzip_csv_writer(temp) as target:
             writer = csv.DictWriter(target, fieldnames=OUT_COLUMNS)
             writer.writeheader()
             for row_num, row in rows_from_file(raw, sheet=sheet, member=member, header_row=header_row):
