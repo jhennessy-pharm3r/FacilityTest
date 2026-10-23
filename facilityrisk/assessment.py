@@ -45,6 +45,8 @@ def build_assessment(conn,facility_id):
     asset_inventory=list_property_assets(conn,facility_id)
     from .coverage_review import facility_policy_snapshot,compare_hazards_and_coverage
     policy_snapshot=facility_policy_snapshot(conn,facility_id)
+    from .bi_scenarios import facility_scenarios
+    bi_scenarios=facility_scenarios(conn,facility_id)
     coverage_crosswalk=compare_hazards_and_coverage(conn,facility_id)
     identifiers=detail['identifiers']
     verified_identifiers=[row for row in identifiers if row['status']=='verified']
@@ -99,6 +101,9 @@ def build_assessment(conn,facility_id):
                   ' stale or legacy screenings excluded. No insured loss or all-peril clearance is inferred'},
        'operations_and_bi':{'status':'research_profile' if profile else 'unassessed',
           'reason':'Operations, protection and downtime exposures are not insured values unless documented'},
+       'interruption_scenarios':{'status':'analyst_illustrations' if bi_scenarios['count'] else 'unassessed',
+          'reason':str(bi_scenarios['count'])+
+                   ' hypothetical interruption scenarios with unverified financial and restoration inputs; no insured recovery inferred'},
        'historical_outcomes':{'status':'retrospective_events' if events else 'unassessed',
           'reason':'Known cases are retrospective, not predictive validation; absence of cases is not absence of losses'},
        'insurance_terms':{'status':'document_reviewed_terms' if policy_snapshot['document_reviewed_current_terms_count'] else 'unassessed',
@@ -150,6 +155,7 @@ def build_assessment(conn,facility_id):
       'physical_assets':asset_inventory,
       'insurance_policy_review':policy_snapshot,
       'hazard_coverage_crosswalk':coverage_crosswalk,
+      'interruption_scenarios':bi_scenarios,
       'evidence':source_evidence,
       'evidence_total':source_evidence_total,
       'evidence_displayed':len(source_evidence),
@@ -260,8 +266,14 @@ def render_assessment_html(report,*,private_backend=False):
         lambda x:'<tr><td>'+e(x['peril'])+'</td><td>'+e(x['status'])+
              '</td><td>'+e(x['current_source_rows'])+'</td><td>'+
              e(x['interpretation'])+'</td></tr>')
+    interruption_rows=rows(report.get('interruption_scenarios',{}).get('scenarios',[]),
+        lambda x:'<tr><td>'+e(x['scenario_name'])+'</td><td>'+
+          e(x['interruption_cause'])+' / '+e(x['affected_dependency'])+'</td><td>'+
+          e(x['illustration']['equivalent_lost_operating_days'])+'</td><td>$'+
+          e(x['illustration']['illustrative_lost_contribution_margin_usd'])+
+          ' (unverified, not insurer recovery)</td></tr>')
     asset_rows=rows(report.get('physical_assets',{}).get('assets',[]),
-          lambda asset:'<tr><td>'+e(asset['asset_type'])+'</td><td>'+e(asset['name'])+
+        lambda asset:'<tr><td>'+e(asset['asset_type'])+'</td><td>'+e(asset['name'])+
           '</td><td>'+e(asset['address'])+'</td><td>'+e(asset['status'])+
           '; point '+e(asset['coordinate_quality'])+'</td></tr>')
     actions=''.join('<li>'+e(a)+'</li>' for a in report['recommended_actions']) or '<li>No additional actions listed</li>'
@@ -290,6 +302,9 @@ a{color:#245c61}section{break-inside:avoid}ul{line-height:1.65}
 '<p class="muted">One flood or earthquake lookup does not complete catastrophe assessment. Every unassessed/unmapped peril remains unknown.</p>'+
 '<table><tr><th>Peril</th><th>Source-screening status</th><th>Current source rows</th><th>Interpretation</th></tr>'+peril_rows+'</table>'+
 '<h2>Physical hazard screening</h2><table><tr><th>Peril</th><th>Status</th><th>Description</th><th>Reference</th></tr>'+hazards+'</table>'+
+'<h2>Illustrative operational interruption scenarios</h2>'+
+'<p class="muted">These are analyst assumptions, not observed insured losses or adjusted claims. Do not sum repair, spoilage or other components without checking overlap. Only loss of contribution margin is illustrated.</p>'+
+'<table><tr><th>Scenario</th><th>Cause / dependency</th><th>Equivalent lost days</th><th>Illustrative margin loss</th></tr>'+interruption_rows+'</table>'+
 '<h2>Insurance contracts and coverage review</h2>'+
 '<p class="muted">Independent wording review is not proof of payout or a coverage guarantee. Excluded terms do not count as available insurance protection. Review the scheduled insured location, exclusions and endorsements.</p>'+
 '<table><tr><th>Policy</th><th>Coverage type</th><th>Review state</th><th>Contract details / evidence reference</th></tr>'+policy_table+'</table>'+

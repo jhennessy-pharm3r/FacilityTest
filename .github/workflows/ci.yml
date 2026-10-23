@@ -34,6 +34,7 @@ jobs:
           node --check web/workbench-ui.js
           node --check web/insurance-ui.js
           node --check web/coverage-review-ui.js
+          node --check web/bi-scenario-ui.js
           node --check web/registry-ui.js
           node --check web/intelligence-ui.js
           node --check web/public-api.js

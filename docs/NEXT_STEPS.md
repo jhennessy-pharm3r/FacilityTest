@@ -110,3 +110,7 @@ These categories are a coverage audit, **not** a global catastrophe model,
 damage vulnerability assessment, probability, property insurance payout or
 proof that every source covers the site's country. Complete geographic provider
 integration and real property point reviews remain unresolved.
+
+## Private operational interruption scenarios
+
+Analysts can now model specific hypothetical outages and recovery ramps for a researched facility in a private **Interruption scenarios** screen. The scenarios distinguish initiating peril (including utilities, suppliers, civil authority, geopolitical triggers and equipment) from the operational dependency, downtime days, mitigation proportion, restart capacity, contribution-margin-at-risk assumptions and separately tracked repair/spoilage/extra-expense components. The backend stores assumptions, audited revisions, source references and bounded numeric inputs; only authenticated reviewers can write in dual-review mode. The private facility assessment includes the scenario review and contribution-margin illustration. **No insurance recovery amount, combined claim value, loss probability, parametric payout or quote is computed**. Specific policy wording, source evidence, tenant security and real client input remain prerequisites for verified underwriter decisions.
