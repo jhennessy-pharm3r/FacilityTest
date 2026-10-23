@@ -16,6 +16,11 @@ services:
       FACILITY_RISK_NOAA_INDEX_MANIFEST: ${FACILITY_RISK_NOAA_INDEX_MANIFEST:-}
       FACILITY_RISK_INCIDENTNEWS_INDEX_PATH: ${FACILITY_RISK_INCIDENTNEWS_INDEX_PATH:-}
       FACILITY_RISK_INCIDENTNEWS_INDEX_MANIFEST: ${FACILITY_RISK_INCIDENTNEWS_INDEX_MANIFEST:-}
+      # Lane D source-only verified installs under the existing immutable source-index bind.
+      # Leave empty unless indexes were independently SHA-verified and installed.
+      FACILITY_RISK_LANE_D_INDEX_ROOT: ${FACILITY_RISK_LANE_D_INDEX_ROOT:-}
+      # ORNL public county data cannot be served until source-specific use rights approved.
+      FACILITY_RISK_LANE_D_ODIN_USE_APPROVED: ${FACILITY_RISK_LANE_D_ODIN_USE_APPROVED:-0}
     ports:
       # Do not bind to 0.0.0.0; use a TLS + OIDC reverse proxy for remote access.
       - "127.0.0.1:8765:8765"
