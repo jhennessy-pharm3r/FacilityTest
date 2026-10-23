@@ -5,6 +5,11 @@ on:
       - 'ingest/industrial-events-nrc-csb-phmsa-*'
     paths:
       - 'scripts/probe_lane_c_phmsa_enforcement.py'
+      - 'scripts/build_phmsa_enforcement.py'
+      - 'scripts/lane_c_enforcement_install.py'
+      - 'scripts/lane_c_install.py'
+      - 'tests/test_phmsa_enforcement.py'
+      - 'tests/test_lane_c_enforcement_install.py'
       - '.github/workflows/lane-c-phmsa-enforcement.yml'
   workflow_dispatch:
 jobs:
@@ -18,9 +23,17 @@ jobs:
           python-version: '3.11'
       - run: pip install requests openpyxl pytest
       - name: Enforce case-grain native IDs and repeated-report reference tests
-        run: python -m pytest -q tests/test_phmsa_enforcement.py
+        run: python -m pytest -q tests/test_phmsa_enforcement.py tests/test_lane_c_enforcement_install.py
       - name: Download PHMSA official enforcement raw data, normalize, index temporarily, reconcile incident-reference links
-        run: python scripts/probe_lane_c_phmsa_enforcement.py --output output
+        run: |
+          mkdir -m 700 -- "$RUNNER_TEMP/lane-c-wms-case-install"
+          python scripts/probe_lane_c_phmsa_enforcement.py --output output --private-bundle-dir "$RUNNER_TEMP/lane-c-wms-case-bundle" --install-test-root "$RUNNER_TEMP/lane-c-wms-case-install"
+          test -f "$RUNNER_TEMP/lane-c-wms-case-install/active-release.json"
+      - name: Remove unredacted temporary PHMSA source bundle and installed index
+        if: always()
+        run: |
+          chmod -R u+w -- "$RUNNER_TEMP/lane-c-wms-case-install" 2>/dev/null || true
+          rm -rf -- "$RUNNER_TEMP/lane-c-wms-case-bundle" "$RUNNER_TEMP/lane-c-wms-case-install"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
