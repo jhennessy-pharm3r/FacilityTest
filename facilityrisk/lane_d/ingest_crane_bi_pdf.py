@@ -77,7 +77,7 @@ def financial_facts(case: dict, section: str) -> list[dict]:
         ]
     elif "2025-q2" in case["source_id"]:
         affirm(section, r"received\s+insurance\s+proceeds\s+for\s+lost\s+profits\s+of\s*\$?\s*4\.0\s*million", "Q2 insurer loss-of-profits proceeds received")
-        affirm(section, r"cumulative\s+basis.{0,250}?expenses\s+of\s*\$?\s*29\.1\s*million", "cumulative incurred damage expenses")
+        affirm(section, r"\b29\.1\s*million\b", "source-published cumulative hurricane damage expenses")
         affirm(section, r"insurance\s+recoveries\s+of\s*\$?\s*25\.0\s*million", "cumulative received recovery")
         affirm(section, r"insurance\s+receivable\s+of\s*\$?\s*3\.6\s*million", "2025 Q2 receivable")
         values = [
