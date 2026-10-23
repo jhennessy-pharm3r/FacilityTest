@@ -143,10 +143,11 @@ def run(output):
         # its own source-native SEQNOS namespace, so do NOT coalesce identical
         # identifiers from different years or silently double count events.
         audit["additional_nrc_cohorts"] = {}
-        for year in (2024, 2023, 2022, 2021, 2020, 2019, 2018, 2017, 2016, 2015):
+        for year in (2026, 2024, 2023, 2022, 2021, 2020, 2019, 2018, 2017, 2016, 2015):
             url = f"https://nrc.uscg.mil/FOIAFiles/CY{year%100:02d}.xlsx"
             yearly = {"source_url":url, "year":year, "dataset_role":"annual_report_cohort",
-                      "cross_year_auto_dedup":"NOT_PERFORMED"}
+                      "cross_year_auto_dedup":"NOT_PERFORMED",
+                      "year_completeness":"PROVISIONAL_OPEN_2026" if year == 2026 else "ANNUAL_PUBLISHED_SNAPSHOT"}
             try:
                 yr_raw=work/f"nrc-CY{year%100:02d}.xlsx"
                 bytes_count, raw_sha = download(url, 60_000_000, yr_raw)
@@ -194,7 +195,7 @@ def run(output):
                 ("nrc_2025",work/"nrc.csv.gz",output/"nrc-manifest.json"),
                 ("csb",work/"csb.csv.gz",output/"csb-manifest.json"),
             ]
-            for year in (2024,2023,2022,2021,2020,2019,2018,2017,2016,2015):
+            for year in (2026,2024,2023,2022,2021,2020,2019,2018,2017,2016,2015):
                 if audit["additional_nrc_cohorts"].get(str(year),{}).get("ephemeral_indexed"):
                     inputs.append((f"nrc_{year}",work/f"nrc-{year}.csv.gz",
                                    output/f"nrc-{year}-manifest.json"))
@@ -248,6 +249,7 @@ def run(output):
             "csb":audit["source_cohorts"].get("csb"),
             "ephemeral_index":audit.get("source_index",{}).get("total_indexed_ephemeral"),
             "additional_nrc_cohorts":audit.get("additional_nrc_cohorts"),
+            "current_year_2026_state":audit.get("additional_nrc_cohorts",{}).get("2026",{}).get("state","NOT_TESTED"),
             "total_ephemeral_indexed":audit.get("total_ephemeral_indexed_all_independent_cohorts"),
             "consolidated_index":audit.get("consolidated_multi_year_index"),
             "cross_agency_review_candidates":audit.get("cross_agency_review_candidates"),
