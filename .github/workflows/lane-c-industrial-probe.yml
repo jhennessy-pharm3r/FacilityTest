@@ -1,0 +1,61 @@
+name: Lane C official industrial incident validation
+on:
+  push:
+    branches:
+      - 'ingest/industrial-events-nrc-csb-phmsa-*'
+    paths:
+      - '.github/workflows/lane-c-industrial-probe.yml'
+      - 'scripts/build_industrial_incidents.py'
+      - 'scripts/build_nrc_enriched.py'
+      - 'scripts/build_csb_incidents.py'
+      - 'scripts/industrial_incident_io.py'
+      - 'scripts/index_lane_c_incidents.py'
+      - 'scripts/lane_c_review_candidates.py'
+      - 'scripts/lane_c_private_handoff.py'
+      - 'scripts/lane_c_install.py'
+      - 'scripts/probe_lane_c_sources.py'
+      - 'scripts/run_lane_c_verified.py'
+      - 'tests/test_industrial_incidents.py'
+      - 'tests/test_nrc_enriched.py'
+      - 'tests/test_csb_release.py'
+      - 'tests/test_lane_c_index.py'
+      - 'tests/test_lane_c_candidates.py'
+      - 'tests/test_lane_c_private_handoff.py'
+      - 'tests/test_lane_c_install.py'
+  workflow_dispatch:
+concurrency:
+  group: lane-c-official-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  lane-c-source-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install source and test dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt openpyxl requests
+      - name: Validate all Lane C tests and importer failure gates
+        run: python -m pytest -q tests/test_industrial_incidents.py tests/test_nrc_enriched.py tests/test_lane_c_index.py tests/test_csb_release.py tests/test_lane_c_candidates.py tests/test_lane_c_private_handoff.py tests/test_lane_c_install.py
+      - name: Acquire official NRC/CSB, repeat transforms, and verify private temporary checksum-protected handoff
+        run: |
+          mkdir -m 700 -- "$RUNNER_TEMP/lane-c-installed-smoke"
+          python scripts/run_lane_c_verified.py --output output --private-bundle-dir "$RUNNER_TEMP/lane-c-source-handoff-proof" --install-test-root "$RUNNER_TEMP/lane-c-installed-smoke"
+          test -f "$RUNNER_TEMP/lane-c-source-handoff-proof/private-bundle-manifest.json"
+          test -f "$RUNNER_TEMP/lane-c-installed-smoke/active-release.json"
+          test ! -e "./lane-c-source-handoff-proof"
+          test ! -e "./lane-c-installed-smoke"
+      - name: Remove temporary full-source handoff outside repository
+        if: always()
+        run: |
+          chmod -R u+w -- "$RUNNER_TEMP/lane-c-installed-smoke" 2>/dev/null || true
+          rm -rf -- "$RUNNER_TEMP/lane-c-source-handoff-proof" "$RUNNER_TEMP/lane-c-installed-smoke"
+      - name: Save aggregate-only source and ephemeral index audit (no raw incident rows or SQLite)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lane-c-verified-source-audit
+          path: output/*.json
+          retention-days: 14

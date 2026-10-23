@@ -1,0 +1,30 @@
+name: Lane C NRC current and CSB release availability
+on:
+  push:
+    branches:
+      - 'ingest/industrial-events-nrc-csb-phmsa-*'
+    paths:
+      - 'scripts/probe_lane_c_current_vintages.py'
+      - 'tests/test_lane_c_vintage.py'
+      - '.github/workflows/lane-c-current-vintages.yml'
+  workflow_dispatch:
+jobs:
+  live-current-vintage-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests openpyxl pytest
+      - name: Test CSB quarter identity comparison rules
+        run: python -m pytest -q tests/test_lane_c_vintage.py
+      - name: Probe live 2026 NRC availability and current/archived CSB list
+        run: python scripts/probe_lane_c_current_vintages.py --output output
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lane-c-current-official-vintage-audit
+          path: output/*.json
+          retention-days: 14
