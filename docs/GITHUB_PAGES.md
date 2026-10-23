@@ -24,11 +24,11 @@ load the same public state.
 
 Examples:
 
-- Source health: \`https://jhennessy-pharm3r.github.io/FacilityTest/?page=feeds\`
-- Public registry search: \`?page=registry&q=Pfizer\`
-- Facility case detail: \`?page=facilities&facility=public-baxter-north-cove&tab=risk\`
+- Source health: `https://jhennessy-pharm3r.github.io/FacilityTest/?page=feeds`
+- Public registry search: `?page=registry&q=Pfizer`
+- Facility case detail: `?page=facilities&facility=public-baxter-north-cove&tab=risk`
 
-The public registry can also restore a selected \`record\` ID, source and
+The public registry can also restore a selected `record` ID, source and
 country/sector filters, and pagination. The private universal search can restore
 source identity IDs and search filters **only for recipients already authorized
 to access that private backend**. The application will not assert a physical site
