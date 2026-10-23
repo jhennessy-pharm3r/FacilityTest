@@ -1,0 +1,68 @@
+name: Lane A - ingest full original USDA WHP2023 270m raster TIFFs
+on:
+  workflow_dispatch:
+  push:
+    branches: [ingest/lane-a-whp-national-rasters-20261023]
+    paths:
+      - scripts/lane_a_whp_full_raster.py
+      - tests/test_lane_a_full_whp_rasters.py
+      - tests/test_lane_a_national_whp.py
+      - facilityrisk/lane_a_national_whp.py
+      - scripts/smoke_lane_a_full_whp.py
+      - .github/workflows/lane-a-whp-full-original.yml
+permissions:
+  contents: read
+jobs:
+  original-270m-raster-ingestion:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install geospatial TIFF reader from wheels
+        run: python -m pip install -r requirements-dev.txt 'rasterio>=1.4,<2' 'numpy>=1.26,<3'
+      - name: Validate full archive parser / source identity and install security fixtures
+        run: python -m pytest -q tests/test_lane_a_full_whp_rasters.py tests/test_lane_a_national_whp.py
+      - name: Download original USDA Forest Service six 270m national products and audit EVERY pixel
+        run: |
+          python -m scripts.lane_a_whp_full_raster --root "$RUNNER_TEMP/lane-a-whp2023-official" --full-audit > whp-full-raster-summary.txt
+          cat whp-full-raster-summary.txt
+      - name: Inspect exact original publisher SHA, domain coverage, CRS and class masks
+        run: |
+          python - <<'PY'
+          import json,os,glob
+          from pathlib import Path
+          root=Path(os.environ["RUNNER_TEMP"])/"lane-a-whp2023-official"
+          pointer=json.loads((root/"current.json").read_text())
+          manifest=json.loads((root/pointer["relative_root"]/"manifest.json").read_text())
+          assert manifest["all_six_original_tiffs_verified"] is True
+          assert manifest["all_original_grid_pixels_counted"] is True
+          assert len(manifest["original_geoTIFF_source"])==6
+          assert manifest["verified_site_matches"]==0
+          assert manifest["insured_loss_or_property_damage_records"]==0
+          for original,metadata in manifest["tiff_independent_grid_qa"].items():
+              assert metadata["grid_cell_count"]==metadata["valid_raster_pixels"]+metadata["masked_nodata_pixels"]
+              assert metadata["source_crs_wkt"] and metadata["native_bounds"]
+              print("WHP_RASTER_AUDIT",original,metadata["width"],metadata["height"],metadata["valid_raster_pixels"],metadata["masked_nodata_pixels"],metadata.get("observed_original_class_codes"))
+          Path("whp-full-original-manifest.json").write_text(json.dumps(manifest,indent=2,sort_keys=True))
+          Path("whp-full-original-pointer.json").write_text(json.dumps(pointer,indent=2,sort_keys=True))
+          print("LANE_A_NATIONAL_WHP2023_FULL_ORIGINAL_RASTER_FILE_AUDIT_PASS",
+                manifest["zip_original_source"]["sha256"],pointer["release_id"])
+          PY
+      - name: Prove exact source cells independently queryable in all original TIFF domains
+        run: |
+          export FACILITY_RISK_WHP2023_RASTER_ROOT="$RUNNER_TEMP/lane-a-whp2023-official"
+          python -m scripts.smoke_lane_a_full_whp | tee whp-real-publisher-point-queries.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lane-a-full-official-whp2023-six-original-rasters-SHA-pixel-audit
+          path: |
+            whp-full-original-manifest.json
+            whp-full-original-pointer.json
+            whp-full-raster-summary.txt
+            whp-real-publisher-point-queries.txt
+          if-no-files-found: warn
+          retention-days: 14

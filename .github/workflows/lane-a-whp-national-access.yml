@@ -1,0 +1,49 @@
+name: Lane A - official full WHP2023 raster archive access probe
+on:
+  push:
+    branches: [ingest/lane-a-whp-national-rasters-20261023]
+    paths:
+      - '.github/workflows/lane-a-whp-national-access.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  official-archive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Probe direct official USDA Research Data Archive full 2023 raster ZIP
+        run: |
+          python - <<'PY'
+          from urllib.request import Request, urlopen
+          import json
+          source="https://www.fs.usda.gov/rds/archive/products/RDS-2015-0047-4/RDS-2015-0047-4_Data.zip"
+          result={"official_url":source,"expected_source_kind":"complete WHP2023 270m TIFF data archive","expectation_only_bytes":368424961}
+          for method in ("HEAD", "GET"):
+              try:
+                  headers={"User-Agent":"FacilityRisk-LaneA-Public-USFS-Archive-Research/1.0","Accept":"application/zip,application/octet-stream,*/*"}
+                  if method=="GET": headers["Range"]="bytes=0-4095"
+                  req=Request(source,headers=headers,method=method)
+                  with urlopen(req,timeout=50) as response:
+                      result[method]={"http_status":response.status,"final_url":response.url,"content_length":response.headers.get("Content-Length"),"content_type":response.headers.get("Content-Type"),"content_range":response.headers.get("Content-Range")}
+                      if method=="GET":
+                          data=response.read(4096)
+                          result[method]["actual_bytes_read"]=len(data)
+                          result[method]["zip_magic"]=data[:4].hex()
+                          result[method]["valid_zip_header"]=data[:4]==bytes((0x50,0x4b,0x03,0x04))
+              except Exception as exc:
+                  result[method]={"error_type":type(exc).__name__,"error":str(exc)[:800]}
+          from pathlib import Path
+          Path("whp-original-archive-probe.json").write_text(json.dumps(result,indent=2,sort_keys=True))
+          print("LANE_A_WHP_FULL_OFFICIAL_ARCHIVE_PROBE="+json.dumps(result,sort_keys=True))
+          if not any(x.get("valid_zip_header") for x in result.values() if isinstance(x,dict)):
+              raise SystemExit("Official full archive not independently accessible as ZIP")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lane-a-usfs-national-original-raster-archive-availability
+          path: whp-original-archive-probe.json
+          if-no-files-found: warn
+          retention-days: 7
