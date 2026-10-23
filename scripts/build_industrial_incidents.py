@@ -37,9 +37,9 @@ OUT_COLUMNS = ("source","source_id","incident_date","date_precision","name","cit
 ALIASES = {
     "nrc": {
         "id": ("seqnos", "seqno", "sequence_number", "sequence", "nrc_report_number"),
-        "date": ("incident_date", "incidentdate", "date_of_incident", "incident_date_time"),
+        "date": ("incident_date", "incidentdate", "date_of_incident", "incident_date_time", "incident_dtg"),
         "name": ("responsible_company", "responsible_party", "company_name", "company"),
-        "city": ("incident_city", "city"), "state": ("incident_state", "state"),
+        "city": ("incident_city", "city", "location_nearest_city"), "state": ("incident_state", "state", "location_state"),
         "lat": ("latitude", "lat"), "lon": ("longitude", "lon"),
         "fatal": ("fatalities", "deaths"), "injury": ("injuries",),
         "damage": ("damage", "property_damage"),
@@ -95,7 +95,7 @@ def select_headers(headers, source, overrides=None):
         raise ValueError("Source ID/date columns not resolved; supply --mapping JSON with id/date names; observed: " + repr(list(found)[:50]))
     return selected
 
-def rows_from_file(path, *, sheet=None, member=None):
+def rows_from_file(path, *, sheet=None, member=None, header_row=1):
     path = Path(path)
     ext = path.suffix.lower()
     if ext == ".zip":
@@ -128,9 +128,11 @@ def rows_from_file(path, *, sheet=None, member=None):
         try:
             if not sheet or sheet not in book.sheetnames:
                 raise ValueError("Explicit --sheet required for NRC/CSB XLSX; available sheets: " + repr(book.sheetnames))
-            iterator = book[sheet].iter_rows(values_only=True)
+            if header_row < 1 or header_row > 50:
+                raise ValueError("header_row must be between 1 and 50")
+            iterator = book[sheet].iter_rows(min_row=header_row, values_only=True)
             headings = [str(x).strip() if x is not None else "" for x in next(iterator)]
-            for number, values in enumerate(iterator, 2):
+            for number, values in enumerate(iterator, header_row + 1):
                 if any(value is not None for value in values):
                     yield number, dict(zip(headings, values))
         finally:
@@ -165,7 +167,7 @@ def number(value, *, bounds=None):
     return str(v)
 
 def stage(source, raw, normalized, manifest, *, source_url, sheet=None, member=None,
-          mapping=None, minimum_rows=1):
+          mapping=None, minimum_rows=1, header_row=1):
     if source not in PUBLISHERS:
         raise ValueError("Unknown agency source")
     if not source_url.startswith("https://"):
@@ -185,7 +187,7 @@ def stage(source, raw, normalized, manifest, *, source_url, sheet=None, member=N
         with gzip.open(temp, "wt", encoding="utf-8", newline="") as target:
             writer = csv.DictWriter(target, fieldnames=OUT_COLUMNS)
             writer.writeheader()
-            for row_num, row in rows_from_file(raw, sheet=sheet, member=member):
+            for row_num, row in rows_from_file(raw, sheet=sheet, member=member, header_row=header_row):
                 if selected is None:
                     selected = select_headers(row.keys(), source, mapping)
                 def get(field):
@@ -279,13 +281,14 @@ def main():
     parser.add_argument("--source-url", required=True)
     parser.add_argument("--sheet")
     parser.add_argument("--member")
+    parser.add_argument("--header-row", type=int, default=1)
     parser.add_argument("--mapping", type=Path, help="JSON field-name overrides for publisher drift")
     parser.add_argument("--min-rows", type=int, default=1)
     opts = parser.parse_args()
     mapping = json.loads(opts.mapping.read_text()) if opts.mapping else None
     print(json.dumps(stage(opts.source, opts.raw, opts.normalized, opts.manifest,
         source_url=opts.source_url, sheet=opts.sheet, member=opts.member,
-        mapping=mapping, minimum_rows=opts.min_rows), indent=2))
+        mapping=mapping, minimum_rows=opts.min_rows, header_row=opts.header_row), indent=2))
 
 if __name__ == "__main__":
     main()
