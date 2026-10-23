@@ -10,7 +10,7 @@
 | State reliability averages | Same, `State Totals` worksheet | Published state-level context under source methods | A site observation or comparable facility risk score |
 | Provider/service-territory *candidates* | Same, `Service_Territory_2025.xlsx` | Utility's reported county presence by native utility ID and original county/state | Exclusive franchise/actual metered service to a particular site; verified site geography |
 | Major grid disturbances | [EIA EPM Table B.1](https://www.eia.gov/electricity/monthly/epm_table_grapher.php?t=epmt_b_1) and [B.2](https://www.eia.gov/electricity/monthly/epm_table_grapher.php?t=epmt_b_2), based on DOE-417 | Date/time, reported utility, affected area, reported disturbance type, service loss category, estimated customers, source table | Verified outage at particular insured site, precise start/end of its downtime, insurance losses or a comprehensive national customer outage census |
-| Source financial disclosures | SEC issuer filings and official investor reports; **not yet ingested** | Dated source-attributed issuer disclosure, specific named site/event if actually stated, measured versus forecast financial impact and separately stated insurance proceeds | A third-party property claim or insured BI amount without explicit evidence and proper time/denominator context |
+| Source financial disclosures | SEC issuer filings and official investor reports; **source access probed, blocked by HTTP 403 in CI** | Dated source-attributed issuer disclosure, specific named site/event if actually stated, measured versus forecast financial impact and separately stated insurance proceeds | A third-party property claim or insured BI amount without explicit evidence and proper time/denominator context |
 
 EIA DOE-417-derived **EPM Table B.1 is a partial 2024 table**, not a full year. Table B.2 is the published 2023 annual cohort. Neither publishes a native stable event ID; ingestion creates a **derived source-row key** consisting of URL/table/source row/raw values. Preserve no-native-ID status; never present a derived key as an official incident number.
 
@@ -29,7 +29,8 @@ Official EIA-861 ZIP: **4,756,816 bytes**, archive SHA-256:
 | EIA EPM B.2 (annual 2023) | **158** | **0** | 67 source descriptions explicitly mention electric-service loss; 132 have numeric customer count; 29 omit restoration timestamp | **158** | **0 / 0** |
 | **DOE-417-derived EPM total** | **230** | **0** | Source table/row provenance, no native EPM event ID | **230** | **0 / 0** |
 | Site-specific outage evidence | Not tested | — | No published meter/site connection verified | 0 | 0 / 0 |
-| Financial business interruption / claim recoveries | Not tested | — | No issuer accession or event-to-site outcome crosswalk yet | 0 | 0 / 0 |
+| SEC issuer interruption filings | Official EIA/SEC-independent primary source network probe **HTTP 403** | — | Three public accessions cataloged; no SEC filing bytes authenticated or issuer financial values accepted | 0 | 0 / 0 |
+| Independently reconciled financial interruption / claims | Not tested | — | No issuer outcome-to-property/insured-claim match | 0 | 0 / 0 |
 
 **Total source records staged: 13,153** = 12,923 EIA utility/state/territory records + 230 disturbance events. **Distinct inspected or insured physical sites: 0.** Staging index counts refer to *separate ephemeral SQLite databases*, not one deduplicated national facility table; cross-dataset summing does not produce facility count.
 
@@ -54,9 +55,28 @@ curl -fLS 'https://www.eia.gov/electricity/monthly/epm_table_grapher.php?t=epmt_
 curl -fLS 'https://www.eia.gov/electricity/monthly/epm_table_grapher.php?t=epmt_b_2' -o /tmp/eia-b2.html
 python -m facilityrisk.lane_d.ingest_electric_events --table b1 --html /tmp/eia-b1.html --output ./private/lane-d/events-2024-partial
 python -m facilityrisk.lane_d.ingest_electric_events --table b2 --html /tmp/eia-b2.html --output ./private/lane-d/events-2023
+# SEC filing HTML must originate from an authorized first-party retrieval; never claim authenticity of arbitrary local copies.
+python -m facilityrisk.lane_d.ingest_sec_bi --catalog facilityrisk/lane_d/public_sec_filing_cases.toml --case baxter-helene-north-cove-2024q3 --html /path/to/approved-official-baxter-10q.html --output ./private/lane-d/sec-baxter-review
 ```
 
 Outputs: source-preserving JSONL accepted/rejected rows, `manifest.json`, and read-only *logical use* local SQLite query staging files `lane_d_eia861_staging.sqlite` / `events_staging.sqlite`. The pipelines preserve original raw workbook cell arrays and EPM HTML table row values; retain **complete source ZIP and downloaded EPM HTML in restricted persistent storage** with original SHA when deployed. EIA archives may be updated in place: compare retrieved source checksum against these tested hashes before assuming identical 2025 source vintage.
+
+
+## Public issuer business-interruption evidence — access validation outcome
+
+To assess whether real facilities have experienced operating interruptions and explicitly reported costs, we identified **three primary-source SEC filing candidates** with filing-native issuer CIK, accession, original document name and text anchors. These span medical-products manufacturing, hospitality and industrial manufacturing. They are **not verified loss records** in this data pipeline.
+
+| Sample issuer/event | Native filing identity (CIK / accession) | Source / factual boundary | Live input |
+| --- | --- | --- | --- |
+| [Baxter North Cove, September 2024 Helene](https://www.sec.gov/Archives/edgar/data/10456/000162828024047221/bax-20240930.htm) | 10456 / 0001628280-24-047221 | Issuer describes flood-related facility operations disruption; distinguish preliminary sales impact forecast, charges, loss and insurance recoveries | SEC 403; **not normalized** |
+| [Pebblebrook LaPlaya, 2025 Q3](https://www.sec.gov/Archives/edgar/data/1474098/000147409825000138/peb-20250930.htm) | 1474098 / 0001474098-25-000138 | Property closure/damage and insurance provisions for two hurricanes; one property cannot be inferred as a utility outage | Not requested after same-origin HTTP 403 |
+| [Crane Marion, 2026 Q1](https://www.sec.gov/Archives/edgar/data/1944013/000194401326000161/cr-20260331.htm) | 1944013 / 0001944013-26-000161 | Hurricane-related manufacturing site damage and insured recovery updates; keep repeated period/cumulative disclosures separate | Not requested after same-origin HTTP 403 |
+
+Source-specific code: `facilityrisk/lane_d/ingest_sec_bi.py` and `public_sec_filing_cases.toml`; **six** offline fixture/identity/financial non-attribution tests. The importer requires official SEC accession-aligned HTTPS URL, document text and co-located event/site/BI wording. It preserves a bounded evidence excerpt, source/text hashes, issuer CIK, accession and source URL. **It deliberately extracts zero verified financial amounts and zero insured claims**; a provided local copy does not automatically prove SEC provenance. True source validation needs an allowed official response or a separately verified archival copy/checksum.
+
+At [Actions #39975705946](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39975705946), issuer regression tests passed, but a polite official HTTPS request to Baxter's SEC EDGAR archive yielded **HTTP 403**. Rather than treating SEC as downloaded, the job uploaded `source_access.csv` and `validation_status.json` with `status=blocked`, `verified_source_documents=0`, and `verified_insured_losses=0`. The workflow job can succeed because **the access gate and its negative evidence were recorded successfully**, not because SEC filings were ingested. Subsequent same-host downloads were not attempted. EIA 13,153 staging rows remain unaffected.
+
+**Hard blocker:** SEC EDGAR denies this GitHub-hosted runner. A compliant authorized retrieval or externally verified official filing archive is required before any financial statement is promoted to SOURCE_CONTENT_CHECKED. SEC source access must not be bypassed. No dollar amounts should be merged across quarterly/annual disclosures or classified as property/BI insurance payments without explicit coverage and payment evidence.
 
 ## Required coordinator & next-lane gates
 
