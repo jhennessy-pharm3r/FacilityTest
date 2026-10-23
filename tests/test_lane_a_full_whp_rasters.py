@@ -27,9 +27,11 @@ def original_six_tiff_fixture(base, *, omitted=None, additional=None):
             pixel_value=4 if kind=="cls" else 253
             data=np.full((400,400),pixel_value,dtype=dtype)
             data[0,0]=0
+            domain=Path(name).stem.split("_")[-1]
+            origin={"conus":(-123,42),"ak":(-152,63),"hi":(-157,21)}[domain]
             with rasterio.open(file,"w",driver="GTiff",height=400,width=400,
                                count=1,dtype=dtype,nodata=0,
-                               crs="EPSG:4326",transform=from_origin(-123,42,0.005,0.005)) as out:
+                               crs="EPSG:4326",transform=from_origin(origin[0],origin[1],0.005,0.005)) as out:
                 out.write(data,1)
             assert file.stat().st_size>=100000
             archive.write(file,arcname="nested/original/"+name)
