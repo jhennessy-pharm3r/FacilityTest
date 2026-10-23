@@ -113,8 +113,7 @@ def rows_from_file(path, *, sheet=None, member=None):
             with archive.open(name) as binary:
                 data = io.TextIOWrapper(binary, encoding="utf-8-sig", errors="replace", newline="")
                 sample = data.read(8192)
-                data.seek(0) if data.seekable() else None
-                # Zip streams cannot always seek: reconstruct stream from all bytes.
+                # Zip streams are forward-only: retain the already-read prefix.
                 raw = sample + data.read()
                 dialect = csv.excel_tab if name.lower().endswith(".txt") else csv.excel
                 yield from enumerate(csv.DictReader(io.StringIO(raw), dialect=dialect), 2)
@@ -204,8 +203,12 @@ def stage(source, raw, normalized, manifest, *, source_url, sheet=None, member=N
                 seen.add(identifier)
                 try:
                     when, precision = as_date(get("date"))
-                    lat = number(get("lat"), bounds=(-90, 90))
-                    lon = number(get("lon"), bounds=(-180, 180))
+                    try:
+                        lat = number(get("lat"), bounds=(-90, 90))
+                        lon = number(get("lon"), bounds=(-180, 180))
+                    except ValueError:
+                        # Invalid publisher geometry is missing rather than a rejected event.
+                        lat = lon = ""
                     if not lat or not lon or (float(lat) == 0 and float(lon) == 0):
                         lat = lon = ""
                     if not lat:
