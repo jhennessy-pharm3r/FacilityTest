@@ -18,4 +18,4 @@ jobs:
         with:
           python-version: '3.11'
       - name: Source-isolated importer regression
-        run: python -m unittest scripts.lane_b_epa.test_ingest scripts.lane_b_epa.test_rmp_public scripts.lane_b_epa.test_read_index scripts.lane_b_epa.test_rmp_lookup scripts.lane_b_epa.test_chunk_index scripts.lane_b_epa.test_findings -v
+        run: python -m unittest scripts.lane_b_epa.test_ingest scripts.lane_b_epa.test_rmp_public scripts.lane_b_epa.test_read_index scripts.lane_b_epa.test_rmp_lookup scripts.lane_b_epa.test_chunk_index scripts.lane_b_epa.test_findings scripts.lane_b_epa.test_tri_history -v
