@@ -174,13 +174,20 @@ def inspect_pdf(case:dict,payload:bytes):
     try:
         from pypdf import PdfReader
         pdf=PdfReader(io.BytesIO(payload),strict=True)
+        publicly_openable_with_empty_password=False
         if pdf.is_encrypted:
-            raise ValueError("Encrypted source PDF cannot be independently examined")
+            # A published PDF may have owner restrictions but a blank user
+            # password. Only validate the no-password public reading case.
+            # Never guess, brute-force or provide a nonempty password.
+            if not pdf.decrypt(""):
+                raise ValueError("PDF is access protected by a nonempty password; not authorized")
+            publicly_openable_with_empty_password=True
         pages=[page.extract_text(extraction_mode="plain") or "" for page in pdf.pages]
     except ImportError as e:
         raise RuntimeError("pip install pypdf to validate publisher PDF") from e
     facts,receipt=parse_pages(case,pages,digest(payload))
     receipt["pdf_original_bytes"]=len(payload)
+    receipt["pdf_opens_with_public_empty_password"]=publicly_openable_with_empty_password
     return facts,receipt
 
 
