@@ -59,7 +59,7 @@ METRIC_NAMES=(
     "max_outage_duration","customer_weighted_hours",
 )
 REJECT_METRIC={"nan","inf","infinity","-inf","-infinity"}
-NULLS={"","n/a","na","null","none"}
+NULLS={"","n/a","na","null","none","nan","inf"}
 BATCH_SIZE=5000
 
 
@@ -302,7 +302,7 @@ def normalize(archive,output,years=EXPECTED_YEARS):
         "source_coverage_years":list(years),
         "source_vintage_type":"PUBLISHED_HISTORICAL_CORRELATION_RESEARCH_DATASET",
         "run_utc":datetime.now(timezone.utc).isoformat(),
-        "published_csv_members":len(stats),"source_rows_scanned":accepted_total+rejected_total,
+        "published_csv_members":len(stats),"source_rows_scanned":accepted_total+sum(s["rejected"] for s in stats),
         "accepted":accepted_total,
         "rejected":sum(s["rejected"] for s in stats),
         "rejection_reasons":dict(reason_counts),
