@@ -26,6 +26,12 @@ jobs:
           python -m scripts.lane_b_epa.ingest --source "$L" --output "$RUNNER_TEMP/lane_b/$L" > "$RUNNER_TEMP/lane_b/$L/output.json"
         env:
           L: ${{ matrix.source }}
+      - name: Print sanitized source QA manifest
+        if: always()
+        run: |
+          for f in "$RUNNER_TEMP"/lane_b/*/*.manifest.json; do
+            if [ -f "$f" ]; then cat "$f"; fi
+          done
       - name: Check content-level reconciliation
         run: |
           python -c 'import json,glob; m=json.load(open(glob.glob("/home/runner/work/_temp/lane_b/*/*.manifest.json")[0])); assert m["accepted_rows"]>0 and m["integrity"]=="ok" and m["accepted_rows"]==m["indexed_rows"]; print(m)'
