@@ -95,7 +95,7 @@ jobs:
               assert before==after, f"Non-deterministic normalized output: {name}"
               print(f"REPRODUCIBLE {name}: {before}")
           PY
-      - name: Real 2025 EIA utility candidates: exact county, never inferred property utility
+      - name: 'Real 2025 EIA utility candidates: exact county, never inferred property utility'
         shell: bash
         run: |
           python - <<'PY'
