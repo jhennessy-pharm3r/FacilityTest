@@ -26,7 +26,8 @@ FIELDS = ("source_id", "incident_date", "date_precision", "company_as_reported",
           "incident_location_text", "incident_city", "incident_state",
           "latitude", "longitude", "coordinate_semantics",
           "reported_fatalities", "reported_injuries", "reported_damage_usd",
-          "reported_evacuated", "fire_involved", "report_status",
+          "reported_evacuated", "fire_involved",
+          "calls_link_quality", "details_link_quality", "report_status",
           "site_link_status", "source_document")
 SOURCE = "https://nrc.uscg.mil/FOIAFiles/CY25.xlsx"
 
@@ -172,6 +173,8 @@ def stage_nrc(raw, output, manifest, *, year, minimum_rows=1000):
                     reported_number(detail.get("DAMAGE_AMOUNT")),
                     reported_number(detail.get("NUMBER_EVACUATED")),
                     str(detail.get("FIRE_INVOLVED") or "").strip(),
+                    "matched_unique" if seqno in calls else "missing_or_ambiguous_child",
+                    "matched_unique" if seqno in details else "missing_or_ambiguous_child",
                     "NRC_initial_notification_unverified", "candidate_only_not_matched",
                     f"https://nrc.uscg.mil/FOIAFiles/CY{year%100:02d}.xlsx"
                 ))))
