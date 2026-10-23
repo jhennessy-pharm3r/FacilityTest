@@ -48,6 +48,17 @@ class OE417AnnualTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 parse(json.dumps([row()]).encode(),metadata)
 
+    def test_undated_official_row_remains_accepted_unassessed_event_time(self):
+        items=[row(date_event_began=None,event_type="Severe Weather"),
+               row(date_event_began="",event_type="Transmission Interruption")]
+        a,r,stats=parse(json.dumps(items).encode(),META)
+        self.assertEqual((len(a),len(r)),(2,0))
+        self.assertEqual(stats["missing_event_start_date_preserved_as_unknown"],2)
+        self.assertEqual(stats["source_calendar_year_counts"],{})
+        self.assertTrue(all(x["event_date_source_status"]=="NOT_REPORTED" for x in a))
+        self.assertTrue(all(x["source_event_year"] is None for x in a))
+        self.assertTrue(all(not x["site_electric_outage_verified"] for x in a))
+
     def test_preserve_native_missing_time_and_nonnegative_customers(self):
         a,r,m=parse(json.dumps([row(number_of_customers_affected=1242,demand_loss_mw=4.25,date_of_restoration="2023-01-14")]).encode(),META)
         self.assertEqual((len(a),len(r)),(1,0))
@@ -81,8 +92,12 @@ class OE417AnnualTests(unittest.TestCase):
             dict(list(row().items())[:-1]),
         ]
         a,r,m=parse(json.dumps([row()]+cases).encode(),META)
-        self.assertEqual((len(a),len(r)),(1,6))
-        self.assertEqual(sum(m["rejection_reasons"].values()),6)
+        self.assertEqual((len(a),len(r)),(2,5))
+        self.assertEqual(sum(m["rejection_reasons"].values()),5)
+        self.assertEqual(m["missing_event_start_date_preserved_as_unknown"],1)
+        self.assertIsNone(a[1]["event_date_source"])
+        self.assertIsNone(a[1]["source_event_year"])
+        self.assertEqual(a[1]["event_date_source_status"],"NOT_REPORTED")
         self.assertFalse(a[0]["site_electric_outage_verified"])
 
     def test_source_reconciliation_staged_sqlite_and_licenses(self):
