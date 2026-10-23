@@ -1,0 +1,81 @@
+name: Lane E private industrial API full official-source acceptance
+
+on:
+  push:
+    branches:
+      - 'integration/lane-e-industrial-private-api-*'
+    paths:
+      - 'facilityrisk/industrial_source_indices.py'
+      - 'facilityrisk/app.py'
+      - 'scripts/verify_lane_e_industrial_api.py'
+      - 'tests/test_industrial_private_api.py'
+      - '.github/workflows/lane-e-industrial-api-real.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lane-e-industrial-real-source-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  private-industrial-real:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install runtime, test and official-source importer dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Verify fail-closed role and 25-sector synthetic safety controls
+        run: python -m pytest -q tests/test_industrial_private_api.py
+      - name: Pre-provision isolated private source storage on disposable runner
+        run: |
+          mkdir -p -m 700 "$RUNNER_TEMP/private-industrial"
+          mkdir -m 700 -- "$RUNNER_TEMP/private-industrial/nrc-csb-root"
+          mkdir -m 700 -- "$RUNNER_TEMP/private-industrial/wms-root"
+          mkdir -p -- output
+      - name: REAL official NRC 2010-2026 and CSB -> SHA-verified read-only private installation
+        run: |
+          python scripts/run_lane_c_verified.py \
+            --output output/nrc-csb \
+            --private-bundle-dir "$RUNNER_TEMP/private-industrial/nrc-csb-bundle" \
+            --install-test-root "$RUNNER_TEMP/private-industrial/nrc-csb-root"
+      - name: REAL official PHMSA WMS enforcement -> separate private read-only installation
+        run: |
+          python scripts/probe_lane_c_phmsa_enforcement.py \
+            --output output/phmsa-wms \
+            --private-bundle-dir "$RUNNER_TEMP/private-industrial/wms-bundle" \
+            --install-test-root "$RUNNER_TEMP/private-industrial/wms-root"
+      - name: Authenticate and benchmark all 18 real NRC/CSB source namespaces plus PHMSA WMS
+        run: |
+          python scripts/verify_lane_e_industrial_api.py \
+            --incidents-root "$RUNNER_TEMP/private-industrial/nrc-csb-root" \
+            --wms-root "$RUNNER_TEMP/private-industrial/wms-root" \
+            --output output/api-verification-summary.json
+      - name: Re-open private read-only source releases in a fresh API process
+        run: |
+          python scripts/verify_lane_e_industrial_api.py \
+            --incidents-root "$RUNNER_TEMP/private-industrial/nrc-csb-root" \
+            --wms-root "$RUNNER_TEMP/private-industrial/wms-root" \
+            --output output/restarted-process-summary.json
+      - name: Remove all unredacted official-source originals, normalized rows and SQLite
+        if: always()
+        run: |
+          chmod -R u+w -- "$RUNNER_TEMP/private-industrial" 2>/dev/null || true
+          rm -rf -- "$RUNNER_TEMP/private-industrial"
+          test ! -e "$RUNNER_TEMP/private-industrial"
+      - name: Publish aggregate-only source and read-only API evidence (NO original data)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lane-e-industrial-private-real-api-audit
+          path: |
+            output/api-verification-summary.json
+            output/restarted-process-summary.json
+            output/nrc-csb/*audit*.json
+            output/phmsa-wms/*.json
+          retention-days: 14
