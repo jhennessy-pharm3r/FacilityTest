@@ -20,7 +20,7 @@ try:
     from scripts.index_lane_c_incidents import index_sources, search_source, audit_multiyear_source_coverage
     from scripts.lane_c_review_candidates import build_review_candidates
     from scripts.lane_c_private_handoff import private_bundle
-    from scripts.lane_c_install import install, active_status, query
+    from scripts.lane_c_install import install, active_status, query, source_health
 except ModuleNotFoundError:  # direct script
     from probe_lane_c_sources import download
     from build_nrc_enriched import stage_nrc
@@ -28,7 +28,7 @@ except ModuleNotFoundError:  # direct script
     from index_lane_c_incidents import index_sources, search_source, audit_multiyear_source_coverage
     from lane_c_review_candidates import build_review_candidates
     from lane_c_private_handoff import private_bundle
-    from lane_c_install import install, active_status, query
+    from lane_c_install import install, active_status, query, source_health
 
 URLS = {
     "nrc": "https://nrc.uscg.mil/FOIAFiles/CY25.xlsx",
@@ -249,7 +249,14 @@ def run(output,*,private_bundle_dir=None,install_test_root=None):
                         if any(item["site_link_status"]!="candidate_only_not_matched" for item in sample["items"]):
                             raise ValueError("Unreviewed insured property promotion detected")
                         query_summaries[name]={"total":sample["total"],"read_only_query":"PASS"}
+                    health=source_health(install_root,
+                        repo_root=Path(__file__).resolve().parents[1])
+                    if (health["indexed_private_file_rows"]!=expected or
+                        health["source_namespaces"]!=len(inputs) or
+                        health["live_app_deployed_rows"]!=0):
+                        raise ValueError("Installed private source-health status/counts fail QA")
                     audit["private_installation_query_smoke"]={
+                        "machine_readable_private_source_health":"PASS",
                         "state":"TEMPORARY_PRIVATE_INDEX_INSTALL_AND_QUERY_VERIFIED",
                         "installation":installed["installation"],
                         "source_namespaces":len(query_summaries),
