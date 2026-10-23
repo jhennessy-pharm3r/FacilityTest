@@ -26,7 +26,9 @@ from .bi_scenarios import save_scenario,facility_scenarios as get_bi_scenarios
 from .storm_events import status as noaa_status, search as noaa_search, nearby_reviewed_facility
 from .source_sidecars import (status as source_index_status, frs_status, frs_search,
     frs_detail, noaa_index_status, noaa_connection, noaa_events,
+    incidentnews_index_status, incidentnews_connection, incidentnews_events,
     SourceIndexUnavailable)
+from .incident_news import nearby_reviewed_site as nearby_incidentnews_site
 from .universal_registry import import_records as import_universal_source
 from .universal_registry import (search as universal_search, detail as universal_detail,
     statistics as universal_stats, track_for_research as universal_track)
@@ -106,6 +108,40 @@ def site_noaa_events(facility_id:str,radius_km:float=Query(50,ge=1,le=100),
         raise HTTPException(503,'NOAA indexed source unavailable; no coverage conclusion') from exc
     except ValueError as exc:
         raise HTTPException(404,str(exc)) from exc
+
+
+@app.get('/api/noaa/incidentnews/status')
+def incidentnews_source_status():
+    return incidentnews_index_status()
+
+
+@app.get('/api/noaa/incidentnews')
+def incidentnews_source_events(q:str='',threat:str='',from_date:str='',to_date:str='',
+                               limit:int=Query(50,ge=1,le=100),
+                               offset:int=Query(0,ge=0,le=100000)):
+    try:
+        return incidentnews_events(q=q[:110],threat=threat[:80],
+                                   from_date=from_date[:10],to_date=to_date[:10],
+                                   limit=limit,offset=offset)
+    except SourceIndexUnavailable as exc:
+        raise HTTPException(503,'NOAA IncidentNews selected-spill source unavailable; no coverage conclusion') from exc
+    except ValueError as exc:
+        raise HTTPException(422,str(exc)) from exc
+
+
+@app.get('/api/facilities/{facility_id}/noaa-incidentnews')
+def facility_incidentnews_context(facility_id:str,
+                                  radius_km:float=Query(20,ge=1,le=100),
+                                  limit:int=Query(40,ge=1,le=100),
+                                  c=Depends(conn_dependency)):
+    try:
+        with incidentnews_connection() as source:
+            return nearby_incidentnews_site(c,source,facility_id,
+                                            radius_km=radius_km,limit=limit)
+    except SourceIndexUnavailable as exc:
+        raise HTTPException(503,'NOAA selective spill source not mounted or invalid') from exc
+    except ValueError as exc:
+        raise HTTPException(422,str(exc)) from exc
 
 
 @app.get('/api/insurance/coverage-types')
