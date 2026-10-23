@@ -18,6 +18,7 @@ from .db import get_db_path
 from .universal_registry import search as universal_search, detail as universal_detail
 from .storm_events import search as noaa_search
 from .incident_news import search as incidentnews_search, validate_manifest as validate_incidentnews_manifest
+from .lane_a_service import status as lane_a_source_status
 
 FRS_INDEX_ENV = "FACILITY_RISK_FRS_INDEX_PATH"
 FRS_QA_ENV = "FACILITY_RISK_FRS_INDEX_QA"
@@ -220,7 +221,8 @@ def incidentnews_index_status():
 def status():
     return {"frs": frs_status(), "noaa": noaa_index_status(),
             "incidentnews": incidentnews_index_status(),
-            "scope": "Read-only public-authority source catalogs, never insured properties or claims"}
+            "lane_a": lane_a_source_status(),
+            "scope": "Read-only public-authority source catalogs, not verified insured properties or claims"}
 
 
 @contextmanager
