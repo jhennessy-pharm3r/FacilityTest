@@ -45,6 +45,8 @@ def build_assessment(conn,facility_id):
     asset_inventory=list_property_assets(conn,facility_id)
     from .coverage_review import facility_policy_snapshot,compare_hazards_and_coverage
     policy_snapshot=facility_policy_snapshot(conn,facility_id)
+    from .bi_scenarios import facility_scenarios
+    bi_scenarios=facility_scenarios(conn,facility_id)
     coverage_crosswalk=compare_hazards_and_coverage(conn,facility_id)
     identifiers=detail['identifiers']
     verified_identifiers=[row for row in identifiers if row['status']=='verified']
@@ -99,6 +101,9 @@ def build_assessment(conn,facility_id):
                   ' stale or legacy screenings excluded. No insured loss or all-peril clearance is inferred'},
        'operations_and_bi':{'status':'research_profile' if profile else 'unassessed',
           'reason':'Operations, protection and downtime exposures are not insured values unless documented'},
+       'interruption_scenarios':{'status':'analyst_illustrations' if bi_scenarios['count'] else 'unassessed',
+          'reason':str(bi_scenarios['count'])+
+                   ' hypothetical interruption scenarios with unverified financial and restoration inputs; no insured recovery inferred'},
        'historical_outcomes':{'status':'retrospective_events' if events else 'unassessed',
           'reason':'Known cases are retrospective, not predictive validation; absence of cases is not absence of losses'},
        'insurance_terms':{'status':'document_reviewed_terms' if policy_snapshot['document_reviewed_current_terms_count'] else 'unassessed',
@@ -150,6 +155,7 @@ def build_assessment(conn,facility_id):
       'physical_assets':asset_inventory,
       'insurance_policy_review':policy_snapshot,
       'hazard_coverage_crosswalk':coverage_crosswalk,
+      'interruption_scenarios':bi_scenarios,
       'evidence':source_evidence,
       'evidence_total':source_evidence_total,
       'evidence_displayed':len(source_evidence),
@@ -260,6 +266,75 @@ def render_assessment_html(report,*,private_backend=False):
         lambda x:'<tr><td>'+e(x['peril'])+'</td><td>'+e(x['status'])+
              '</td><td>'+e(x['current_source_rows'])+'</td><td>'+
              e(x['interpretation'])+'</td></tr>')
+    interruption_rows=rows(report.get('interruption_scenarios',{}).get('scenarios',[]),
+        lambda x:'<tr><td>'+e(x['scenario_name'])+'</td><td>'+e(x['interruption_cause'])+
+          ' / '+e(x['affected_dependency'])+'</td><td>'+
+          e(x['illustration']['equivalent_lost_operating_days'])+'</td><td>
+          lambda asset:'<tr><td>'+e(asset['asset_type'])+'</td><td>'+e(asset['name'])+
+          '</td><td>'+e(asset['address'])+'</td><td>'+e(asset['status'])+
+          '; point '+e(asset['coordinate_quality'])+'</td></tr>')
+    actions=''.join('<li>'+e(a)+'</li>' for a in report['recommended_actions']) or '<li>No additional actions listed</li>'
+    cautions=''.join('<li>'+e(x)+'</li>' for x in report['interpretation'])
+    return ('''<!doctype html><html lang="en"><head><meta charset="utf-8">
+<title>Facility Evidence Assessment</title><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>body{font-family:Arial,sans-serif;color:#22343b;margin:32px auto;max-width:1000px;padding:0 20px}
+h1{margin-bottom:4px}h2{border-bottom:1px solid #cfd9d8;padding:9px 0;font-size:18px}
+small,.muted{color:#526668}header{border-top:6px solid #517d7a;padding-top:18px}
+table{border-collapse:collapse;width:100%;font-size:13px}td,th{padding:10px;text-align:left;
+border-bottom:1px solid #dee5e4;vertical-align:top}th{background:#edf4f2}
+p{line-height:1.6}.tag{font-weight:700;color:#8b4b3a}.columns{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+a{color:#245c61}section{break-inside:avoid}ul{line-height:1.65}
+@media print{body{max-width:none;margin:0;padding:0}a{color:#22343b}.columns{display:block}}
+</style></head><body><header><small>PHARM3R · PRIVATE RESEARCH</small><h1>Facility Evidence Assessment</h1>''' +
+'<p><strong>'+e(site['name'])+'</strong> — '+e(site['company'] or '')+'</p>'+
+'<p>'+e(site['address'] or '')+' | '+e(site['country'] or 'Country not established')+'</p>'+
+'<p class="muted">Generated '+e(report['generated_at'])+' UTC · '+e(report['evaluation'])+
+' · No loss probability or premium rating</p></header>'+
+'<h2>Evidence coverage</h2><table><thead><tr><th>Dimension</th><th>Status</th><th colspan="2">Basis</th></tr></thead><tbody>'+coverage+'</tbody></table>'+
+'<div class="columns">'+sections+'</div>'+
+'<h2>Physical site and building inventory</h2>'+
+'<p class="muted">Site source observations and reviewed asset identities are not verified building-level hazard geocodes or confirmed insured location schedules.</p>'+
+'<table><tr><th>Asset class</th><th>Reported name</th><th>Address</th><th>Identity / coordinate status</th></tr>'+asset_rows+'</table>'+
+'<h2>Catastrophe peril-by-peril evidence coverage</h2>'+
+'<p class="muted">One flood or earthquake lookup does not complete catastrophe assessment. Every unassessed/unmapped peril remains unknown.</p>'+
+'<table><tr><th>Peril</th><th>Source-screening status</th><th>Current source rows</th><th>Interpretation</th></tr>'+peril_rows+'</table>'+
+'<h2>Physical hazard screening</h2><table><tr><th>Peril</th><th>Status</th><th>Description</th><th>Reference</th></tr>'+hazards+'</table>'+
+'<h2>Illustrative operational interruption scenarios</h2>'+
+'<p class="muted">These are analyst assumptions, not observed insured losses or adjusted claims. Do not sum repair, spoilage or other components without checking overlap. Only loss of contribution margin is illustrated.</p>'+
+'<table><tr><th>Scenario</th><th>Cause / dependency</th><th>Equivalent lost days</th><th>Illustrative margin loss</th></tr>'+interruption_rows+'</table>'+
+'<h2>Insurance contracts and coverage review</h2>'+
+'<p class="muted">Independent wording review is not proof of payout or a coverage guarantee. Excluded terms do not count as available insurance protection. Review the scheduled insured location, exclusions and endorsements.</p>'+
+'<table><tr><th>Policy</th><th>Coverage type</th><th>Review state</th><th>Contract details / evidence reference</th></tr>'+policy_table+'</table>'+
+'<h2>Property hazard and documented coverage crosswalk</h2>'+
+'<table><tr><th>Screened hazard</th><th>Potential coverage</th><th>Evidence status</th><th>Reference / scope</th></tr>'+crosswalk_table+'</table>'+
+'<h2>Source-linked findings ('+e(report['evidence_total'])+')</h2>'+
+('<p><a href="/api/facilities/'+quote(str(site['id']),safe='')+
+ '/evidence.csv">Download complete private evidence CSV</a></p>'
+ if private_backend else '')+
+('<p class="muted">Only '+e(report['evidence_displayed'])+' of '+e(report['evidence_total'])+
+' findings appear in this report preview. Export the complete evidence table for full review.</p>'
+ if report['evidence_export_limited'] else '')+
+'<table><tr><th>Source</th><th>Raw date</th><th>Finding</th><th>Evidence</th></tr>'+evidence+'</table>'+
+'<p>Unverified regulatory observations: '+e(len(report['regulatory_observations']))+
+'. Nearby-event candidates are excluded from confirmed site evidence.</p>'+
+'<h2>Remaining research</h2><ul>'+actions+'</ul>'+
+'<h2>Interpretation and limitations</h2><ul>'+cautions+'</ul>'+
+'<footer><small>This source assessment is not an insurance rating, safety certification or liability determination.</small></footer>'+
+'</body></html>')
+
+def export_assessment(conn,facility_id,output):
+    report=build_assessment(conn,facility_id)
+    file=Path(output).expanduser().resolve()
+    if file.suffix.lower() not in ('.html','.htm'):
+        raise ValueError('Use an .html output file to keep the report printable')
+    file.parent.mkdir(parents=True,exist_ok=True)
+    file.write_text(render_assessment_html(report),encoding='utf-8')
+    return {'status':'exported_private_assessment','facility_id':facility_id,
+            'path':str(file),'evidence_count':report['evidence_total'],
+            'risk_score':None,'bytes':file.stat().st_size}
++
+          e(x['illustration']['illustrative_lost_contribution_margin_usd'])+
+          ' (unverified, not insurer recovery)</td></tr>')
     asset_rows=rows(report.get('physical_assets',{}).get('assets',[]),
           lambda asset:'<tr><td>'+e(asset['asset_type'])+'</td><td>'+e(asset['name'])+
           '</td><td>'+e(asset['address'])+'</td><td>'+e(asset['status'])+
