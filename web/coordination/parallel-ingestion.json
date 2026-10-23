@@ -6,7 +6,7 @@
   "purpose": "Reviewed public metadata for source-level QA by independent lane; staging and counts do not mean these records are available in the production facility-risk service.",
   "caveats": [
     "Each row represents a distinct official-source table, reported notification, chemical form, county observation, wildfire pixel or publisher aggregate. Do NOT sum accepted counts as unique facilities, accidents, outages or insured claims.",
-    "Lane A source package PR #75 has been merged into main and verified against a private API in CI, but is NOT durably installed on a hosted authenticated service. Lanes B–D retain separate coordinator review. Production deployed and independently approved physical-site matches = 0 for the new Lane A–D streams.",
+    "Lane A #75 and full-raster #88 ingestion source packages are merged; original USDA whole-country 270m native source files have now been fully downloaded+audited within temporary CI, not mounted on a permanent authenticated production backend. The six original file counts are not modeled cell, hazard-event, property, or unique physical facility counts. Other lanes remain independently coordinated. New-source production hosted records and approved insured-site matches remain 0.",
     "Some source products overlap (e.g., ORNL current snapshots and mirrors, NRC/CSB match candidates, CSB quarterly revisions). Never deduplicate or join them into a verified event or site without manual independent evidence.",
     "Source blocks (PHMSA original incident data, SEC original filings, restricted RMP plans) and geographic/snapshot gaps mean UNKNOWN coverage, not zero risk.",
     "Identity, location accuracy, policy coverage, damage, financial impact and paid insurance claims require separate verifiable evidence before underwriting use."
@@ -16,7 +16,7 @@
       "id": "A",
       "name": "Flood and wildfire",
       "pr_url": "https://github.com/jhennessy-pharm3r/FacilityTest/pull/75",
-      "gate": "Lane A code merged; source-only read-only FastAPI queries validated against the actual 34 FEMA polygons, 70+70 USFS QA pixels and 35,304 publisher geographic-summary rows. No persistent authenticated host installed, no nationally complete polygon/raster corpus, no independently approved facility intersections or claims. Missing site exposure remains UNKNOWN.",
+      "gate": "All six official USFS WHP2023 classified/continuous original native 270m rasters (CONUS/AK/HI) have now been fully downloaded, independently SHA-audited and sampled from a temporary read-only release: 133,505,015 valid modeled pixels per raster product and 168,553,707 masked cells. Full FEMA NFHL geometry remains unavailable nationwide (34 polygon QA cohort). Private permanent authenticated host, approved physical-property matches, map effective dates and insurer losses remain 0/unverified.",
       "sources": [
         {
           "id": "fema_nfhl",
@@ -81,6 +81,22 @@
           "run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39985452864",
           "source_sha256": "1008b6d10c3635c6549dba3d1893381c2e6ed266c59b5fe8648cf5a6dea4b185",
           "notes": "National publisher administrative source (not full 270m wildfire raster). 60 ZIP areas lack acreage and remain unknown; ZIP areas are not insured properties. Source ingestion code merged in PR #75; production authenticated host not deployed."
+        },
+        {
+          "id": "usfs_whp2023_six_national_tiffs",
+          "name": "USFS WHP2023 complete original national native GeoTIFFs",
+          "scope": "Six distinct original 270m GeoTIFF source files across CONUS/Alaska/Hawaii (continuous + classified). 133,505,015 valid modeled source cells per product, 168,553,707 masked/nodata cells per product; not physical sites.",
+          "stage": "ci_indexed",
+          "scanned": 6,
+          "accepted": 6,
+          "rejected": 0,
+          "indexed_ci": 6,
+          "deployed": 0,
+          "verified_insured_sites": 0,
+          "valid_coordinates": null,
+          "run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/40008808882",
+          "source_sha256": "7f10f1f8dd97551b8be1458fe0ec924df60b2cea7ece2d1af4c3c1166d1895ab",
+          "notes": "Full first-party original USDA source ZIP 368,424,961 bytes; exactly six original georeferenced raster files accepted. Full pixel category/mask census + native sample reads independently passed; original ZIP and TIFFs installed into disposable content-addressed private runner release, NOT into durable server. Mask codes 6/7 and nodata do not assert low fire risk; WHP2023 is landscape relative hazard reflecting largely 2020 fuels, not current fire forecasting or insured loss. PR #88 merged; no independently reviewed insured-site matches."
         }
       ]
     },

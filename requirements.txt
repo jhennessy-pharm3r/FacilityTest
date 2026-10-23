@@ -3,3 +3,6 @@ uvicorn>=0.31,<1
 openpyxl>=3.1,<4
 requests>=2.32,<3
 pycountry>=24.6,<26
+# Original USDA WHP2023 native 270m GeoTIFF read-only support (CONUS/AK/HI)
+rasterio>=1.4,<2
+numpy>=1.26,<3

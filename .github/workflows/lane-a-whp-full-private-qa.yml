@@ -1,0 +1,64 @@
+name: Lane E - authenticated original full USDA wildfire raster source API
+on:
+  workflow_dispatch:
+  push:
+    branches: [integrate/lane-a-whp-full-private-20261023]
+    paths:
+      - facilityrisk/app.py
+      - facilityrisk/source_sidecars.py
+      - facilityrisk/lane_a_national_whp.py
+      - scripts/smoke_lane_a_whp_private_api.py
+      - scripts/smoke_lane_a_whp_private_browser.py
+      - scripts/lane_a_whp_full_raster.py
+      - web/intelligence-ui.js
+      - .github/workflows/lane-a-whp-full-private-qa.yml
+permissions:
+  contents: read
+jobs:
+  real-source-raster-API:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install entire application dependencies, including geospatial source reader
+        run: python -m pip install -r requirements-dev.txt
+      - name: Download+SHA-pin official 368MB original USDA six-raster WHP2023 publication and independently audit all pixels
+        run: |
+          python -m scripts.lane_a_whp_full_raster --root "$RUNNER_TEMP/private-source-whp2023" \
+            --expected-sha256 7f10f1f8dd97551b8be1458fe0ec924df60b2cea7ece2d1af4c3c1166d1895ab \
+            --full-audit | tee lane-a-full-publisher-ingest.txt
+      - name: Inspect real original WHP 270m source by authenticated FastAPI and revocable research site-point evidence
+        env:
+          FACILITY_RISK_DB: ${{ runner.temp }}/lane-a-full-whp-test-workspace.sqlite
+          FACILITY_RISK_REQUIRE_AUTH: "1"
+          FACILITY_RISK_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          export FACILITY_RISK_WHP2023_RASTER_ROOT="$RUNNER_TEMP/private-source-whp2023"
+          python -m scripts.smoke_lane_a_whp_private_api | tee lane-a-full-whp-auth-api.txt
+      - name: Install Chromium for authenticated private original-raster UI QA
+        run: |
+          python -m pip install 'playwright>=1.54,<2'
+          python -m playwright install --with-deps chromium
+      - name: Browser-check actual mounted model pixel source and facility coordinate revocation
+        env:
+          FACILITY_RISK_DB: ${{ runner.temp }}/lane-a-full-whp-browser-workspace.sqlite
+          FACILITY_RISK_REQUIRE_AUTH: "1"
+          FACILITY_RISK_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          export FACILITY_RISK_WHP2023_RASTER_ROOT="$RUNNER_TEMP/private-source-whp2023"
+          python -m scripts.smoke_lane_a_whp_private_browser | tee lane-a-full-whp-private-browser.txt
+      - name: Preserve independent original-download and private API evidence, NO raw insured sites or raster data distributed
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-a-whp-full-original-private-api-source-only-qa
+          path: |
+            lane-a-full-publisher-ingest.txt
+            lane-a-full-whp-auth-api.txt
+            lane-a-full-whp-private-browser.txt
+            /tmp/facility-lane-a-original-whp-browser.png
+          retention-days: 14
+          if-no-files-found: warn

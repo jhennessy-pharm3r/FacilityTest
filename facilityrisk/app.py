@@ -29,6 +29,8 @@ from .source_sidecars import (status as source_index_status, frs_status, frs_sea
     incidentnews_index_status, incidentnews_connection, incidentnews_events,
     SourceIndexUnavailable)
 from .lane_d.private_api import router as lane_d_private_router, installed_status as lane_d_installed_status
+from .lane_a_national_whp import (status as full_whp_source_status,
+    reviewed_facility_whp as full_whp_reviewed_site, RasterSourceUnavailable)
 from .incident_news import nearby_reviewed_site as nearby_incidentnews_site
 from .lane_a_service import (status as lane_a_source_status, usda_geography as lane_a_usda_geography,
     fema_polygon as lane_a_fema_polygon, wildfire_qa_pixel as lane_a_qa_pixel,
@@ -118,6 +120,25 @@ def lane_a_facility_flood_evidence(facility_id:str,c=Depends(conn_dependency)):
         return lane_a_reviewed_site(c,facility_id)
     except LaneASourceUnavailable as exc:
         raise HTTPException(503,'Verified Lane A FEMA source index not mounted') from exc
+    except LookupError as exc:
+        raise HTTPException(404,str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(422,str(exc)) from exc
+
+
+@app.get('/api/lane-a/whp2023/full-status')
+def original_full_national_wildfire_status():
+    """Published 2023 270m source raster availability; independent of facility assessments."""
+    return full_whp_source_status()
+
+
+@app.get('/api/facilities/{facility_id}/usfs-whp2023')
+def reviewed_full_national_wildfire(facility_id:str,c=Depends(conn_dependency)):
+    """Only on the server's currently reviewed physical-site coordinate; no arbitrary client point."""
+    try:
+        return full_whp_reviewed_site(c,facility_id)
+    except RasterSourceUnavailable as exc:
+        raise HTTPException(503,'Full original USDA WHP2023 source GeoTIFF release missing or failed verification') from exc
     except LookupError as exc:
         raise HTTPException(404,str(exc)) from exc
     except ValueError as exc:
