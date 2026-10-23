@@ -37,9 +37,7 @@ jobs:
             test -n "$src" && test -s "$src"
             cp "$src" "$RUNNER_TEMP/epa_source_rmp/$file"
           done
-          sudo chown -R 10001:10001 "$RUNNER_TEMP/epa_source_rmp"
-          sudo chmod 750 "$RUNNER_TEMP/epa_source_rmp"
-          sudo chmod 440 "$RUNNER_TEMP/epa_source_rmp/"*
+          # Hash official files before sealing them for non-root UID 10001.
           python - <<'PY'
           import hashlib,json,os,pathlib
           root=pathlib.Path(os.environ["RUNNER_TEMP"])/"epa_source_rmp"
@@ -51,6 +49,9 @@ jobs:
                   for chunk in iter(lambda:f.read(1048576),b""):h.update(chunk)
               assert h.hexdigest()==m[key],(filename,"sha mismatch")
           PY
+          sudo find "$RUNNER_TEMP/epa_source_rmp" -maxdepth 1 -type f -exec chmod 440 {} +
+          sudo chown -R 10001:10001 "$RUNNER_TEMP/epa_source_rmp"
+          sudo chmod 750 "$RUNNER_TEMP/epa_source_rmp"
       - name: Build production Dockerfile (ensure merged Lane B package included)
         run: docker build --pull -t facilityrisk-epa-coordinator:test .
       - name: Start real container as non-root with read-only EPA publisher mount
@@ -81,7 +82,7 @@ jobs:
           test "$anon" = 401
           curl -fsS -H "Authorization: Bearer $CI_BEARER" \
              http://127.0.0.1:18765/api/epa/lane-b/status > "$RUNNER_TEMP/source_http_status.json"
-          id=$(python - <<'PY'
+          id=$(sudo python - <<'PY'
           import os,pathlib,sqlite3
           path=pathlib.Path(os.environ["RUNNER_TEMP"])/"epa_source_rmp"/"rmp_frs_public.sqlite"
           with sqlite3.connect(path) as con:
@@ -101,7 +102,7 @@ jobs:
              --data-urlencode "native_id=UNKNOWN" -H "Authorization: Bearer $CI_BEARER" \
              http://127.0.0.1:18765/api/epa/lane-b/echo/identity)
           test "$unavailable" = 503
-          python - <<'PY'
+          sudo python - <<'PY'
           import json,os,pathlib
           root=pathlib.Path(os.environ["RUNNER_TEMP"])
           statuses=json.loads((root/"source_http_status.json").read_text())
