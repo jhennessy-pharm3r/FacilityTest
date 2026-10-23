@@ -119,7 +119,7 @@ def published_catalogs(directory: Path):
 
 PUBLIC_INGESTION_STATES = {"staged_source_artifact", "imported_private_backend", "published_source_catalog"}
 # Only independently reviewed, non-personal aggregate manifests are admitted.
-PUBLIC_INGESTION_SOURCES = {"NOAA Storm Events Details"}
+PUBLIC_INGESTION_SOURCES = {"NOAA Storm Events Details", "NOAA IncidentNews Selected Spills"}
 
 
 def published_external_ingestions(directory: Path):
