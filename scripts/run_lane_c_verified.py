@@ -17,13 +17,13 @@ try:
     from scripts.probe_lane_c_sources import download
     from scripts.build_nrc_enriched import stage_nrc
     from scripts.build_csb_incidents import stage_csb
-    from scripts.index_lane_c_incidents import index_sources, search_source
+    from scripts.index_lane_c_incidents import index_sources, search_source, audit_multiyear_source_coverage
     from scripts.lane_c_review_candidates import build_review_candidates
 except ModuleNotFoundError:  # direct script
     from probe_lane_c_sources import download
     from build_nrc_enriched import stage_nrc
     from build_csb_incidents import stage_csb
-    from index_lane_c_incidents import index_sources, search_source
+    from index_lane_c_incidents import index_sources, search_source, audit_multiyear_source_coverage
     from lane_c_review_candidates import build_review_candidates
 
 URLS = {
@@ -208,6 +208,7 @@ def run(output):
             if (consolidated["total_indexed_ephemeral"] !=
                 audit["total_ephemeral_indexed_all_independent_cohorts"]):
                 raise ValueError("Consolidated index counts differ from separately checked source indices")
+            audit["nrc_geography_and_incident_year_audit"]=audit_multiyear_source_coverage(work/"lane-c-multiyear.sqlite")
             candidates=build_review_candidates(work/"lane-c-multiyear.sqlite")
             audit["cross_agency_review_candidates"]=candidates
             audit["consolidated_multi_year_index"]={
@@ -250,6 +251,7 @@ def run(output):
             "total_ephemeral_indexed":audit.get("total_ephemeral_indexed_all_independent_cohorts"),
             "consolidated_index":audit.get("consolidated_multi_year_index"),
             "cross_agency_review_candidates":audit.get("cross_agency_review_candidates"),
+            "nrc_geography_and_incident_year_audit":audit.get("nrc_geography_and_incident_year_audit"),
             "deterministic":audit.get("deterministic_repeated_sha256"),
             "phmsa":audit["phmsa"],
             "blocked_items":audit["blocked_items"],
