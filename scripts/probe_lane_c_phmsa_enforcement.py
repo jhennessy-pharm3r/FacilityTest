@@ -16,6 +16,10 @@ from pathlib import Path
 import tempfile
 from urllib.parse import urlsplit
 import requests
+try:
+    from scripts.build_phmsa_enforcement import build,index_cases
+except ModuleNotFoundError:
+    from build_phmsa_enforcement import build,index_cases
 
 URL = "https://primis.phmsa.dot.gov/enforcement-documents/PHMSA%20Pipeline%20Enforcement%20Raw%20Data.txt"
 SOURCE = "PHMSA Pipeline Enforcement Raw Data, Work Management System 2026-10-02"
@@ -124,7 +128,18 @@ def main():
             audit["downloaded_bytes"]=size
             audit["sha256"]=sha
             audit["content"]=inspect(path)
-            audit["state"]="OFFICIAL_ENFORCEMENT_SOURCE_DOWNLOADED_AND_SCHEMA_INSPECTED_NOT_PIPELINE_INCIDENT_CENSUS"
+            normalized=Path(directory)/"enforcement-case-rows.csv.gz"
+            manifest=args.output/"phmsa-enforcement-normalization.json"
+            staged=build(path,normalized,manifest,minimum_rows=1000)
+            if staged["raw_sha256"]!=sha or staged["raw_nonempty_rows"]!=audit["content"]["observed_nonempty_rows"]:
+                raise ValueError("PHMSA first-party raw SHA/row inventory mismatch")
+            indexed=index_cases(normalized,manifest,Path(directory)/"phmsa-enforcement-index.sqlite")
+            if indexed["source_case_rows"]!=staged["accepted_case_rows"]:
+                raise ValueError("PHMSA normalized/indexed source-case reconciliation failed")
+            audit["normalized_case_rows"]=staged["accepted_case_rows"]
+            audit["rejected_case_rows"]=staged["rejected_case_rows"]
+            audit["ephemeral_enforcement_index"]=indexed
+            audit["state"]="OFFICIAL_ENFORCEMENT_CASES_CONTENT_VALIDATED_INDEXED_EPHEMERAL_NOT_INCIDENT_CENSUS"
         except Exception as exc:
             audit["state"]="BLOCKED_OR_SCHEMA_UNVERIFIED"
             audit["error"]=type(exc).__name__+": "+str(exc)[:350]
