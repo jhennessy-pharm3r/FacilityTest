@@ -2,6 +2,53 @@
 
 **Scope:** all industries and all facility types. Isolated ingestion modules; no shared application, canonical site registry, report UI, or Source Health edits. Dedicated draft PR #77, coordinated in issue #73. All numbers below are **observed from real official-source GitHub Actions runs** on 2026-10-23, not synthetic test fixtures. All datasets are still **nonproduction staging**.
 
+## Current Lane E handoff — real source ingestion, read-only queries and unresolved deployment (2026-10-23)
+
+**Source intake has been content-validated, but Lane D is PARTIALLY VALIDATED / NOT DEPLOYED.** All numbers below are original **source-observation grain**, not unique physical facilities, insured outage events or paid claims. Every source has an original URL/vintage, publisher-specific IDs, accepted/rejected ledger and original archive/document SHA-256. Do not sum these streams across sources, across duplicate rows, or across ODIN snapshots.
+
+| Original publisher source and grain | Actual downloaded source rows/documents | Normalized / accepted source observations | Rejected | Temporary source SQLite indexed | Durable backend / application deployed |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| EIA-861 2025 utility reliability/state/county source rows | 12,926 rows | 12,923 | 3 | 12,923 | 0 / 0 |
+| EIA Electric Power Monthly 2023 annual plus partial 2024 disturbances | 230 publisher table rows | 230 | 0 | 230 | 0 / 0 |
+| DOE/PNNL 2014–2023 historical outage research table rows | 2,124,183 | 2,124,183, of which **277,360 literal same-table row repeats flagged** | 0 | 2,124,183 | 0 / 0 |
+| ORNL **direct** first-party county-status feed, 17:53 UTC public snapshot | 484 source status rows | 484 (2 exact repeats flagged) | 0 | 484 | 0 / 0 |
+| ORNL OpenEnergyHub **mirror**, separately observed 15:42 UTC snapshot | 424 separate mirror status rows | 423 | 1 invalid timestamp | 423 | 0 / 0 |
+| ORNL direct participating utility feed statuses at 16:18 UTC | 157 utility feed records | 157 | 0 | 157 | 0 / 0 |
+| Baxter North Cove first-party issuer press releases | 3 dated source HTML documents | 3 publication observations covering **one** issuer-reported storm interruption | 0 | 3 | 0 / 0 |
+| Crane Marion first-party issuer financial reports | 2 publisher PDF documents (2024 FY/2025 Q2) | 7 typed financial facts, **one** underlying storm event | 0 | 7 | 0 / 0 |
+| Pebblebrook LaPlaya first-party investor results | 2 publisher HTML documents (2024 FY/2025 FY) | 5 typed financial facts, **two** issuer-reported storm/event groups | 0 | 5 | 0 / 0 |
+| SEC EDGAR directly hosted filing documents | 0 (official archive HTTP 403 from authorized CI) | 0 | Not an ingested source; blocked | 0 | 0 / 0 |
+
+**Source-specific multiplicity:** PNNL has 1,385,389 merged county outage episode observations, **none literal same-table duplicated**; across all 50 historical CSVs 277,360 source-content duplicates and 1,846,823 distinct source-table row contents (not unique events). The PNNL 8h and 24h correlation variants are alternate relationships. ORNL **direct** and **mirror** are overlapping distributions of active county outage status, and *individual snapshots may gain/lose rows over minutes*: never add 484 + 423, nor accumulate a fresh ODIN snapshot as independent historic outages. ORNL participant statuses are utility *feed health*, not property or outage counts: **10 of 157 source feeds reported error flags**. Current source-provider candidates such as 15 EIA utilities in WA/Pierce are county/utility reporting context, not an automatic physical property service connection.
+
+### Verified financial evidence by interpretation, NOT a common insured-loss denominator
+
+- **Crane manufacturing, Marion, NC:** original 2024 10-K issuer PDF (111 pages; SHA-256 \`0fdecf744b2a414316322de37ee5a7288e8932e617a3394a4372f5a5a02da546\`) and 2025 Q2 10-Q (47 pages; SHA-256 \`e759a4eb321ff90387de6d69ed6f370cf9db4a1ffe2085b211922fe5704b4bde\`) are source-authentic original public issuer links distributed on its recognized Q4 CDN. **$4.0m issuer-reported *received insurance proceeds for lost profits* in 2025 Q2**. Separately source-reported FY2024 $23.3m site remediation/damage expenses, $20.0m hurricane recoveries and $2.8m receivable; through 2025 Q2 cumulative $29.1m damage expenses, $25.0m recoveries and a $3.6m receivable. **Receivable balances and cumulative recoveries are not additive across fiscal statements**. Source check [run 39988125741](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39988125741) PASS.
+- **Pebblebrook hospitality, LaPlaya Beach Resort & Club, Naples, FL:** official issuer FY2024 results source (HTML SHA-256 \`033d6905706683e5bbe28ad2a30e32a5907bb5ca00bc3d6cb245048081fe5523\`) includes **$23.8m Hurricane Ian-related recognized BI insurance income for 2024**, of which the $5.4m fourth-quarter increment is included in the FY total; and historic separate 2023 amount $33m. Source FY2025 results (HTML SHA-256 \`b9d27363b9172a45f17980f99a9a2ee8a3d66f0876ed125e551a191c24d7c61b\`) report **$12.7m FY2025 Helene/Milton-related recognized BI insurance income**, of which $3.1m Q4 is included. These are recognized-accounting-income disclosures, **not independently corroborated insurer cash paid**. [Run 39988412370](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39988412370) PASS.
+- **Baxter North Cove, NC:** three issuer release documents, one event; a November 2024 prospective **~$200m company-wide 2024-Q4 negative sales outlook** was published at that time. This was a **forward sales forecast**, not verified realized site profits lost, incurred insured loss, actual electric outage or paid claim. Source case [run 39982196570](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39982196570) PASS.
+
+**First-party issuer facts are not independent insurance carrier confirmations.** Verified original-source receipt and accounting classification do not independently prove insurer policy terms, payment confirmation, or a property/meter match. Verified carrier paid-claim records **0**; independently confirmed site utility outage **0**; verified site utility-meter associations **0**; persistent backend indexed **0** and client app data deployed **0**.
+
+### Tested coordinator-ready read-only staging contracts
+
+1. \`facilityrisk/lane_d/query_staging.py\`: independently reviewed five-digit county FIPS; historical PNNL source episodes or **one** ORNL active county distribution, never both official ODIN direct and OpenEnergyHub mirror simultaneously. Direct feed query filters only *literal exact repeated same-snapshot source rows*, returns original native EIA-authority utility identifiers and nullable MRIDs, does not infer provider-to-building link. Real direct publisher SQLite integration [run 39998825287](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39998825287) PASS: source county \`48201\`, 62 original public status rows, 2 literal repeats withheld, 60 separate source-only findings, zero insured-site assertions.
+2. \`facilityrisk/lane_d/query_eia_service_territory.py\`: exact EIA native state + county-text candidate lookup, preserving all 15 utility entities for WA/Pierce and 4 for AK/Aleutians East. Original EIA SHA/native provider evidence; no street, meter or feeder inference.
+3. \`facilityrisk/lane_d/audit_native_eia_ids.py\`: source-authority utility-ID crosswalk only, not a facility-site crosswalk. In [2026-10-23 source snapshot run 39986392193](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39986392193), 77 of 86 **then-observed** ORNL source utility IDs exactly matched EIA 2025; nine absent and 12 publisher-name disagreement candidates flagged. Numbers are snapshot-specific, not permanent coverage.
+4. \`facilityrisk/lane_d/query_issuer_bi_context.py\`: bounded, read-only Crane/Pebblebrook financial evidence retriever by **explicit issuer/event key**; retains accounting periods, annual/quarter inclusion, original document SHA and source categories. Real first-party downloader + two separate original-source indexes + query [run 39998559740](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39998559740) **PASS**: 4 authentic issuer documents, **12** typed indexed financial observations and provenance SHA across two companies; explicitly **0** independently confirmed carrier paid-claims or site power outages. [Short-retention safe receipt artifact 12520428472](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39998559740/artifacts/12520428472).
+
+Reproducible staging commands:
+
+\`\`\`bash
+python -m facilityrisk.lane_d.ingest_odin_direct --output /private/lane-d/direct-current
+python -m facilityrisk.lane_d.ingest_crane_bi_pdf --output /private/lane-d/crane --min-sources 2
+python -m facilityrisk.lane_d.ingest_pebblebrook_bi --output /private/lane-d/pebblebrook --min-sources 2
+python -m facilityrisk.lane_d.query_staging --fips 48201 --odin-direct-db /private/lane-d/direct-current/odin_direct_county_staging.sqlite
+python -m facilityrisk.lane_d.query_issuer_bi_context --crane-db /private/lane-d/crane/crane_issuer_financial_staging.sqlite --pebblebrook-db /private/lane-d/pebblebrook/issuer_bi_income_staging.sqlite
+\`\`\`
+
+**Coordinator Lane E still owns deployment:** independently approved property-to-utility service evidence, site coordinate/address review, authenticated persistent server and source file storage with backups, query benchmarking, licensed ORNL redistribution, tenant isolation, shared Source Health/UI status labels and release smoke. CI artifacts are expiring staging only. SEC official archive returned 403; issuer-public filing PDFs are separate first-party distributions and have NOT been misrepresented as SEC EDGAR-origin files. No direct changes by Lane D to shared app, other lanes or \`main\`; PR #77 remains draft/unmerged.
+
+
 ## Data types and permissible interpretation
 
 | Evidence class | Primary source | What it can establish | What it cannot establish |
@@ -10,7 +57,7 @@
 | State reliability averages | Same, `State Totals` worksheet | Published state-level context under source methods | A site observation or comparable facility risk score |
 | Provider/service-territory *candidates* | Same, `Service_Territory_2025.xlsx` | Utility's reported county presence by native utility ID and original county/state | Exclusive franchise/actual metered service to a particular site; verified site geography |
 | Major grid disturbances | [EIA EPM Table B.1](https://www.eia.gov/electricity/monthly/epm_table_grapher.php?t=epmt_b_1) and [B.2](https://www.eia.gov/electricity/monthly/epm_table_grapher.php?t=epmt_b_2), based on DOE-417 | Date/time, reported utility, affected area, reported disturbance type, service loss category, estimated customers, source table | Verified outage at particular insured site, precise start/end of its downtime, insurance losses or a comprehensive national customer outage census |
-| Source financial disclosures | SEC issuer filings and official investor reports; **source access probed, blocked by HTTP 403 in CI** | Dated source-attributed issuer disclosure, specific named site/event if actually stated, measured versus forecast financial impact and separately stated insurance proceeds | A third-party property claim or insured BI amount without explicit evidence and proper time/denominator context |
+| Financial interruption source disclosures | Crane and Pebblebrook first-party issuer PDFs/results **ingested and validated**; Baxter releases validated; SEC **original EDGAR archive remains HTTP 403** | Dated first-party site/event claims; distinctly reported insurance proceeds received, recognized BI income, forward sales forecasts, outstanding receivables | Independent insurer payment validation, policy coverage limits/wording, confirmed site electricity outage or insured physical-site crosswalk |
 
 EIA DOE-417-derived **EPM Table B.1 is a partial 2024 table**, not a full year. Table B.2 is the published 2023 annual cohort. Neither publishes a native stable event ID; ingestion creates a **derived source-row key** consisting of URL/table/source row/raw values. Preserve no-native-ID status; never present a derived key as an official incident number.
 
