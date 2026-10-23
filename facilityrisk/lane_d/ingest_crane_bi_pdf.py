@@ -116,7 +116,7 @@ def financial_facts(case: dict, section: str) -> list[dict]:
 def parse_pages(case: dict, pages: list[str], raw_document_sha: str):
     if not 10<=len(pages)<=250:
         raise ValueError("Unexpected issuer financial report page count")
-    cover=normalized_text(" ".join(pages[:2]))
+    cover=normalized_text(pages[0])
     affirm(cover, r"\bCRANE\s+COMPANY\b", "Crane issuer cover")
     affirm(cover, re.escape(case["title_anchor"]), "10-K/10-Q legal form")
     affirm(cover, re.escape(case["period_anchor"]), "filing period")
@@ -199,7 +199,7 @@ def fetch_pdf(case:dict):
 def run(out:Path,cases:list[dict]|None=None,min_sources:int=2):
     out=Path(out);out.mkdir(parents=True,exist_ok=True)
     cases=SOURCE_DOCS if cases is None else cases
-    accepted=[],receipts=[],failed=[]
+    accepted,receipts,failed=[],[],[]
     for case in cases:
         try:
             facts,receipt=fetch_pdf(case)
