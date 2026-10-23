@@ -46,3 +46,17 @@ Actual publisher downloads on the 2026-10-23 GitHub-hosted runner, **not synthet
 Run and provenance: https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39971177311; source metadata artifact ID `12509755805`. **Raw XLSX files are not published as GitHub artifacts**, to avoid copying source row-level personal information into public build outputs. A later probe version exposes actual worksheet nonempty row counts and headers in job logs, but worksheet counts must not be called distinct incidents without checking native report keys and grain. No verified accepted/rejected *real incident records*, indexed records or production deployments are claimed at this point.
 
 This live evidence supersedes the earlier note that source download was unavailable *locally*: GitHub CI has real internet access for NRC/CSB, but PHMSA currently refuses the runner.
+
+## NRC actual normalized run — GitHub Actions 39971717294
+
+Official `CY25.xlsx`, `INCIDENT_COMMONS` source table, immutable source ID `SEQNOS`, incident datetime `INCIDENT_DATE_TIME`:
+
+- Raw observed source rows **21,533**
+- Normalized and checksum-validated records **21,533**
+- Rejected **0**; duplicate source IDs **0**
+- Missing normalized coordinates **21,533** (publisher uses split degrees/minutes/seconds/hemisphere fields; the first implementation did **not** silently guess geographic points)
+- Normalized gzip SHA-256: `41e85052f2944ce3b54c20510c3ca7547f56a9019f77d651c1829eff4a10c1b9`
+- Stage `STAGED_AND_CONTENT_VALIDATED_NOT_INDEXED`; private searchable index and deployed app **not done**.
+- Verified run: https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39971717294
+
+Rows are **source-reported NRC notifications**, initially unverified. A zero duplicate count applies to that exact workbook master table, not to cross-year or cross-agency real-world event de-duplication.
