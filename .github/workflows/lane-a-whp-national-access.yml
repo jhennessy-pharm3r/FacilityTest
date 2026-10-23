@@ -31,7 +31,7 @@ jobs:
                           data=response.read(4096)
                           result[method]["actual_bytes_read"]=len(data)
                           result[method]["zip_magic"]=data[:4].hex()
-                          result[method]["valid_zip_header"]=data[:4]==b"PK\\x03\\x04"
+                          result[method]["valid_zip_header"]=data[:4]==bytes((0x50,0x4b,0x03,0x04))
               except Exception as exc:
                   result[method]={"error_type":type(exc).__name__,"error":str(exc)[:800]}
           from pathlib import Path
