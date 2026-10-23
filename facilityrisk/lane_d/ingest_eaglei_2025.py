@@ -122,7 +122,7 @@ def run(csv_path,meta_path,out,allow_fixture=False):
                  WHEN length(trim(coalesce(state,'')))=0 THEN 'missing_state'
                  WHEN NOT regexp_full_match(coalesce(customers_out,''),'[0-9]+') THEN 'invalid_customer_count'
                  ELSE 'invalid_or_out_of_2025_utc_time' END AS reject_reason
-             FROM original_rows WHERE NOT ("""+validated+")")
+             FROM original_rows WHERE NOT COALESCE(("""+validated+"), FALSE)")
         accepted=db.execute("SELECT COUNT(*) FROM readings").fetchone()[0]
         rejected=db.execute("SELECT COUNT(*) FROM rejected_original_rows").fetchone()[0]
         if scanned!=accepted+rejected or accepted==0:
