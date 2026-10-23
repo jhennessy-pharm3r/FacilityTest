@@ -11,6 +11,7 @@ Updated October 23, 2026. [PR #77](https://github.com/jhennessy-pharm3r/Facility
 | [EIA-861 final 2025](https://www.eia.gov/electricity/data/eia861/zip/f8612025.zip), utility reliability/state totals/county territory | 12,926 | 12,923 | 3 | 12,923 | 0 / 0 |
 | [EIA EPM Table B.1](https://www.eia.gov/electricity/monthly/epm_table_grapher.php?t=epmt_b_1), PARTIAL 2024 | 72 | 72 | 0 | 72 | 0 / 0 |
 | [EIA EPM Table B.2](https://www.eia.gov/electricity/monthly/epm_table_grapher.php?t=epmt_b_2), annual 2023 | 158 | 158 | 0 | 158 | 0 / 0 |
+| [DOE CESER OE-417 2023 annual discovery dataset](https://openenergyhub.ornl.gov/explore/dataset/oe-417-annual-summaries/), ORNL original public-domain publisher export | 341 | 341 | 0 | 341 | 0 / 0 |
 | [DOE/PNNL Event-correlated Outages 2014–2023](https://data.openei.org/files/6458/Outage_Dataset_R1.zip), 50 original CSVs | 2,124,183 | 2,124,183 | 0 | 2,124,183 | 0 / 0 |
 | [ORNL ODIN original /odi](https://odin.ornl.gov/odi), current county-only snapshot at 16:15 UTC | 558 | 558 | 0 | 558 | 0 / 0 |
 | [OpenEnergyHub ODIN mirror export](https://openenergyhub.ornl.gov/api/explore/v2.1/catalog/datasets/odin-real-time-outages-county/exports/json), a DIFFERENT 15:42 UTC snapshot of overlapping feed | 424 | 423 | 1 | 423 | 0 / 0 |
@@ -66,7 +67,20 @@ PNNL uses the same CLI, but a **successful latest** full-source Actions run and 
 | ORNL direct: odin_direct_county_staging.sqlite / source_observations (still source-only staging; publishing rights pending) | source_row_key, native MRID, county FIPS, EIA-authority utility ID, snapshot time, original row, duplicate flags | get_county_context(fips, odin_direct_db=..., limit=...), source-only; never combine mirror and direct snapshot |
 | Crane/Pebblebrook separate financial source indexes / source_financial_observations | evidence_key, issuer CIK, native report, source document SHA, accounting period, monetary type, event key | facilityrisk.lane_d.query_issuer_bi_context.get_issuer_bi_context(crane_db=..., pebblebrook_db=..., limit=...), no annual/quarter double count |
 
-**EIA-861 and PNNL** have complete independent GitHub artifact-transfer plus atomic installation/query acceptance runs; **ORNL direct public /odi** has isolated source-pinned atomic installation/query acceptance (without publishing a raw ODIN artifact pending rights review). Financial, legacy EPM, participant and mirror indexes remain independent staging/query contexts. None is approved for live production serving without coordinator storage/security and source-use gates.
+**EIA-861, PNNL and public-domain DOE OE-417 annual** have complete independent GitHub artifact-transfer plus atomic installation/query acceptance runs; **ORNL direct public /odi** has isolated source-pinned atomic installation/query acceptance (without publishing a raw ODIN artifact pending rights review). Financial, legacy EPM, participant and mirror indexes remain independent staging/query contexts. None is approved for live production serving without coordinator storage/security and source-use gates.
+
+### DOE CESER OE-417 public-domain 2023 annual source — artifact-to-index installation
+
+The publisher's original 2023 OE-417 discovery catalog contains **341 source rows, all accepted, zero rejected, zero exact duplicate source rows**; **309 have reported 2023 event start dates and 32 have unknown dates**. The original publisher records have **no native event ID** and only free-text affected area, without verified insured-site coordinates. These may **overlap the EIA EPM DOE-417-derived tables** above and must NEVER be added as independent emergency incidents or insured outages. The OpenEnergyHub original dataset metadata declares **Public Domain**. The approved distribution source SHA-256 is **5329d272544e9164692f08b34a5079d3f89a2095f1a77a8fa8dfca8923b06d18**, and the locally indexed 409,600-byte SQLite SHA-256 is **f7d13108d3ed9f0ee7bebfc7d152c20d2209b704ac395b68721257456f753957**.
+
+[Actual original data → schema and metadata license audit → normalized index → deterministic replay → artifact upload/download → atomic read-only installation/query, run #40001818924](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/40001818924) **PASS**. [Source-only SQLite handoff artifact 12522093009](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/40001818924/artifacts/12522093009), [install acceptance artifact](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/40001818924/artifacts/12523105614).
+
+    gh run download 40001818924 --repo jhennessy-pharm3r/FacilityTest -n lane-d-oe417-2023-public-domain-readonly-staging-index -D /secure/transfers/oe417
+    python -m facilityrisk.lane_d.install_source_index install --bundle /secure/transfers/oe417 --dest /srv/facilityrisk/private/sources/lane-d --dataset oe417_annual_public --source-sha256 5329d272544e9164692f08b34a5079d3f89a2095f1a77a8fa8dfca8923b06d18 --role private-backend-candidate
+    python -m facilityrisk.lane_d.install_source_index verify --dest /srv/facilityrisk/private/sources/lane-d --dataset oe417_annual_public
+    python -m facilityrisk.lane_d.install_source_index query --dest /srv/facilityrisk/private/sources/lane-d --dataset oe417_annual_public --year 2023 --limit 10
+
+The installer rejects changes to the original publisher-source SHA, license declaration, count/duplicate flags or SQLite SHA. An undated original event stays undated and queryable by the original annual-context adapter. **No insured-site outage, commercial claim, utility meter, or deployed app source is validated.**
 
 ### Native ORNL active county outage private-install test (rights gate still applies)
 
@@ -105,4 +119,4 @@ PNNL publisher OEDI page https://data.openei.org/submissions/6458 links to **CC 
 
 Detailed source sheets, member SHA, original rejections and CI links: [Lane D source ledger](lane_d_utility_reliability.md).
 
-**Release state: REAL OFFICIAL SOURCE + EIA AND PNNL ARTIFACT TRANSFER/READ-ONLY INSTALL/QUERY VALIDATED, PLUS FIRST-PARTY ORNL PRIVATE INSTALL SMOKE VALIDATED. Production backend/app deployed source rows = 0.**
+**Release state: REAL OFFICIAL SOURCE + EIA, PNNL AND DOE OE-417 PUBLIC-DOMAIN ARTIFACT TRANSFER/READ-ONLY INSTALL/QUERY VALIDATED, PLUS FIRST-PARTY ORNL PRIVATE INSTALL SMOKE VALIDATED. Production backend/app deployed source rows = 0.**
