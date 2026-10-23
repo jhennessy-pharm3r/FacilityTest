@@ -95,6 +95,39 @@ jobs:
               assert before==after, f"Non-deterministic normalized output: {name}"
               print(f"REPRODUCIBLE {name}: {before}")
           PY
+      - name: Create coordinator staging handoff digest after verified 2025 original-source audit
+        shell: bash
+        run: |
+          python - <<'PY'
+          import pathlib,hashlib,json,sqlite3
+          root=pathlib.Path("/tmp/facility-lane-d/normalized")
+          db=root/"lane_d_eia861_staging.sqlite"
+          m=json.loads((root/"manifest.json").read_text())
+          with sqlite3.connect("file:"+str(db)+"?mode=ro",uri=True) as c:
+              assert c.execute("PRAGMA integrity_check").fetchone()[0]=="ok"
+              rows=c.execute("SELECT COUNT(*) FROM source_observations").fetchone()[0]
+              assert rows==m["accepted"]==12923
+          h=hashlib.sha256(db.read_bytes()).hexdigest()
+          receipt={"source":"EIA861_2025","role":"SOURCE_ONLY_EPHEMERAL_STAGING",
+                   "original_zip_sha256":m["archive_sha256"],"original_zip_bytes":m["archive_bytes"],
+                   "local_index_sha256":h,"local_index_bytes":db.stat().st_size,
+                   "local_index_rows":rows,"durable_backend_indexed":0,"deployed":0,
+                   "publisher":"US Energy Information Administration",
+                   "caveat":"Do not infer a property's serving provider or outage; coordinator must verify and install on authenticated server."}
+          (root/"coordinator_handoff.json").write_text(json.dumps(receipt,indent=2)+"\n")
+          print(json.dumps(receipt))
+          PY
+      - name: Upload verified EIA-861 source-only SQLite for coordinator install review
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-d-eia861-2025-readonly-staging-index
+          retention-days: 3
+          compression-level: 3
+          if-no-files-found: error
+          path: |
+            /tmp/facility-lane-d/normalized/lane_d_eia861_staging.sqlite
+            /tmp/facility-lane-d/normalized/coordinator_handoff.json
+            /tmp/facility-lane-d/normalized/manifest.json
       - name: Publish safe manifest and schema inventory for peer validation
         if: always()
         uses: actions/upload-artifact@v4
