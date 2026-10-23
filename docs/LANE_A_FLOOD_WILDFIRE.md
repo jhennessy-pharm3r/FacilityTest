@@ -1,88 +1,122 @@
-# Lane A — FEMA NFHL flood and official USDA wildfire hazard evidence
+# Lane A: FEMA NFHL flood and USDA wildfire source evidence
 
-**Coordination:** [Issue #73](https://github.com/jhennessy-pharm3r/FacilityTest/issues/73); isolated branch `ingest/fema-wildfire-lane-a-20261023`; draft [PR #75](https://github.com/jhennessy-pharm3r/FacilityTest/pull/75). **No changes to other lanes, shared UI, canonical source-health or main.** All US facility and industry types are eligible for independently corroborated spatial review; neither source provides a global registry of insured sites.
+**Scope:** All US facility types and industries. All records below are government geospatial *source observations*, not a census of independently verified insured properties. FEMA polygons, USDA raster pixels, ZIP/county/state summaries, and management jurisdictions are different source grains. Nothing is automatically assigned to a canonical facility.
 
-## Official sources, identities, rights and limitations
+**Coordination:** [Issue #73](https://github.com/jhennessy-pharm3r/FacilityTest/issues/73), dedicated unmerged [draft PR #75](https://github.com/jhennessy-pharm3r/FacilityTest/pull/75), branch `ingest/fema-wildfire-lane-a-20261023`. The only writes are owned Lane A scripts, tests, workflows, library modules and this document. Coordinator Lane E controls shared manifests, UI, integration, durable hosting, cross-source facility review and final merge. The GitHub Pages app cannot privately serve a 35k+ source index or run scheduled server-side ingestion.
 
-1. **FEMA National Flood Hazard Layer (NFHL)** official MapServer flood hazard polygon layer 28, `S_Fld_Haz_Ar`: https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/28. It returns native `DFIRM_ID`, `VERSION_ID`, `FLD_AR_ID`, `FLD_ZONE`, `ZONE_SUBTY`, `SFHA_TF`, `SOURCE_CIT` and service-scoped `OBJECTID`; original ArcGIS polygon geometry is retained. The composite `DFIRM_ID + FLD_AR_ID` is a source record key when supplied, **not** a physical property ID. Dates/vintage are local to underlying flood maps, not a single national epoch. Check source records and FEMA distribution/terms before publishing redistributed data.
-2. **USDA Forest Service / Rocky Mountain Research Station Wildfire Hazard Potential (WHP) 2023**, official USFS raster distributed via federal [GeoPlatform ImageServer](https://imagery.geoplatform.gov/iipp/rest/services/Fire_Aviation/USFS_EDW_RMRS_WildfireHazardPotentialContinuous/ImageServer). A modeled continuous **270-meter raster**, not a record of a fire, policy loss, building ignition probability, wildfire perimeter, or insurance pricing. Per-coordinate query is an ArcGIS `ImageServer/identify` pixel lookup, not `MapServer/query`. There is no native individual pixel event ID; a coordinate-based observation key is generated **only** for local reproducibility. [USFS publisher documentation](https://research.fs.usda.gov/firelab/products/dataandtools/wildfire-hazard-potential). Record vintage **2023**.
-3. **Optional MassGIS FEMA-derived 2025 SFHA subset:** [MassGIS documentation](https://www.mass.gov/info-details/massgis-data-fema-national-flood-hazard-layer). The attempted ArcGIS republication is geographically narrower, may omit non-SFHA flood areas, and returned `400 Item does not exist or is inaccessible`. It is explicitly **not a replacement** for current national NFHL and has **zero validated records** in this workflow.
+## Current evidence ledger — 2026-10-23
 
-Original responses are staged separately from normalized source observations. SHA-256 refers to the **actual received response bytes**, not a published national archive hash. Before downstream publication, the coordinator must independently verify FEMA and USFS attribution, licensing, replication and refresh conditions.
+Every count is **real official-source content observed and reconciled in GitHub Actions or downloaded artifacts**; fixture records are never included. "Indexed" below means **temporary source-only SQLite on an Actions runner**, not a persistent production DB.
 
-## Observed live run — 2026-10-23
+| Source and exact grain | Real publisher rows/pixels downloaded | Normalized/accepted | Rejected in successful source replies | Ephemeral indexed | Permanently deployed |
+|---|---:|---:|---:|---:|---:|
+| FEMA NFHL layer 28: six bounded official query windows, distinct flood-area polygons | **34** | **34** | 0 | **34 + 34 polygon RTree bounds** | **0** |
+| USDA WHP 2023 270m **continuous** ImageServer, 14 regions × 5 QA coordinates | **70 pixel replies** | **70 numeric** | 0 | **70 point observations** | **0** |
+| USDA WHP 2023 270m **classified** ImageServer, same 70 QA coordinates | **70 pixel replies** | **70 valid classes/masks** | 0 | **70 point observations** | **0** |
+| USDA official WHP2023 complete **geographic summary ZIP**, four publisher workbooks | **35,304 aggregate source rows** | **35,304** | 0 | **35,304** | **0** |
+| Independently corroborated physical properties linked | **0** | 0 | n/a | 0 | **0** |
+| Entire national NFHL polygon corpus and entire 270m national WHP raster | **NOT downloaded** | not measured | not measured | **0 full-corpus** | **0** |
 
-**Latest green federal-source validation:** [run 39975835483](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39975835483), official artifact ID **12510897452**, passed every required step: **24 source-specific tests, FEMA 21 native polygon records downloaded/accepted/indexed, USDA WHP 3 raw pixel observations downloaded/accepted/indexed, original raw response SHA-256 and SQLite reconciliation all passed**. Nine retained original official responses (including metadata and the separate FEMA transport diagnostic) were independently verified. [Repo CI run 39975940953](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39975940953) passed at the later documentation commit. The optional MassGIS 400 is retained in its separate manifest and tolerated as an optional probe. The workflow's **successful** result is a **verified bounded SAMPLE**, not national source completeness or deployment.
+**Do not sum these unlike rows as physical buildings, claims, losses or unique risk events.** No observed polygon means **UNKNOWN** until local map coverage and effective date are independently established. A failed network request has unknown source totals, not zero hazard. No property risk score is generated here.
 
-**Content-level evidence:** [GitHub Actions run 39975409624](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39975409624), artifact `lane-a-fema-usfs-massgis-source-qa`, ID **12511281582**. Unit fixtures passed (**24 tests** on that revision), and [repository CI 39975417861](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39975417861) passed. That run downloaded all three FEMA geographic probes and all three USDA WHP raster probes. The independent `scripts.verify_lane_a_archive` gate **passed**, checking **10 retained original JSON responses**, SHA-256, accepted/rejected/indexed reconciliation and SQLite integrity. The overall source workflow was red solely because a separately attributed **optional** MassGIS source returned an inaccessible-layer error. A subsequent workflow edit makes that optional source non-blocking, without hiding the result. No national-completeness or production-deployment claim is made.
+### FEMA NFHL primary — official live service
 
-| Stage / observed count | FEMA NFHL polygon QA | USDA WHP 2023 raster QA |
-| --- | ---: | ---: |
-| Geographic probes attempted | 3 bounding boxes | 3 points |
-| Successful geographic probes | **3** | **3** |
-| Original source records returned in successful probes | **21** | **3 pixels** |
-| Accepted and staged records | **21** | **3** |
-| Rejected source records | **0 in successful responses** | **0** |
-| Distinct source keys / point observations indexed in source-only SQLite | **21** | **3** |
-| Nationwide dataset downloaded | **NO** | **NO** |
-| Corroborated physical facility matches | **0** | **0** |
-| Durable backend / live app deployment | **0** | **0** |
+Publisher: FEMA, National Flood Hazard Layer **S_Fld_Haz_Ar**, layer 28:
+https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/28
 
-**FEMA bounding boxes:** New Orleans **10** accepted polygons (query response explicitly flagged `exceededTransferLimit=true`, so incomplete, not exhaustive; raw SHA-256 `0e4bad104fec007642d48087920280183686081766bd02497658d5dcf7a4e67f`); Houston **9** accepted polygons (raw SHA-256 `a777ddaf39428671276379021cb531cb2ce519d9881792eecf85c6b8299198c0`); Sacramento **2** accepted polygons (raw SHA-256 `dd8a056f68e9495a65e989ab22817ce9981e60f6caca512ebaf8fe97d29eccb3`). Across the actual index **8 polygons are `AE` and 13 are `X`**; a polygon observation is not intrinsically high risk. Query-level truncation for New Orleans remains a coverage limitation. Real source native identifier examples: `22071C / 22071C_6650` and `06067C / 06067C_1223`.
+Fully paged source validation: [run 39981174363](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39981174363), archived original official source replies and temporary SQLite in artifact **12513528409**. A second independent run [39982899854](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39982899854) also completed the six bounded FEMA-window step with 34 matching source records, though its overall legacy workflow was red when another capped FEMA smoke request failed. This is a **successful data step in a partially failing multi-source workflow**, not a claim that every later government API request succeeded. A dedicated FEMA-only [Actions workflow](../.github/workflows/lane-a-fema-windows.yml) runs the strict pagination/geometry/query gate independently.
 
-**USFS point probes:** Tahoe WHP value **0** (raw SHA-256 `754d67da1e156b14a1a9de4945dcbec4e0461f05c1b617a9f3e2357771b9be9c`), Boise **231** (`ebb84747dd1948cfc1c7b383d30004d320d04da9a29505bde6924839cb5370df`), Denver **4155** (`0d765f5b8827e60484b28e4f3a4d5da7a2cd20c3fe511c6493e0593b47a852da`). These are raw continuous WHP raster values, **not normalized scores**, and no claim of insured property proximity is made.
+| Geographic WGS84 QA envelope (not insured sites) | Original NFHL polygon IDs reconciled to server count |
+|---|---:|
+| New Orleans | 18 |
+| Houston | 9 |
+| Miami | 2 |
+| Sacramento | 2 |
+| Seattle | 2 |
+| New York | 1 |
+| **Total** | **34** |
 
-**Separate FEMA attribute-only diagnostic:** The 39975409624 run downloaded **2 additional attribute-only query receipts** (minimal GET and point GET), 0 rejected, 2 indexed query receipts but **2 distinct source keys**; POST failed and the legacy path returned 404. The earlier run 39974657234 demonstrated successful GET + POST for one source key. These are **transport method diagnostics without geometry**, separate from 21 polygon records. **Do not add attribute-only receipts to polygon counts or call them distinct insured properties.**
+Actual source schema: `OBJECTID`, `DFIRM_ID`, `FLD_AR_ID`, `VERSION_ID`, `FLD_ZONE`, `ZONE_SUBTY`, `SFHA_TF`, `SOURCE_CIT`, original Esri rings and additional FEMA attributes. **6 distinct DFIRM IDs**, 0 null DFIRM IDs and 0 null source citations in the validated 34-row sample. Zone distribution: **X=23, AE=10, VE=1**. All 34 source polygons have distinct composite `dfirm:<DFIRM_ID>:fld_ar:<FLD_AR_ID>` native keys. Service `OBJECTID` is retained but not promoted to a universal property identity.
 
-**Metadata confirmation:** [run 39975409624](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39975409624) fetched FEMA flood polygon metadata including `geometryType=esriGeometryPolygon`, native ID field descriptions and original response SHA-256 `c9ac9b35c1c5c8c0604f73c37c4e86caa80402a6f42533dbef769f2d5f842c4e`. A different earlier run fetched the same layer with a different response checksum, demonstrating that per-run archive evidence must be retained. Request success remains intermittently dependent on the government API.
+The importer explicitly queries `returnIdsOnly` and `returnCountOnly` for each envelope, compares original server row counts to every fetched batch/SQLite membership, retains original source-response SHA-256, and indexes source feature bounding boxes in SQLite RTree. Batches that hit ArcGIS HTTP 500 or payload limits are **split recursively**. Where a single polygon exceeds the response limit, the FEMA service returns a generalization request with `maxAllowableOffset=0.000005` degrees; **3 of the 34** indexed geometries were generalized and are individually flagged `GENERALIZED_REVIEW_REQUIRED`. The remaining **31** retained unsimplified API geometry. These polygons are **not suitable for definitive parcel boundaries**, and the per-map legal/effective date has **not been independently validated from the originating study**.
 
-All reported accepted/rejected/indexed figures are **per successfully downloaded *samples***, not national counts; blocked queries have **unknown** source row totals, not zero. Source-only SQLite in GitHub Actions is disposable staging; the ZIP artifact has a retention period, not a production serving guarantee.
+**Important: 34 source polygons across six small envelopes is not national FEMA completeness.** The initial New Orleans capped query returned only 10 of 18; paginator corrected this. The official API remains intermittent, including `[Errno 104] Connection reset by peer`, TLS handshake timeout, HTTP 500 and 15MB-per-reply limits. A later run may be red or return only partially staged windows; the strict source workflow does not promote partial windows to complete.
 
-## Reproducible workflows
+Official alternative investigated: the FEMA Map Service Center published direct download convention, product `NFHL_51013C`, https://msc.fema.gov/portal/downloadProduct?productID=NFHL_51013C. GitHub Actions attempts returned **HTTP 406 Not Acceptable** or **connection reset**; **0 county-product ZIPs** validated. Direct access was not bypassed. The state MassGIS FEMA-derived archive is tested separately and **never substitutes** for current national FEMA; a prior unrelated StoryMap ArcGIS layer returned `400 Item does not exist or is inaccessible`, and the lane switched the probe to the actual MassGIS government FeatureServer endpoint. State publisher data have a **July 18, 2025** FEMA vintage; they cannot be called current October 2026 national maps.
 
-**Run unit tests:**
+Source attribution/rights: FEMA's public government metadata is https://catalog.data.gov/dataset/national-flood-hazard-layer. Preserve FEMA map/status/zone and `SOURCE_CIT`, and consult effective FIRM/FIS and LOMR records for binding insurance/parcel determinations. Neither FEMA's `X` zone nor absence of polygons is interpreted as safe/no-flood exposure.
+
+### USDA wildfire continuous and classified 270m raster — two different source products
+
+Official USDA USFS GeoPlatform ImageServers:
+
+- Continuous: https://imagery.geoplatform.gov/iipp/rest/services/Fire_Aviation/USFS_EDW_RMRS_WildfireHazardPotentialContinuous/ImageServer
+- Classified: https://imagery.geoplatform.gov/iipp/rest/services/Fire_Aviation/USFS_EDW_RMRS_WildfireHazardPotentialClassified/ImageServer
+
+Independent official-source [raster run 39985460693](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39985460693) **SUCCESS**, artifact **12514294355**, 16 source-specific fixture tests PASS. The actual **70 continuous and 70 classified geographic pixel replies** were downloaded and indexed separately; official server metadata plus all 140 raw pixel replies produced **142 independently rehashed response files**, and both SQLite integrity/count reconcilers passed. QA points are distributed across 14 US test regions including Alaska and Hawaii, but are **not verified insured coordinates** and **not the national raster census**. Continuous raw values range from **0 to 38,140** (not calibrated insured property scores). There were no network errors or explicit NoData replies in that verified sample.
+
+**Classified actual observations (70):** very low 16, low 13, moderate 14, high 9, very high 3, **non-burnable 14, water 1**. The 15 masks are not falsely converted to low hazard; the source classifier reserves `UNKNOWN` for missing/not-covered raster data and distinguishes a valid zero continuous pixel. Both formats are source models, not wildfire event points, burn scars, loss claims, annual insurance probabilities or policy limits. Fire hazard is based substantially on LANDFIRE/FSim **landscape conditions as of 2020**; this is **WHP2023, revised 17 July 2024**, not an October 2026 forecast.
+
+USDA original research archive publication/use/citation: https://doi.org/10.2737/RDS-2015-0047-4 ; USDA R&D source explanation: https://research.fs.usda.gov/firelab/products/dataandtools/wildfire-hazard-potential. USDA Research Data Archive states the government-funded research data may be used without added permissions or fees, with the requested Dillon 2023 citation; model uncertainty and intended spatial scale must be acknowledged. Confirm any *specific GeoPlatform service* redistribution terms before production.
+
+### USDA official nationwide administrative summary ZIP — all four actual workbooks
+
+Source: https://research.fs.usda.gov/sites/default/files/2024-07/firelab-whp2023_datasummaries.zip
+
+[Official full source bulk/index run 39985452864](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39985452864) **SUCCESS**, artifact **12515791063**. Original ZIP **9,229,280 bytes**, **SHA-256 `1008b6d10c3635c6549dba3d1893381c2e6ed266c59b5fe8648cf5a6dea4b185`**. Source identity and landscape vintage preserved; every workbook original SHA is in the manifest.
+
+| Source workbook and key | Real source rows read, accepted and temporarily indexed | Coverage and caveat |
+|---|---:|---|
+| `WHP2023_County_Summary.xlsx` / native 5-character `GEOID` | **3,143** | U.S. county-level publisher aggregate |
+| `WHP2023_State_Summary.xlsx` / original `STATE_FIPS`, retaining 2 characters | **51** | 51 publisher state/D.C. codes |
+| `WHP2023_ZipCode_Summary.xlsx` / original 5-character `ZIP` | **32,094** | 60 rows have no source WHP acreage; retained as `UNKNOWN_NO_AREA_VALUES` |
+| `WHP2023_ManagementJurisdiction_Summary.xlsx` / original publisher category label | **16** | 15 management/ownership categories plus **one explicitly marked grand-total row**; no geographic/site IDs |
+| **All original workbooks** | **35,304** | **0 rejected**, **0 duplicate source keys within their own grain** |
+
+Original source values, names, all acreage-category fields, original worksheet row, publisher ZIP SHA, original XLSX SHA, product/version and uncertainty retained in normalized gzipped JSON lines and an indexed SQLite source-only store. The management workbook publishes areas rounded to ~1,000 acres: its acreage-category totals are checked within a **3,000-acre tolerance** rather than assuming impossible exact arithmetic. A publisher `Grand Total` is never counted as an additional physical jurisdiction in modeling.
+
+Independent normalized **NDJSON.gz SHA-256 `efbdab10e2fb707512643fb35c3d9dacea6817eade38740561a98c8b6e6aee58`**. The `verify_lane_a_whp_index` check rehashes source ZIP + all four XLSX bytes + normalized gzip and verifies every 35,304 normalized source row, original source key and both SQLite tables; **SQL `PRAGMA quick_check=ok`**, 60 unknown-area rows, and exact source/normalized/indexed count reconciliation. Re-running unchanged input yields identical normalized gzip bytes.
+
+This is a **complete import of the publisher's released 2023 administrative-area summary files**, **not** the national 270m GeoTIFF and **not** an all-facilities database. County/ZIP boundaries or polygon footprints are not present in these spreadsheets. State/county/ZIP aggregates must not be used as a substitute for exact facility-point raster values or insurance losses.
+
+### Query/storage integration handoff (Lane A only)
+
+- **Read-only index/query modules:** `facilityrisk/lane_a_source_query.py` supports exact native FEMA polygon and original USDA county/state/ZIP/management labels; no auto-matching. `facilityrisk/lane_a_geospatial.py` uses source RTree and original Esri polygon rings for reviewer-corroborated WGS84 coordinates; generalized polygons/boundary cases require extra review and sources outside fully enumerated windows are `UNKNOWN`, not no-risk.
+- **Real index smoke tests:** `scripts/lane_a_source_query_smoke.py` on the complete USDA index verifies original ZIP `00029`, missing-area `10168`, county `06017`, state `06`, a management category and `Grand Total`; all are source grains, not buildings. `scripts/lane_a_fema_query_smoke.py` re-queries a real native FEMA polygon and the RTree and reconciles each enumerated window.
+- **Coordinator-only handoff:** `scripts/lane_a_integration_handoff.py` emits a Lane A-scoped JSON manifest with original source grain, observed/staged and ephemeral indexed counts, national/vintage limitations, source errors, nulls and masks, and **`durable_production_rows=0`, `deployed_browser_rows=0`, `approved_site_links=0`**. Missing per-run sources are `NOT_PRESENT_IN_THIS_RUN` with unknown source totals, not zero publisher records. The coordinator must migrate these to their own private authenticated backend and source-health schema; Lane A does **not** edit shared UI or registry files.
+
+## Reproduction
 
 ```bash
 python -m unittest discover -s tests -p 'test_lane_a*.py' -v
-```
 
-**Live geospatial source QA** (non-exhaustive government geographic points and bounds; no verified facilities):
+# 2023 USDA official publisher ZIP, all four aggregate workbooks, temporary index
+python -m scripts.lane_a_whp_official_summary --out-dir data/lane_a/whp_official_summary
+python -m scripts.lane_a_whp_summaries_index --source data/lane_a/whp_official_summary/whp2023_official_summaries.zip --out-dir data/lane_a/whp_official_index
+python -m scripts.verify_lane_a_whp_index --source data/lane_a/whp_official_summary/whp2023_official_summaries.zip --index-dir data/lane_a/whp_official_index
+python -m scripts.lane_a_source_query_smoke --index data/lane_a/whp_official_index/whp2023-source-geographies.sqlite
 
-```bash
-python scripts/validate_lane_a_sources.py --output-dir data/lane_a/live_validation
-python -m scripts.diagnose_lane_a_fema_access --output-dir data/lane_a/fema_transport
-python -m scripts.validate_lane_a_massgis --output-dir data/lane_a/massgis_2025
+# Official 2023 USDA continuous and classified raster geographic QA
+python -m scripts.lane_a_whp_regions --out-dir data/lane_a/whp_regions
+python -m scripts.lane_a_whp_classified --out-dir data/lane_a/whp_classified
 python -m scripts.verify_lane_a_archive --root data/lane_a
+
+# Authoritative FEMA polygons: exhaustive only within the six explicitly specified QA envelopes
+python -m scripts.lane_a_nfhl_paged --out-dir data/lane_a/paged_windows --max-per-window 250 --batch-size 4
+python -m scripts.lane_a_fema_query_smoke --directory data/lane_a/paged_windows
+
+# Source-specific coordinator handoff, never a shared/UI deployment
+python -m scripts.lane_a_integration_handoff --root data/lane_a --output data/lane_a/lane_a_integration_handoff.json
 ```
 
-The separate diagnostics deliberately return nonzero if official service cannot provide the required source content. Capture/verify the manifests and retained original JSON, not just HTTP response code. The **branch-scoped GitHub Actions workflow** `.github/workflows/validate-lane-a-sources.yml` provides the repeatable cloud-hosted run, strict regression suite, original responses and SQLite artifacts. Its source access job can be red while archive verification and repository unit-test steps pass; do not promote incomplete source status to VERIFIED.
+Separate, reproducible Actions workflows (each stores original replies, manifests and disposable SQLite in retained ZIP artifacts): [FEMA complete QA windows](../.github/workflows/lane-a-fema-windows.yml), [USDA live rasters](../.github/workflows/lane-a-wildfire-raster.yml), [USDA bulk administrative summaries](../.github/workflows/lane-a-usda-bulk.yml). The legacy combined [source QA workflow](../.github/workflows/validate-lane-a-sources.yml) retains optional access diagnostics. Note CI artifact expiration after 7 days: downloading or re-running is required before archival expiry; no current durable production deployment is implied.
 
-**Per-site sampling requires actual georeference evidence:**
+## Unresolved acceptance gates — DO NOT MARK LANE A COMPLETE
 
-```json
-[
-  {
-    "site_reference": "reviewed_property_1",
-    "longitude": -119.2,
-    "latitude": 38.1,
-    "coordinates_corroborated": true,
-    "coordinate_evidence": "surveyor-confirmed parcel centroid, reviewed YYYY-MM-DD"
-  }
-]
-```
+1. **FEMA national completeness/availability:** Only six small envelopes exhaustively enumerated. Obtain lawful state/county/full nationwide authoritative maps or support reviewed on-demand site-coordinate queries with effective map study/LOMR dates. FEMA service periodically resets connections; the official MSC county ZIP returned HTTP 406 or reset. MassGIS is a separate older-dated optional publisher, not a replacement.
+2. **USDA raster corpus completeness:** The original full-resolution national 270m GeoTIFF has **not** been downloaded/indexed. The national administrative summaries are complete at their *source aggregate* grain, and 70 original pixels per service prove official sample access, not a full raster census. Avoid false pixel-to-property translation.
+3. **Insurance georeferencing:** No independently corroborated facility polygons, building/parcel footprints, campus locations or coverage assertions were supplied/approved. Coordinate evidence, accuracy, edge/overlap and changed-parcel review are required before site-specific use. All industries eligible; exclude none by FDA product status.
+4. **Legal/temporal underwriting validation:** FEMA source-study effective dates and NFIP determinations, WHP spatial limitations/2020 fuels vintage, source redistribution and policy-specific loss/exposure denominators still need qualified review.
+5. **Coordinator integration/deployment:** Zero Lane A records in authenticated persistent source storage, Source Health, facility pages or public GitHub Pages. Lane E alone owns crosswalk, schemas, tenant auth/monitoring, deployment, and merges; issue #39 covers durable hosting. A full end-to-end proof requires at least 25 separately reviewed real physical sites across industries with negative/missing evidence cases.
 
-```bash
-python -m facilityrisk.lane_a_hazards --points points.json --output data/lane_a/site_samples.json
-```
-
-The example is a **schema illustration only**, not a corroborated facility or a verified point; do not run it as real-site validation without the stated evidence. Treat parcel, building and campus/tenant boundaries separately. Preserve exact location source/datum and map effective date. Do not commit private property coordinates, insured identities, or site-level observations to the public branch.
-
-## Gates before coordinator merge or production
-
-- Prove repeatable FEMA geometry retrieval, **untruncated** paging or official full snapshot, authoritative `SOURCE_CIT`/effective dates, geometry validity/topology, CRS and boundaries. Current bbox windows are capped and one query was interrupted; no nationwide count exists.
-- Validate geographic and risk classification coverage (no-data, edges, overlapping flood zones, WHP pixel no-data/mask and geography), not only response schemas. Restrict site point use to independently corroborated coordinates.
-- Record actual accepted/rejected counts and original checksums for each completed download. Preserve native FEMA IDs and raw WHP pixel responses without inventing site IDs, property-loss outcomes or policy coverage.
-- Verify original source attribution/redistribution terms; coordinate with Lane E for durable private indexing, shared manifest/Source Health/UI, rollback and refresh monitoring. Only coordinator may merge; GitHub Pages cannot serve a national private geospatial database.
-- Carry an **unknown/unassessed** state where either source is absent, inaccessible, outdated or not geographically applicable. Do not call missing evidence “no risk.”
-
-**Current honest state:** real federal samples have been **DOWNLOADED and STAGED in ephemeral source-only CI indexes (21 FEMA geometries, 3 USDA raster pixels in documented run)**; content-level geometry/ID/coordinate checks, original response SHA-256, index reconciliation and fixture regressions pass. **Nationwide VERIFIED, untruncated complete flood-zone retrieval, durable INDEXED and DEPLOYED remain unmet.** The draft PR remains unmerged.
+**Current conclusion:** Official USDA publisher summaries are **DOWNLOADED / NORMALIZED / INDEXED / CONTENT-VERIFIED** (source-only staging), USDA raster replies are **DOWNLOADED / STAGED / CONTENT-VERIFIED** (140 bounded point observations), and FEMA official polygons are **DOWNLOADED / NORMALIZED / INDEXED / CONTENT-VERIFIED within six tiny windows** with explicit simplification limits. **Nationwide hazard data readiness and production DEPLOYED are not satisfied. Draft PR remains unmerged.**
