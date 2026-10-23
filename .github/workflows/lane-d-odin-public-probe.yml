@@ -73,6 +73,18 @@ jobs:
                               rec["native_element_fields"]=list(top[0].keys()) if top and isinstance(top[0],dict) else []
                               if top and isinstance(top[0],dict):
                                   rec["native_element_value_types"]={k:type(v).__name__ for k,v in top[0].items()}
+
+                              from collections import Counter
+                              fields=("MRID","mrid","communityDescriptor","metersAffected","reportedStartTime")
+                              rec["native_field_null_counts"]={k:sum(v.get(k) is None for v in top) for k in fields}
+                              rec["distinct_MRID"]=len({str(v.get("MRID")) for v in top})
+                              rec["distinct_mrid"]=len({str(v.get("mrid")) for v in top})
+                              rec["distinct_county_descriptor"]=len({str(v.get("communityDescriptor")) for v in top})
+                              rec["MRID_equal_mrid_count"]=sum(v.get("MRID")==v.get("mrid") for v in top)
+                              rec["native_id_samples"]=[{k:str(v.get(k))[:90] for k in ("MRID","mrid","communityDescriptor")} for v in top[:3]]
+                              rec["native_names_samples"]=[v.get("names") for v in top[:2]]
+                              rec["native_outagearea_kind_counts"]=dict(Counter((v.get("outageArea") or {}).get("outageAreaKind","NULL") for v in top))
+
                                   rec["native_first_element_nested"]={
                                       k:{"type":type(v).__name__,
                                          "length":len(v) if isinstance(v,(list,dict)) else None,
