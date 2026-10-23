@@ -50,13 +50,16 @@ jobs:
                   if 'reliability' in name.lower() and name.lower().endswith(('.xlsx', '.xlsm')):
                       data=archive.read(name)
                       rec['member_sha256']=hashlib.sha256(data).hexdigest()
-                      with load_workbook(io.BytesIO(data), read_only=True, data_only=True) as book:
+                      book=load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+                      try:
                           sheets=[]
                           for ws in book:
                               headers=list(ws.iter_rows(min_row=1, max_row=12, values_only=True))
                               sheets.append({'name': ws.title, 'max_row': ws.max_row, 'max_column': ws.max_column,
                                              'first_twelve_rows': [[str(c)[:80] if c is not None else None for c in row[:24]] for row in headers]})
                           rec['worksheets']=sheets
+                      finally:
+                          book.close()
                   rows.append(rec)
           output={'official_url': 'https://www.eia.gov/electricity/data/eia861/zip/f8612025.zip',
                   'archive_bytes': path.stat().st_size, 'archive_sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
