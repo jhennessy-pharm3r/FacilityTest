@@ -123,8 +123,8 @@ def inspect_filing(entry, html_bytes):
         "extracted_text_sha256": digest(text.encode("utf-8")),
         "evidence_excerpt_sha256": digest(region.encode("utf-8")),
         "evidence_excerpt": region[:MAX_CONTEXT],
-        "source_identity_verified": True,
-        "issuer_disclosure_verified": True,
+        "source_identity_verified": False,
+        "issuer_disclosure_verified": False,
         "physical_site_independently_verified": False,
         "power_outage_verified": False,
         "duration_verified": False,
@@ -159,6 +159,14 @@ def run(entry, out, html_path=None, user_agent=None):
             raise ValueError("SEC filing download exceeded size ceiling")
         origin = "official_sec_download"
     record = inspect_filing(entry, content)
+    # A supplied local file is not automatically authenticated as the SEC original;
+    # only our own successful first-party SEC HTTP response authenticates it here.
+    record["source_identity_verified"] = origin == "official_sec_download"
+    record["issuer_disclosure_verified"] = origin == "official_sec_download"
+    record["source_authentication_status"] = (
+        "OFFICIAL_SEC_HTTPS_RESPONSE" if origin == "official_sec_download"
+        else "LOCAL_COPY_REQUIRES_EXTERNAL_SHA_OR_URL_PROVENANCE"
+    )
     (out / "evidence.jsonl").write_text(json.dumps(record, sort_keys=True, ensure_ascii=False) + "\n", encoding="utf-8")
     manifest = {
         "source": "SEC_EDGAR_ISSUER_FILING",
@@ -172,7 +180,8 @@ def run(entry, out, html_path=None, user_agent=None):
         "document_sha256": record["filing_document_sha256"],
         "document_bytes": record["document_bytes"],
         "issuer_disclosures_accepted": 1,
-        "source_documents_verified": 1,
+        "source_documents_verified": int(record["source_identity_verified"]),
+        "local_filing_candidates_staged": int(not record["source_identity_verified"]),
         "independent_site_matches_verified": 0,
         "verified_outage_events": 0,
         "financial_amounts_verified": 0,
