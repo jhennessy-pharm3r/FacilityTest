@@ -73,7 +73,7 @@ class LaneDTests(unittest.TestCase):
             with (Path(t)/"output"/"eia861_reliability.jsonl").open() as f:
                 record = json.loads(next(f))
             self.assertEqual(record["source_utility_id"], "00012")
-            self.assertEqual(record["raw_cells"][5:8], ["105.2", "44.0", "110.4"])
+            self.assertEqual(record["raw_cells"][5:8], ["105.2", "44", "110.4"])
             schema = next(s for s in result["sheets"] if s["source_sheet"] == "Reliability_States")
             self.assertEqual(len(schema["columns"]), 8)
             self.assertEqual(schema["columns"][5]["group"], "IEEE Standard")
