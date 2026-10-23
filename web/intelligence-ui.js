@@ -85,7 +85,30 @@
     }).join('');
     return `${info('These are evidence-based exposure summaries, not underwriting acceptance recommendations. Missing engineering reports, asset values, policy terms or loss runs remain explicitly unknown.')}<div class="intel-case-grid">${rows}</div>`;
   }
-  function feedsPage(src,checks,extended=[],ledger=[],generatedAt=null,runUrl='',mounted=null){
+  function parallelIngestionPanel(summary) {
+    if (!summary || !Array.isArray(summary.lanes)) return '';
+    const amount = v => v == null ? 'Not measured' : Number(v).toLocaleString('en-US');
+    const stages = {sample_ci_indexed:'Sample indexed in CI',ci_indexed:'Indexed in CI',staged_normalized:'Normalized, not indexed',downloaded_qa:'Official records QA',access_blocked:'Official access blocked'};
+    const rows = summary.lanes.flatMap(lane => lane.sources.map(source => {
+      const coords = source.valid_coordinates == null ? '' : ' · Source coordinates: ' + amount(source.valid_coordinates);
+      return `<tr><td><strong>${esc(source.name)}</strong><small>${esc(lane.name)} · ${esc(source.scope)}</small></td>`+
+        `<td><span class="pill ${source.stage === 'access_blocked' ? 'orange' : 'gray'}">${esc(stages[source.stage]||'Unknown')}</span></td>`+
+        `<td>${amount(source.scanned)}</td><td>${amount(source.accepted)}</td><td>${amount(source.rejected)}</td>`+
+        `<td>${amount(source.indexed_ci)}</td><td><strong>${amount(source.deployed)}</strong></td>`+
+        `<td>${esc(source.notes)}${esc(coords)}<br><small>${safeLink(source.run_url,'Source run')} · ${safeLink(lane.pr_url,'Draft PR')}</small></td></tr>`;
+    })).join('');
+    const laneRows = summary.lanes.map(lane => `<div class="qa-box"><span class="title">Lane ${esc(lane.id)} · ${esc(lane.name)}</span>`+
+      `<b>${lane.sources.length} source streams</b><span>${esc(lane.gate)}</span></div>`).join('');
+    const ageDays = (Date.now() - Date.parse(summary.as_of + 'T23:59:59Z')) / 86400000;
+    const stale = !Number.isFinite(ageDays) || ageDays > 3;
+    return card(`${title('Parallel-source ingestion progress','Real official-source QA from four separate lanes; not a deployed facility-risk dataset')}`+
+      `<div class="intel-card-body"><p><strong>Source results as of ${esc(summary.as_of)}${stale?' (snapshot older than 72 hours)':''}.</strong> All four draft lanes remain outside the persistent, authenticated facility service. CI-only indexes and regulatory source observations cannot be interpreted as verified insured properties or hazard assessments.</p>`+
+      `<p>${safeLink(summary.coordination_issue,'Coordination and latest progress')} · Each source row links its underlying official-source workflow and draft PR. Unknown source counts are not zero events.</p>`+
+      `<div class="qa-grid">${laneRows}</div></div>`+
+      `<div class="table-wrap"><table><thead><tr><th>Source and scope</th><th>Stage</th><th>Scanned</th><th>Accepted</th><th>Rejected</th><th>CI indexed</th><th>App deployed</th><th>Evidence and limitations</th></tr></thead><tbody>${rows}</tbody></table></div>`+
+      `<div class="intel-card-body"><strong>Deployment gate:</strong> no Lane A–D source has authenticated persistent serving, independently approved physical-site matching, or confirmed loss/claims linkage. Record grain differs by publisher; never sum these rows into a facility count.</div>`);
+  }
+  function feedsPage(src,checks,extended=[],ledger=[],generatedAt=null,runUrl='',mounted=null,parallel=null){
     const mountRows=mounted?[
       ['EPA FRS source index',mounted.frs,'source_identities'],
       ['NOAA Storm Events index',mounted.noaa,'records'],
@@ -106,7 +129,8 @@
     }).join('');
     const extraRows=extended.map(s=>`<tr><td><strong>${esc(s.name)}</strong><small>${esc(s.category)} · ${esc(s.priority)}</small></td><td><span class="pill ${s.probe_state==='schema_reachable'?'':'orange'}">${esc((s.probe_state||'not_published').replaceAll('_',' '))}</span></td><td>${esc(s.checked_at||'Not run')}</td><td>${esc(s.probe_details||s.test)}<br><small>${esc(s.access)} · ${esc(s.limitation)}</small></td><td>${safeLink(s.documentation,'Official source')}</td></tr>`).join('');
     return `${mounted?card(`${title('Private indexed source deployment','Read-only mounted source databases, separate from insured research workspace')}<div class="table-wrap"><table><thead><tr><th>Source index</th><th>Readiness</th><th>Records</th><th>Source vintage</th><th>Meaning</th></tr></thead><tbody>${mountRows}</tbody></table></div>`):''}${info(mounted?'The authenticated private service can query source-only datasets when validated indexes are mounted. An imported identity or nearby weather event does not verify a physical insured property, its hazard intensity, damage, or policy coverage.':'GitHub Actions can refresh public-source health metadata, but GitHub Pages is a static viewer. A successful HTTP probe means only that a publisher endpoint responded; it does not mean facility data, matching or insurance exposure was ingested.')}
-      ${card(`${title('Published checks and freshness','Separate reachability, identities imported and verified property exposure')}<div class="intel-card-body">${esc(statusText)}${runUrl?' · '+safeLink(runUrl,'Inspect workflow') : ''}${aged?'<p><strong>These checks are stale or missing and must not be interpreted as current availability.</strong></p>':''}</div>`) }\n      ${card(`${title('Actual published data ingestion','Published identities are not verified properties, incidents, or hazard overlays')}<div class="table-wrap"><table><thead><tr><th>Dataset</th><th>Ingestion state</th><th>Source identities</th><th>Snapshot date</th><th>Limitations</th></tr></thead><tbody>${importRows||'<tr><td colspan="5">No published ingestion ledger available.</td></tr>'}</tbody></table></div>`)}
+      ${card(`${title('Published checks and freshness','Separate reachability, identities imported and verified property exposure')}<div class="intel-card-body">${esc(statusText)}${runUrl?' · '+safeLink(runUrl,'Inspect workflow') : ''}${aged?'<p><strong>These checks are stale or missing and must not be interpreted as current availability.</strong></p>':''}</div>`) }\n      ${parallelIngestionPanel(parallel)}
+      ${card(`${title('Actual published data ingestion','Published identities are not verified properties, incidents, or hazard overlays')}<div class="table-wrap"><table><thead><tr><th>Dataset</th><th>Ingestion state</th><th>Source identities</th><th>Snapshot date</th><th>Limitations</th></tr></thead><tbody>${importRows||'<tr><td colspan="5">No published ingestion ledger available.</td></tr>'}</tbody></table></div>`)}
       ${card(`${title('Source health and ingestion readiness','Source connection is separate from data validation')}<div class="table-wrap"><table><thead><tr><th>Source</th><th>State</th><th>Last checked</th><th>Notes</th><th>Reference</th></tr></thead><tbody>${rows}</tbody></table></div>`)}
       ${card(`${title('Additional dataset evaluations','Access checks do not establish facility linkage')}<div class="table-wrap"><table><thead><tr><th>Source</th><th>Probe state</th><th>Checked</th><th>Testing and limitations</th><th>Reference</th></tr></thead><tbody>${extraRows||'<tr><td colspan="5">No extended sources loaded</td></tr>'}</tbody></table></div>`)}
       ${card(`${title('Ingestion gates','All required before use in an underwriting decision')}<div class="intel-card-body"><div class="intel-gate-list">${['Endpoint or official export is accessible','Original response archived with retrieval time','Source schema validated and normalized','Correct facility identified and independently reviewed','Event/validity/publication dates separated','Hazard proximity distinguished from confirmed loss','Quality checks and refresh status pass'].map((x,i)=>`<div><span class="intel-step">${String(i+1).padStart(2,'0')}</span>${esc(x)}</div>`).join('')}</div></div>`)}`;
@@ -142,7 +166,7 @@
         if(!window.PublicRiskAPI){
           try{mounted=await api('source-indices/status');}catch(e){/* Private sidecars may not exist on older backends. */}
         }
-        root.innerHTML=feedsPage(intel.source_catalog||[],intel.source_health||[],extra,intel.ingestions||[],intel.public_status_generated_at,intel.source_run_url,mounted);
+        root.innerHTML=feedsPage(intel.source_catalog||[],intel.source_health||[],extra,intel.ingestions||[],intel.public_status_generated_at,intel.source_run_url,mounted,intel.parallel_ingestion||null);
       }
     }catch(e){if(root.isConnected)root.innerHTML=`<div class="loading-card">Unable to load research panel: ${esc(e.message)}</div>`;}
   }
