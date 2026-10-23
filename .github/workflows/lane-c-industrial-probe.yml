@@ -37,8 +37,15 @@ jobs:
         run: pip install -r requirements.txt -r requirements-dev.txt openpyxl requests
       - name: Validate all Lane C tests and importer failure gates
         run: python -m pytest -q tests/test_industrial_incidents.py tests/test_nrc_enriched.py tests/test_lane_c_index.py tests/test_csb_release.py tests/test_lane_c_candidates.py tests/test_lane_c_private_handoff.py
-      - name: Acquire REAL NRC and CSB, repeat transforms, index temporarily, inspect authorized PHMSA distribution
-        run: python scripts/run_lane_c_verified.py --output output
+      - name: Acquire official NRC/CSB, repeat transforms, and verify private temporary checksum-protected handoff
+        run: |
+          python scripts/run_lane_c_verified.py --output output --private-bundle-dir "$RUNNER_TEMP/lane-c-source-handoff-proof"
+          test -f "$RUNNER_TEMP/lane-c-source-handoff-proof/private-bundle-manifest.json"
+          test ! -e "./lane-c-source-handoff-proof"
+      - name: Remove temporary full-source handoff outside repository
+        if: always()
+        run: |
+          rm -rf -- "$RUNNER_TEMP/lane-c-source-handoff-proof"
       - name: Save aggregate-only source and ephemeral index audit (no raw incident rows or SQLite)
         uses: actions/upload-artifact@v4
         if: always()
