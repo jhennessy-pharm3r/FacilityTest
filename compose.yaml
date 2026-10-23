@@ -27,7 +27,7 @@ services:
     volumes:
       - ./data:/app/data
       # Indexes are immutable, source-only, and separate from the client workspace.
-      - ./source-index:/app/source-index:ro
+      - ${FACILITY_RISK_SOURCE_INDEX_HOST:-./source-index}:/app/source-index:ro
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=64m
