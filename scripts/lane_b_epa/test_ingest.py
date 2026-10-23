@@ -24,6 +24,16 @@ class LaneBTests(unittest.TestCase):
             m=ingest("rcra",p,x/"out")
             self.assertEqual(m["indexed_rows"],1)
             self.assertEqual(m["archive_members"]["lookups.csv"]["state"],"skipped_no_identity_column")
+    def test_official_rcra_national_columns(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d);source=root/"rcra.zip"
+            with ZipFile(source,"w") as z:
+                z.writestr("RCRA_FACILITIES.csv","ID_NUMBER,FACILITY_NAME,LATITUDE83,LONGITUDE83\nNYD000000001,Industrial Site,42,-75\n")
+                z.writestr("RCRA_VIOLATIONS.csv","ID_NUMBER,VIOLATION_TYPE\nNYD000000001,A\n")
+            m=ingest("rcra",source,root/"out")
+            self.assertEqual(m["indexed_rows"],2)
+            self.assertEqual(m["valid_coordinate_pairs"],1)
+            self.assertEqual(m["archive_members"]["RCRA_FACILITIES.csv"]["identity_column"],"ID_NUMBER")
     def test_no_false_facility_merge(self):
         with tempfile.TemporaryDirectory() as d:
             x=Path(d);p=x/"echo.csv";p.write_text("REGISTRY_ID,NAME\nA,Same\nB,Same\n")
