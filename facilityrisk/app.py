@@ -261,10 +261,15 @@ def universal_facility_stats(c=Depends(conn_dependency)):
     if index['state'] in ('ready_full','ready_partial'):
         # Keep the separate indexed and workspace populations distinct.
         # They may share source IDs and must not be added as unique properties.
-        if not any(x['source_key']=='EPA_FRS' for x in summary['sources']):
+        national=next((x for x in summary['sources'] if x['source_key']=='EPA_FRS'),None)
+        if national is None:
             summary['sources'].append({'source_key':'EPA_FRS',
                                        'records':index['source_identities'],
                                        'storage':'readonly_national_index'})
+        else:
+            national['workspace_records']=national['records']
+            national['records']=index['source_identities']
+            national['storage']='readonly_national_index'
     return summary
 
 
