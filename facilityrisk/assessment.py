@@ -96,7 +96,7 @@ def build_assessment(conn,facility_id):
                   str(peril_coverage['peril_count'])+' defined catastrophe perils have source classifications at the current reviewed point; '+
                   str(len(peril_coverage['perils_source_checked_unresolved']))+
                   ' were queried but not classified; '+str(len(stale_hazards))+
-                  ' stale/legacy observations excluded. No insured loss or all-peril clearance is inferred'},
+                  ' stale or legacy screenings excluded. No insured loss or all-peril clearance is inferred'},
        'operations_and_bi':{'status':'research_profile' if profile else 'unassessed',
           'reason':'Operations, protection and downtime exposures are not insured values unless documented'},
        'historical_outcomes':{'status':'retrospective_events' if events else 'unassessed',
