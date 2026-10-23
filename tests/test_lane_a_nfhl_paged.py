@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from scripts.lane_a_fema_query_smoke import validate as validate_native_query
 from scripts.lane_a_nfhl_paged import (
     FEMA_LAYER, envelope, geometry_bbox, run, source_key,
 )
@@ -57,6 +58,9 @@ class FEMAPagedWindowsTests(unittest.TestCase):
             m = run(Path(folder), fetch=responder, windows=windows,
                     max_ids_per_window=10, batch_size=2)
             self.assertTrue(m["all_requested_windows_complete"])
+            lookup = validate_native_query(Path(folder))
+            self.assertTrue(lookup["read_only_source_query_verified"])
+            self.assertEqual(lookup["distinct_source_native_keys"], 3)
             self.assertEqual(m["source_feature_count"], 3)
             self.assertEqual(m["window_membership_count"], 6)
             self.assertEqual(m["rtree_index_count"], 3)
