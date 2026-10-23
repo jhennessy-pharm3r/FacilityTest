@@ -40,7 +40,7 @@ def private_sites():
         facility_id TEXT PRIMARY KEY, precision TEXT,
         evidence_url TEXT, reviewed_latitude REAL,reviewed_longitude REAL);
     """)
-    c.execute("INSERT INTO facilities VALUES('test-facility',41.5,-122.1)")
+    c.execute("INSERT INTO facilities VALUES('test-facility',39.5,-122.1)")
     yield c
     c.close()
 
@@ -64,7 +64,7 @@ def test_only_current_independently_verified_point_is_intersected(mounted,privat
     assert blocked["state"]=="UNKNOWN_UNVERIFIED_SITE_COORDINATE"
     c.execute("""INSERT INTO location_reviews VALUES
         ('test-facility','site_verified','https://agency.gov/site-geometry',
-         41.5,-122.1)""")
+         39.5,-122.1)""")
     result=service.reviewed_facility_whp(c,"test-facility")
     assert result["state"]=="PUBLISHER_RELATIVE_LANDSCAPE_HAZARD_AT_REVIEWED_POINT"
     assert result["original_domain"]=="conus"
