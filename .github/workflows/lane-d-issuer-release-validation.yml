@@ -1,0 +1,56 @@
+name: Lane D - Real first-party interruption disclosures
+
+on:
+  push:
+    branches:
+      - ingest/eia861-utility-bi-lane-d-20261023
+    paths:
+      - facilityrisk/lane_d/ingest_issuer_release.py
+      - tests/test_lane_d_issuer_release.py
+      - .github/workflows/lane-d-issuer-release-validation.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publisher-primary-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run identity, blocked-host and non-attribution regressions
+        run: python -m unittest discover -s tests -p test_lane_d_issuer_release.py -v
+      - name: Ingest actual publisher first-party North Cove facility interruption disclosures
+        run: |
+          python -m facilityrisk.lane_d.ingest_issuer_release \
+            --output /tmp/lane-d/issuer-releases --min-success 1
+      - name: Check staged corpus is actual first-party content
+        run: |
+          python - <<'PY'
+          import json, pathlib, sqlite3
+          root=pathlib.Path("/tmp/lane-d/issuer-releases")
+          m=json.loads((root/"manifest.json").read_text())
+          rows=[json.loads(x) for x in (root/"issuer_disclosures.jsonl").read_text().splitlines()]
+          assert m["downloaded"] == m["normalized"] == m["indexed_local_staging"] == len(rows)
+          assert len(rows)>=1, "No true first-party source observations received"
+          assert all(x["source_authentication"]=="HTTPS_FIRST_PARTY_200_EXACT_URL" for x in rows)
+          assert all(not x["claims_paid_verified"] and not x["electrical_power_outage_verified"] for x in rows)
+          assert m["distinct_named_underlying_events"] == 1
+          with sqlite3.connect(root/"issuer_evidence_staging.sqlite") as db:
+              assert db.execute("PRAGMA integrity_check").fetchone()[0]=="ok"
+              assert db.execute("SELECT count(*) FROM issuer_evidence").fetchone()[0]==len(rows)
+          print("Validated real publisher release rows:",len(rows),"and incident groups:",m["distinct_named_underlying_events"])
+          PY
+      - name: Publish actual downloaded source fingerprints and count ledger only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-d-publisher-site-interruption-manifests
+          retention-days: 7
+          if-no-files-found: warn
+          path: |
+            /tmp/lane-d/issuer-releases/manifest.json
