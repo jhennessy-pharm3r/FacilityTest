@@ -29,6 +29,18 @@ class LaneAProductionArtifactInstallerTests(unittest.TestCase):
                                   artifact_paths=[Path(d) / "bad.zip"])
                 self.assertFalse((Path(d) / "outside.sqlite").exists())
 
+    def test_combined_official_zip_skips_only_known_old_lane_a_diagnostics(self):
+        with tempfile.TemporaryDirectory() as d:
+            source = Path(d) / "official.zip"
+            archive(source, [
+                ("live_validation/raw/unneeded.json", b"diagnostic"),
+                ("fema_transport/manifest.json", b"ignored"),
+                ("paged_windows/raw/official.json", b'{"count":3}'),
+            ])
+            files = stage_sources(Path(d) / "staged", artifact_paths=[source])
+            self.assertEqual(set(files), {"paged_windows/raw/official.json"})
+            self.assertFalse((Path(d) / "staged/live_validation").exists())
+
     def test_reject_conflicting_same_source_path(self):
         with tempfile.TemporaryDirectory() as d:
             a, b = Path(d) / "a.zip", Path(d) / "b.zip"
