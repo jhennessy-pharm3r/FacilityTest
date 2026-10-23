@@ -5,6 +5,7 @@ const esc=v=>String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;'
 const https=u=>typeof u==='string'&&/^https:\/\/[^\s/]+/i.test(u)?u:'';
 let q='',country='',industry='',source='',page=0,selected=null,wired=false,sourceInitialized=false;
 
+ function routeParams(){return {q,country,industry,source,p:page>0?String(page+1):null,record:selected?.site?.id||null};}
  function saveRoute(method='push'){
    window.FacilityRiskRouter?.patch({page:'universal',q,country,industry,source,
      p:page>0?String(page+1):null,record:selected?.site?.id||null},method);
@@ -170,5 +171,5 @@ function mount(){
  }
  restoreRoute();
 }
-window.UniversalUI={render,mount,restoreRoute};
+window.UniversalUI={render,mount,restoreRoute,routeParams};
 })();
