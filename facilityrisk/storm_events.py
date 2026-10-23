@@ -226,7 +226,8 @@ def search(conn, *, year=None, state="", event_type="", limit=50, offset=0):
             "source_scope": "Regional event records, not facility-associated verified damage"}
 
 
-def nearby_reviewed_facility(conn, facility_id, *, radius_km=50, limit=50, year=None):
+def nearby_reviewed_facility(conn, facility_id, *, radius_km=50, limit=50, year=None,
+                             events_conn=None):
     """Proximity candidates are only returned for an approved CURRENT site point."""
     if not 1 <= radius_km <= 100 or not 1 <= limit <= 100:
         raise ValueError("Radius or limit outside accepted range")
@@ -267,7 +268,7 @@ def nearby_reviewed_facility(conn, facility_id, *, radius_km=50, limit=50, year=
     # Prevent unbounded scans: disclose truncation rather than pretending coverage.
     scanned = 0
     matched = []
-    for r in conn.execute(
+    for r in (events_conn or conn).execute(
         "SELECT * FROM noaa_storm_events WHERE " + clause +
         " ORDER BY begin_date DESC,event_id LIMIT 30001", args):
         scanned += 1
