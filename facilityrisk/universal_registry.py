@@ -122,6 +122,13 @@ def initialize(conn):
     conn.execute('PRAGMA foreign_keys=ON')
     conn.executescript(SCHEMA)
 
+def _ensure_schema(conn):
+    """Avoid DDL on every read query and permit read-only public-source indexes."""
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='universal_sites'").fetchone():
+        return
+    initialize(conn)
+
+
 def normalize(source_key, record):
     if not isinstance(record, dict):
         return None
@@ -259,7 +266,7 @@ def _catalog_source(label):
         'Canada NPRI':'canada_npri'}.get(label,'')
 
 def search(conn, q='', *, country='', industry='', source='', limit=50, offset=0):
-    initialize(conn)
+    _ensure_schema(conn)
     limit=max(1,min(int(limit),100))
     offset=max(0,int(offset))
     conditions=[];params=[]
@@ -301,7 +308,7 @@ def search(conn, q='', *, country='', industry='', source='', limit=50, offset=0
         'status':'source_discovery_not_insurance_rating'}
 
 def detail(conn, site_id):
-    initialize(conn)
+    _ensure_schema(conn)
     row=conn.execute('SELECT * FROM universal_sites WHERE id=?',(site_id,)).fetchone()
     if not row:
         return None
@@ -314,7 +321,7 @@ def detail(conn, site_id):
         'risk_status':'unassessed','insured_coverage_status':'unknown'}
 
 def statistics(conn):
-    initialize(conn)
+    _ensure_schema(conn)
     total=conn.execute('SELECT COUNT(*) FROM universal_sites').fetchone()[0]
     ids=conn.execute('SELECT COUNT(*) FROM universal_source_records').fetchone()[0]
     providers=[dict(x) for x in conn.execute("""SELECT source_key,COUNT(*) AS records
