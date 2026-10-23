@@ -16,6 +16,8 @@ services:
       FACILITY_RISK_NOAA_INDEX_MANIFEST: ${FACILITY_RISK_NOAA_INDEX_MANIFEST:-}
       FACILITY_RISK_INCIDENTNEWS_INDEX_PATH: ${FACILITY_RISK_INCIDENTNEWS_INDEX_PATH:-}
       FACILITY_RISK_INCIDENTNEWS_INDEX_MANIFEST: ${FACILITY_RISK_INCIDENTNEWS_INDEX_MANIFEST:-}
+      # Only an independently verified, installed immutable Lane A release; never a CI artifact path.
+      FACILITY_RISK_LANE_A_INDEX_ROOT: ${FACILITY_RISK_LANE_A_INDEX_ROOT:-}
     ports:
       # Do not bind to 0.0.0.0; use a TLS + OIDC reverse proxy for remote access.
       - "127.0.0.1:8765:8765"

@@ -1,0 +1,52 @@
+name: Coordinator Lane A authenticated live-browser source UI QA
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - integrate/lane-a-private-api-20261023
+    paths:
+      - 'scripts/smoke_lane_a_private_browser.py'
+      - 'web/intelligence-ui.js'
+      - 'web/styles.css'
+      - '.github/workflows/lane-a-private-browser-qa.yml'
+permissions:
+  contents: read
+  actions: read
+jobs:
+  authenticated-source-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 17
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install private FastAPI and Playwright Chromium test client
+        run: |
+          python -m pip install -r requirements-dev.txt 'playwright>=1.54,<2'
+          python -m playwright install --with-deps chromium
+      - name: Fetch immutable verified real official FEMA/USDA source release
+        uses: actions/download-artifact@v4
+        with:
+          name: lane-a-verified-installed-source-release-qa
+          run-id: 40001237902
+          github-token: ${{ github.token }}
+          path: staged-real-release
+      - name: Browser-test mounted private Source Health and denied unreviewed flood determination
+        env:
+          FACILITY_RISK_REQUIRE_AUTH: "1"
+          FACILITY_RISK_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FACILITY_RISK_DB: ${{ runner.temp }}/lane-a-qa-browser-workspace.sqlite
+        run: |
+          export FACILITY_RISK_LANE_A_INDEX_ROOT="$PWD/staged-real-release/_temp/facility-lane-a-installed"
+          python -m scripts.smoke_lane_a_private_browser | tee lane-a-browser-validation.txt
+      - name: Preserve browser QA evidence screenshot without exposing client data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-a-private-source-browser-actual-government-data-qa
+          path: |
+            lane-a-browser-validation.txt
+            /tmp/lane-a-private-source-browser.png
+          retention-days: 7
+          if-no-files-found: warn

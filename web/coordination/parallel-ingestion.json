@@ -6,7 +6,7 @@
   "purpose": "Reviewed public metadata for source-level QA by independent lane; staging and counts do not mean these records are available in the production facility-risk service.",
   "caveats": [
     "Each row represents a distinct official-source table, reported notification, chemical form, county observation, wildfire pixel or publisher aggregate. Do NOT sum accepted counts as unique facilities, accidents, outages or insured claims.",
-    "Source-only SQLite indexed in disposable GitHub Actions staging differs from an installed authenticated durable private index. The four ingestion lane PRs remain DRAFT, not yet merged. Production deployed and approved physical-site matches = 0 for all streams.",
+    "Lane A source package PR #75 has been merged into main and verified against a private API in CI, but is NOT durably installed on a hosted authenticated service. Lanes B–D retain separate coordinator review. Production deployed and independently approved physical-site matches = 0 for the new Lane A–D streams.",
     "Some source products overlap (e.g., ORNL current snapshots and mirrors, NRC/CSB match candidates, CSB quarterly revisions). Never deduplicate or join them into a verified event or site without manual independent evidence.",
     "Source blocks (PHMSA original incident data, SEC original filings, restricted RMP plans) and geographic/snapshot gaps mean UNKNOWN coverage, not zero risk.",
     "Identity, location accuracy, policy coverage, damage, financial impact and paid insurance claims require separate verifiable evidence before underwriting use."
@@ -16,12 +16,12 @@
       "id": "A",
       "name": "Flood and wildfire",
       "pr_url": "https://github.com/jhennessy-pharm3r/FacilityTest/pull/75",
-      "gate": "34 FEMA polygons prove only six bounded query windows; the full national NFHL/270m raster and verified property intersections are unavailable. 2023 wildfire county/state/ZIP aggregates are not facility hazard pixels. All private hosting, per-study effective dates and location review gates remain open.",
+      "gate": "Lane A code merged; source-only read-only FastAPI queries validated against the actual 34 FEMA polygons, 70+70 USFS QA pixels and 35,304 publisher geographic-summary rows. No persistent authenticated host installed, no nationally complete polygon/raster corpus, no independently approved facility intersections or claims. Missing site exposure remains UNKNOWN.",
       "sources": [
         {
           "id": "fema_nfhl",
           "name": "FEMA NFHL flood polygons",
-          "scope": "34 polygons from six tiny city query windows; 31 native and 3 explicitly generalized geometries",
+          "scope": "34 original flood-area polygons across six small QA windows; 4 API-generalized in selected retained source snapshot",
           "stage": "sample_ci_indexed",
           "scanned": 34,
           "accepted": 34,
@@ -30,9 +30,9 @@
           "deployed": 0,
           "verified_insured_sites": 0,
           "valid_coordinates": null,
-          "run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39981174363",
+          "run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39987050225",
           "source_sha256": null,
-          "notes": "Source retrieval and 34-record QA step passed; broader workflow had an independent failure. Six city windows are NOT nationwide coverage. No verified insured-property intersections."
+          "notes": "Original FEMA source IDs and 34 RTree rows independently validated; all read-only API queries succeeded using a temporary authenticated GitHub runner (40004684317). These are NOT 34 verified properties, complete national flood coverage or a legally effective FIRM determination. No persistent service deployed. Source ingestion code merged in PR #75; production authenticated host not deployed."
         },
         {
           "id": "usfs_whp",
@@ -48,7 +48,7 @@
           "valid_coordinates": null,
           "run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39985460693",
           "source_sha256": null,
-          "notes": "Original numeric raster pixels only, not 70 facilities. Source landscape based on approximately 2020; not live wildfire predictions."
+          "notes": "Original numeric raster pixels only, not 70 facilities. Source landscape based on approximately 2020; not live wildfire predictions. Source ingestion code merged in PR #75; production authenticated host not deployed."
         },
         {
           "id": "usfs_whp_classified",
@@ -64,7 +64,7 @@
           "valid_coordinates": null,
           "run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39985460693",
           "source_sha256": null,
-          "notes": "Includes 14 non-burnable and 1 water mask; masks are NOT a lower-risk determination. Not insured property locations."
+          "notes": "Includes 14 non-burnable and 1 water mask; masks are NOT a lower-risk determination. Not insured property locations. Source ingestion code merged in PR #75; production authenticated host not deployed."
         },
         {
           "id": "usfs_whp_aggregates",
@@ -80,7 +80,7 @@
           "valid_coordinates": null,
           "run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39985452864",
           "source_sha256": "1008b6d10c3635c6549dba3d1893381c2e6ed266c59b5fe8648cf5a6dea4b185",
-          "notes": "National publisher administrative source (not full 270m wildfire raster). 60 ZIP areas lack acreage and remain unknown; ZIP areas are not insured properties."
+          "notes": "National publisher administrative source (not full 270m wildfire raster). 60 ZIP areas lack acreage and remain unknown; ZIP areas are not insured properties. Source ingestion code merged in PR #75; production authenticated host not deployed."
         }
       ]
     },

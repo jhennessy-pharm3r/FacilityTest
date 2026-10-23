@@ -29,6 +29,9 @@ from .source_sidecars import (status as source_index_status, frs_status, frs_sea
     incidentnews_index_status, incidentnews_connection, incidentnews_events,
     SourceIndexUnavailable)
 from .incident_news import nearby_reviewed_site as nearby_incidentnews_site
+from .lane_a_service import (status as lane_a_source_status, usda_geography as lane_a_usda_geography,
+    fema_polygon as lane_a_fema_polygon, wildfire_qa_pixel as lane_a_qa_pixel,
+    reviewed_facility_flood as lane_a_reviewed_site, LaneASourceUnavailable)
 from .universal_registry import import_records as import_universal_source
 from .universal_registry import (search as universal_search, detail as universal_detail,
     statistics as universal_stats, track_for_research as universal_track)
@@ -64,6 +67,56 @@ def health(c=Depends(conn_dependency)):
 @app.get('/api/source-indices/status')
 def private_source_indices():
     return source_index_status()
+
+
+@app.get('/api/lane-a/status')
+def lane_a_index_status():
+    """Validated mounted source-only indexes; bounded observations, never national site risk."""
+    return lane_a_source_status()
+
+
+@app.get('/api/lane-a/usda-whp2023/geography/{geography_type}/{native_source_id}')
+def lane_a_original_usda_geography(geography_type:str,native_source_id:str):
+    try:
+        return lane_a_usda_geography(geography_type,native_source_id)
+    except LaneASourceUnavailable as exc:
+        raise HTTPException(503,'Verified Lane A publisher source index not mounted') from exc
+    except ValueError as exc:
+        raise HTTPException(422,str(exc)) from exc
+
+
+@app.get('/api/lane-a/fema-nfhl/{dfirm_id}/{fld_ar_id}')
+def lane_a_original_fema_polygon(dfirm_id:str,fld_ar_id:str):
+    try:
+        return lane_a_fema_polygon(dfirm_id,fld_ar_id)
+    except LaneASourceUnavailable as exc:
+        raise HTTPException(503,'Verified Lane A FEMA source index not mounted') from exc
+    except ValueError as exc:
+        raise HTTPException(422,str(exc)) from exc
+
+
+@app.get('/api/lane-a/usda-whp2023/qa-pixel/{source}/{region}/{grid_index}')
+def lane_a_original_qa_pixel(source:str,region:str,grid_index:int):
+    """Internal QA pixels are not an arbitrary insured-property point lookup."""
+    try:
+        return lane_a_qa_pixel(source,region,grid_index)
+    except LaneASourceUnavailable as exc:
+        raise HTTPException(503,'Verified Lane A USDA source index not mounted') from exc
+    except ValueError as exc:
+        raise HTTPException(422,str(exc)) from exc
+
+
+@app.get('/api/facilities/{facility_id}/fema-nfhl')
+def lane_a_facility_flood_evidence(facility_id:str,c=Depends(conn_dependency)):
+    """Uses the server-stored, current, independently reviewed site coordinate only."""
+    try:
+        return lane_a_reviewed_site(c,facility_id)
+    except LaneASourceUnavailable as exc:
+        raise HTTPException(503,'Verified Lane A FEMA source index not mounted') from exc
+    except LookupError as exc:
+        raise HTTPException(404,str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(422,str(exc)) from exc
 
 
 @app.get('/api/noaa/storm-events/status')
