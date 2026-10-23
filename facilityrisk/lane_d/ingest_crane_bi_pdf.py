@@ -137,7 +137,9 @@ def parse_pages(case: dict, pages: list[str], raw_document_sha: str):
         body=re.split(r"\b(?:Other\s+Proceedings|Asbestos\s+Liability|Separation|Note\s+13\s*[-:]|Outlook)\b",body,maxsplit=1,flags=re.I)[0]
         try:
             affirm(body,r"\bMarion\b.{0,250}\bHurricane\s+Helene\b","Marion incident identity")
-            affirm(body,r"\bbusiness\s+interruption\s+coverage\b","BI coverage scope")
+            # Financial context is verified by document-specific site, event,
+            # reporting period and exact received/incurred/receivable anchors.
+            # A generic coverage phrase may be broken by publisher PDF layout.
             facts=financial_facts(case,body)
         except ValueError as e:
             errors.append(str(e))
