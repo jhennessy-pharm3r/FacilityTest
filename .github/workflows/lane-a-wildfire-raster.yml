@@ -8,6 +8,8 @@ on:
       - 'scripts/lane_a_whp_regions.py'
       - 'scripts/lane_a_whp_classified.py'
       - 'scripts/verify_lane_a_archive.py'
+      - 'scripts/lane_a_integration_handoff.py'
+      - 'tests/test_lane_a_integration_handoff.py'
       - 'tests/test_lane_a_whp_regions.py'
       - 'tests/test_lane_a_whp_classified.py'
       - '.github/workflows/lane-a-wildfire-raster.yml'
@@ -30,6 +32,9 @@ jobs:
         run: python -m scripts.lane_a_whp_classified --out-dir data/lane_a/whp_classified
       - name: Independently verify 140 original USDA replies plus metadata, SQLite and NoData masks
         run: python -m scripts.verify_lane_a_archive --root data/lane_a
+      - name: Emit Lane A only coordinator handoff with staged source grain and zero deployed rows
+        if: always()
+        run: python -m scripts.lane_a_integration_handoff --root data/lane_a --output data/lane_a/whp_regions/lane_a_integration_handoff.json
       - name: Preserve original official replies, exact SHA256 manifests and disposable source-only indexes
         if: always()
         uses: actions/upload-artifact@v4
