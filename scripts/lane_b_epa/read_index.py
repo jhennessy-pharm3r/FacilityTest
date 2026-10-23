@@ -89,6 +89,7 @@ def _date(value):
                      ("%Y%m","month"),("%Y","year")):
         try:
             dt=datetime.strptime(text,fmt)
+            if dt.year<1900 or dt.year>2100:return None,"out_of_plausible_range"
             return dt.strftime("%Y-%m-%d") if prec=="day" else (
                 dt.strftime("%Y-%m") if prec=="month" else dt.strftime("%Y")),prec
         except ValueError:pass
@@ -169,9 +170,32 @@ def lookup(index_path,manifest_path,source,source_id,*,activity_location=None,li
         total=db.execute("SELECT COUNT(*) FROM observation WHERE "+where,values).fetchone()[0]
         result=list(db.execute("SELECT * FROM observation WHERE "+where+
             " ORDER BY member,row_number LIMIT ? OFFSET ?",[*values,limit,offset]))
+        contexts={}
+        if source=="rcra":
+            for code in {r["activity_location"] for r in result if r["activity_location"]}:
+                q=db.execute("SELECT payload,latitude,longitude,row_sha256 FROM observation "+
+                    "WHERE source=? AND member='RCRA_FACILITIES.csv' "+
+                    "AND source_id=? AND activity_location=? LIMIT 2",
+                    (source,source_id.strip(),code)).fetchall()
+                if len(q)==1:
+                    data=json.loads(q[0]["payload"])
+                    contexts[code]={"join_state":"matched_same_regulator_two_native_keys",
+                        "reported_handler_name":data.get("FACILITY_NAME"),
+                        "reported_handler_latitude":q[0]["latitude"],
+                        "reported_handler_longitude":q[0]["longitude"],
+                        "reported_handler_row_sha256":q[0]["row_sha256"],
+                        "physical_property_match_verified":False}
+                else:
+                    contexts[code]={"join_state":"no_unique_regulator_handler_match",
+                                    "physical_property_match_verified":False}
+    classified=[_classify(source,r) for r in result]
+    if source=="rcra":
+        for row in classified:
+            row["rcra_same_source_handler_context"]=contexts.get(row["activity_location"],
+                {"join_state":"activity_location_missing","physical_property_match_verified":False})
     return {"source":source,"native_source_id":source_id,"activity_location_filter":activity_location,
             "observations_available":total,"returned":len(result),
-            "rows":[_classify(source,r) for r in result],
+            "rows":classified,
             "source_provenance":facts,"physical_site_linkage":"NOT_REVIEWED"}
 
 def main():
