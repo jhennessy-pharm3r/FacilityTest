@@ -77,3 +77,24 @@ def test_checksum_refuses_invalid_manifest_and_leaves_no_db(tmp_path):
     with pytest.raises(ValueError,match="SHA"):
         index_sources(db,[("nrc",nrc,nm),("csb",csb,cm)],tmp_path/"audit.json")
     assert not db.exists()
+
+def test_annual_nrc_namespaces_do_not_merge_identical_native_ids(tmp_path):
+    nrc,nm,csb,cm=staged(tmp_path)
+    older=tmp_path/"older-2024.json"
+    payload=json.loads(nm.read_text())
+    payload["year"]=2024
+    older.write_text(json.dumps(payload))
+    db=tmp_path/"cross-vintage.sqlite"
+    report=index_sources(db,[("nrc_2025",nrc,nm),("nrc_2024",nrc,older),
+                             ("csb",csb,cm)],tmp_path/"namespaced-audit.json")
+    assert report["total_indexed_ephemeral"]==5
+    assert report["sources"]["nrc_2024"]["indexed_rows_ephemeral"]==2
+    assert report["sources"]["nrc_2025"]["indexed_rows_ephemeral"]==2
+    assert search_source(db,source="nrc_2024")["items"][0]["source"]=="nrc_2024"
+    assert search_source(db,source="nrc_2025")["items"][0]["source"]=="nrc_2025"
+    with sqlite3.connect(db) as c:
+        # Identical source-native ID, distinct reporting-year observations.
+        assert c.execute("SELECT COUNT(*) FROM source_incidents WHERE source_id='000001'").fetchone()[0]==2
+    with pytest.raises(ValueError, match="vintage disagree"):
+        index_sources(tmp_path/"invalid-annual.sqlite",
+                      [("nrc_2022",nrc,nm)],tmp_path/"bad.json")
