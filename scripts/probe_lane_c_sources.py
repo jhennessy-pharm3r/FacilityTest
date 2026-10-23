@@ -63,7 +63,8 @@ def workbook_probe(path):
                 matches = sum(bool(re.search(r"(?i)\\b(date|time|incident|release|company|facility|state|address|city|fatal|injur|report|id)\\b", x)) for x in words)
                 if matches >= 3:
                     candidates.append({"row": idx, "candidate_field_names": words[:35]})
-            results.append({"sheet": sh.title, "actual_nonempty_data_rows": observed,
+            row2 = next(sh.iter_rows(min_row=2, max_row=2, values_only=True), ())
+            results.append({"sheet": sh.title, "second_row_labels": [str(x or "")[:90] for x in row2[:25]], "actual_nonempty_data_rows": observed,
                             "header": [str(x or "")[:100] for x in header[:80]],
                             "header_candidates": candidates,
                             "initial_row_shapes": first_nonempty_rows})
@@ -124,6 +125,7 @@ def main():
                             "tables": [{"table": t.get("sheet") or t.get("name"),
                                          "observed_rows": t.get("actual_nonempty_data_rows"),
                                          "headers": t.get("header", [])[:25],
+                                         "second_row_labels": t.get("second_row_labels", []),
                                          "header_candidates": t.get("header_candidates", []),
                                          "initial_row_shapes": t.get("initial_row_shapes", [])}
                                         for t in value.get("content", [])],
