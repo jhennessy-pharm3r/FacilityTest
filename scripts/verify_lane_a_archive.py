@@ -103,6 +103,33 @@ def verify_dir(root):
             "source_response_hashes": retained,
             "tables": tables,
         }
+    wildfire_dir = root / "whp_regions"
+    whp_manifest_file = wildfire_dir / "manifest.json"
+    if whp_manifest_file.is_file():
+        w = json.loads(whp_manifest_file.read_text(encoding="utf-8"))
+        replies = ([w["metadata"]] if w.get("metadata") else []) + w.get("observations", [])
+        verified = [sha for item in replies
+                    if (sha := file_receipt(wildfire_dir, item)) is not None]
+        indexed = sqlite_count(wildfire_dir / "whp-regional-source-only.sqlite",
+                               "whp_geographic_probes")
+        if w.get("indexed_point_observations") is not None and (
+            indexed != w["indexed_point_observations"] or
+            indexed != w["accepted_numeric_pixels"] + w["no_data_pixels"] or
+            w["downloaded_replies"] != (w["accepted_numeric_pixels"] +
+                w["no_data_pixels"] + w["rejected_pixels"]) or
+            w["requested_points"] != w["downloaded_replies"] + w["source_failures"]
+        ):
+            raise ValueError("USDA wildfire regional index/accept/reject manifest discrepancy")
+        report["total_preserved_source_responses"] += len(verified)
+        report["source_directories"]["whp_regions"] = {
+            "original_response_sha256_verified": len(verified),
+            "indexed": indexed,
+            "numeric_pixel_count": w.get("accepted_numeric_pixels"),
+            "no_data_count": w.get("no_data_pixels"),
+            "source_failures": w.get("source_failures"),
+            "region_count": w.get("region_count"),
+            "sample_not_national_raster": True,
+        }
     paged = root / "paged_windows"
     manifest_path = paged / "manifest.json"
     if manifest_path.exists():
