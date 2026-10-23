@@ -59,9 +59,48 @@ def test_real_joins_use_native_identifiers_and_no_facility_merges(tmp_path):
     with pytest.raises(ValueError, match="SHA"):
         validate(export, result)
 
-def test_missing_native_relationship_blocks_normalization(tmp_path):
+def test_missing_child_report_keeps_master_but_forbids_unknown_severity(tmp_path):
     file = tmp_path / "CY25.xlsx"
     create_workbook(file, mismatch=True)
-    with pytest.raises(ValueError, match="missing cross-sheet SEQNOS"):
-        stage_nrc(file, tmp_path / "out.csv.gz", tmp_path / "manifest.json",
-                  year=2025, minimum_rows=2)
+    exported = tmp_path / "out.csv.gz"
+    result = stage_nrc(file, exported, tmp_path / "manifest.json",
+                       year=2025, minimum_rows=2)
+    assert result["accepted_rows"] == 2
+    assert result["missing_details_child_enrichment"] == 1
+    assert result["orphan_details_native_ids"] == 1
+    assert result["missing_cross_table_links"] == 1
+    with gzip.open(exported, "rt") as source:
+        rows = {row["source_id"]:row for row in csv.DictReader(source)}
+    assert rows["00002"]["reported_fatalities"] == ""
+    assert rows["00002"]["reported_injuries"] == ""
+    assert rows["00001"]["reported_injuries"] == "2.0"
+    assert validate(exported, result)
+
+def test_duplicate_child_severity_dropped_without_discarding_master(tmp_path):
+    from openpyxl import load_workbook
+    file = tmp_path / "CY25.xlsx"
+    create_workbook(file)
+    book = load_workbook(file)
+    book["INCIDENT_DETAILS"].append(["00001", 4, 9, 100, 999999, "Y"])
+    book.save(file)
+    out = tmp_path / "output.csv.gz"
+    result = stage_nrc(file, out, tmp_path / "manifest.json",
+                       year=2025, minimum_rows=2)
+    assert result["accepted_rows"] == 2
+    assert result["observed_sheet_rows"]["INCIDENT_DETAILS"]["duplicate_native_key_rows"] == 1
+    assert result["missing_details_child_enrichment"] == 1
+    with gzip.open(out,"rt") as stream:
+        rows={row["source_id"]:row for row in csv.DictReader(stream)}
+    assert rows["00001"]["reported_injuries"] == ""
+    assert rows["00001"]["reported_damage_usd"] == ""
+    assert rows["00002"]["reported_injuries"] == "0.0"
+
+def test_duplicate_master_source_id_still_fails_closed(tmp_path):
+    from openpyxl import load_workbook
+    file=tmp_path/"CY25.xlsx"
+    create_workbook(file)
+    book=load_workbook(file)
+    book["INCIDENT_COMMONS"].append(list(next(book["INCIDENT_COMMONS"].iter_rows(min_row=2,max_row=2,values_only=True))))
+    book.save(file)
+    with pytest.raises(ValueError,match="master report identity invalid"):
+        stage_nrc(file,tmp_path/"out.gz",tmp_path/"manifest.json",year=2025,minimum_rows=2)
