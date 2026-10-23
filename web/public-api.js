@@ -4,7 +4,13 @@
   'use strict';
   const script = document.getElementById('public-api-script');
   const seedUrl = new URL('./public-demo.json', script?.src || document.baseURI);
-  const extendedCatalog = [["USCG National Response Center","High","Chemical spills and releases","https://nrc.uscg.mil/"],["U.S. Chemical Safety Board","High","Investigated process accidents","https://www.csb.gov/investigations/"],["NERIS Public Incident Basics","High","Current fire response reports","https://www.usfa.fema.gov/neris/public/"],["NFIRS historical fire incidents","High","Historical fire reports","https://www.usfa.fema.gov/data-insights/nfirs/data/"],["FDA inspections and compliance","High","FEI-scoped regulatory inspections","https://www.fda.gov/about-fda/performance-data/fda-data-dashboard"],["WRI Aqueduct Floods","High","Modeled inundation hazard","https://datasets.wri.org/datasets/aqueduct-floods-hazard-maps"],["EIA-861 Electricity Reliability","High","Utility SAIDI/SAIFI averages","https://www.eia.gov/electricity/data/eia861/"],["Ireland EPA LEAP","High","Irish licensed facility compliance","https://data.epa.ie/api-list/leap-open-data/"],["European Industrial Emissions Portal","Medium-High","European facility emissions","https://industry.eea.europa.eu/industrial-emissions/dataset"],["Canada National Pollutant Release Inventory","Medium-High","Canadian facility pollutant releases","https://open.canada.ca/data/en/dataset/40e01423-7728-429c-ac9d-2954385ccdfb"],["EPA Risk-Screening Environmental Indicators","Medium","Relative modeled pollution impact","https://www.epa.gov/rsei"],["USFS Wildfire Risk to Communities","Medium","Regional wildfire hazard","https://wildfirerisk.org/download/"],["UCDP Georeferenced Event Dataset","Medium","Conflict events and location precision","https://ucdp.uu.se/downloads/"],["PHMSA Hazmat Transportation Incidents","Medium","Transport disruption events","https://www.phmsa.dot.gov/hazmat-program-management-data-and-statistics/data-operations/incident-statistics"]] .map(([name,priority,category,documentation]) => ({name,priority,category,documentation,probe_state:'not_tested',checked_at:null,access:'See official source for file/API access',test:'Site attribution, temporal evidence and dataset licensing require backend review.',limitation:'This public preview does not execute live source tests or contain private incident matches.',staged_candidates:0}));
+  const statusUrl = new URL('./source-status.json', script?.src || document.baseURI);
+  let statusPromise = null;
+  function getStatus() {
+    if (!statusPromise) statusPromise = fetch(statusUrl, {cache:'no-store'}).then(r => r.ok?r.json():null).catch(()=>null);
+    return statusPromise;
+  }
+  const extendedCatalog = [["USCG National Response Center","High","Chemical spills and releases","https://nrc.uscg.mil/"],["U.S. Chemical Safety Board","High","Investigated process accidents","https://www.csb.gov/investigations/"],["NERIS Public Incident Basics","High","Current fire response reports","https://www.usfa.fema.gov/neris/public/"],["NFIRS historical fire incidents","High","Historical fire reports","https://www.usfa.fema.gov/data-insights/nfirs/data/"],["FDA inspections and compliance","High","FEI-scoped regulatory inspections","https://www.fda.gov/about-fda/performance-data/fda-data-dashboard"],["WRI Aqueduct Floods","High","Modeled inundation hazard","https://datasets.wri.org/datasets/aqueduct-floods-hazard-maps"],["EIA-861 Electricity Reliability","High","Utility SAIDI/SAIFI averages","https://www.eia.gov/electricity/data/eia861/"],["Ireland EPA LEAP","High","Irish licensed facility compliance","https://data.epa.ie/api-list/leap-open-data/"],["European Industrial Emissions Portal","Medium-High","European facility emissions","https://industry.eea.europa.eu/industrial-emissions/dataset"],["Canada National Pollutant Release Inventory","Medium-High","Canadian facility pollutant releases","https://open.canada.ca/data/en/dataset/40e01423-7728-429c-ac9d-2954385ccdfb"],["EPA Risk-Screening Environmental Indicators","Medium","Relative modeled pollution impact","https://www.epa.gov/rsei"],["USFS Wildfire Risk to Communities","Medium","Regional wildfire hazard","https://wildfirerisk.org/download/"],["UCDP Georeferenced Event Dataset","Medium","Conflict events and location precision","https://ucdp.uu.se/downloads/"],["PHMSA Hazmat Transportation Incidents","Medium","Transport disruption events","https://www.phmsa.dot.gov/hazmat-program-management-data-and-statistics/data-operations/incident-statistics"]] .map(([name,priority,category,documentation]) => ({name,priority,category,documentation,probe_state:'not_published',checked_at:null,access:'See official source for file/API access',test:'Site attribution, temporal evidence and dataset licensing require backend review.',limitation:'This public preview does not execute live source tests or contain private incident matches.',staged_candidates:0}));
   const MAX_FILE_BYTES = 20 * 1024 * 1024;
   let dataPromise = null;
   let datasetLabel = 'Public examples';
@@ -92,12 +98,21 @@
   }
   async function query(path) {
     const d=await getData();const u=new URL('https://local.test/api/'+path.replace(/^\//,''));const p=u.searchParams;const r=u.pathname.slice('/api/'.length),parts=r.split('/');
-    if (r==='intelligence')return d.intelligence || {
+    if (r==='intelligence'){
+      const snapshot = await getStatus();
+      const intel = d.intelligence || {
       sites:d.facilities.map(f=>({...f,identifiers:f.fei?[{namespace:'FDA_FEI',identifier:f.fei,status:'observed',provenance_note:'Research identifier not independently verified'}]:[],
         candidates:[],location:{precision:(f.coordinate_precision||'').includes('City')?'city':'approximate'},hazard_checks:[],incidents:[],profile:null})),
       quality:{verified_frs_links:0,frs_candidates_pending:0,verified_site_locations:0,historical_incidents:0,hazard_screenings:0,profiles:0,live_source_checks:0},
       source_health:[],source_catalog:[]};
-    if (r==='source-extensions')return {items:extendedCatalog,caveat:'Extended source catalog is available on the local authenticated backend; public preview has no live source probes.'};
+      if (!snapshot || snapshot.schema_version !== '1.0') return intel;
+      return {...intel, source_health:snapshot.checks||[], source_catalog:(snapshot.checks||[]).map(x=>({source:x.source,documentation:x.documentation})), public_status_generated_at:snapshot.generated_at, ingestions:snapshot.ingestions||[], source_run_url:snapshot.run_url};
+    }
+    if (r==='source-extensions'){
+      const snapshot = await getStatus();
+      const checks = new Map((snapshot?.extended_checks||[]).map(x=>[x.source,x]));
+      return {items:extendedCatalog.map(x=>({...x,probe_state:checks.get(x.name)?.state||'not_published',checked_at:checks.get(x.name)?.checked_at||null,probe_details:checks.get(x.name)?.details||'No published connectivity report'})),caveat:'Public metadata reports documentation/connectivity only, not facility-level ingestion or validated matches.'};
+    }
     if (r==='health')return {status:'static_preview',version:'0.3.0',facilities:d.facilities.length};
     if (r==='overview') {
       const fl=facilityList(d),siteRows=[...fl].sort((a,b)=>b.evidence_count-a.evidence_count);
