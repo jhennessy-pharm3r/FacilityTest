@@ -106,7 +106,7 @@ def main(output):
         r.raise_for_status()
         if urlsplit(r.url).hostname!="www.csb.gov":
             raise ValueError("CSB publisher redirected to unexpected website")
-        latest=sorted(set(re.findall(r"Copy_of_Accidental_Release_Events_(20\\d{2}-\\d{2}-\\d{2})\\.xlsx",r.text)))
+        latest=sorted(set(re.findall(r"Copy_of_Accidental_Release_Events_(20\d{2}-\d{2}-\d{2})\.xlsx",r.text)))
         audit["csb_release_catalog"]={"state":"LIVE_OFFICIAL_PAGE_INVENTORIED",
              "latest_filename_date":max(latest) if latest else None,
              "discovered_vintages_in_page":latest,
@@ -134,7 +134,6 @@ def main(output):
         for key,url in (("csb_current_release",CSB_Q3),("csb_prior_quarter",CSB_Q2)):
             try:
                 path=wd/(key+".xlsx")
-                q[key]=csb_release_index(path) if path.exists() else None
                 receipt=official_download(url,path,30_000_000)
                 q[key]=csb_release_index(path)
                 audit[key].update(receipt)
