@@ -152,3 +152,20 @@ def test_cross_industry_evidence_context_is_source_specific_and_not_claims():
     assert 'linkedEvidence(x.id)' in insurance
     # Source links are research references; assessment/policy/site values are NOT serialized.
     assert 'policy' not in script.split("function sourceLink(id,label)",1)[1].split('function statline',1)[0].lower()
+
+
+def test_full_national_wildfire_raster_has_distinct_source_grain_and_coverage_context():
+    app=(ROOT/'web'/'source-insights.js').read_text()
+    workbench=(ROOT/'web'/'workbench-ui.js').read_text()
+    insurance=(ROOT/'web'/'insurance-ui.js').read_text()
+    assert 'usfs_whp2023_six_national_tiffs:' in app
+    assert '133,505,015 valid landscape cells in each product' in app
+    assert 'CI staged only, not insured sites' in app
+    assert "'usfs_whp2023_six_national_tiffs'" in workbench
+    assert "'usfs_whp2023_six_national_tiffs'" in insurance
+    manifest=json.loads((ROOT/'web'/'coordination'/'parallel-ingestion.json').read_text())
+    for source in (s for l in manifest['lanes'] for s in l['sources']):
+        if source['id']=='usfs_whp2023_six_national_tiffs':
+            assert source['accepted']==source['indexed_ci']==6
+            assert source['deployed']==source['verified_insured_sites']==0
+            assert source['source_sha256']=='7f10f1f8dd97551b8be1458fe0ec924df60b2cea7ece2d1af4c3c1166d1895ab'
