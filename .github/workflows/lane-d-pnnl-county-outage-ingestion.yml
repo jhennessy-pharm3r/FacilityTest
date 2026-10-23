@@ -65,6 +65,21 @@ jobs:
           with sqlite3.connect(root/"staged"/"pnnl_county_outage_staging.sqlite") as db:
               assert db.execute("PRAGMA integrity_check").fetchone()[0]=="ok"
               assert db.execute("SELECT COUNT(*) FROM source_observations").fetchone()[0]==m["accepted"]
+              duplicates=db.execute("SELECT count(*) FROM source_observations WHERE is_exact_duplicate_source_row=1").fetchone()[0]
+              assert duplicates==m["accepted_exact_duplicate_rows"]==m["exact_duplicate_source_rows_within_same_table"]
+              assert m["distinct_source_table_row_contents"]+duplicates==m["accepted"]
+              dup_by_kind=dict(db.execute("""SELECT source_kind, COUNT(*) FROM source_observations
+                  WHERE is_exact_duplicate_source_row=1 GROUP BY source_kind"""))
+              expected_dup={}
+              for sm in m["source_members"]:
+                  expected_dup[sm["source_kind"]]=expected_dup.get(sm["source_kind"],0)+sm["exact_duplicate_source_rows_in_member"]
+              assert all(dup_by_kind.get(kind,0)==value for kind,value in expected_dup.items())
+              lineage=db.execute("""SELECT source_member,source_line_number,duplicate_of_source_line
+                    FROM source_observations WHERE is_exact_duplicate_source_row=1 LIMIT 50""").fetchall()
+              for member,rownum,original_line in lineage:
+                  assert original_line is not None and original_line<rownum, "Duplicate row lost original source lineage"
+              print("PNNL exact original same-table duplicate records:",duplicates,
+                    "content-unique within source tables:",m["distinct_source_table_row_contents"])
               actual=dict(db.execute("SELECT source_kind,COUNT(*) FROM source_observations GROUP BY source_kind"))
               assert actual==m["accepted_by_source_kind"]
               example=db.execute("SELECT county_fips,dataset_year,source_kind,COUNT(*) FROM source_observations WHERE county_fips IS NOT NULL GROUP BY county_fips,dataset_year,source_kind LIMIT 10").fetchall()
