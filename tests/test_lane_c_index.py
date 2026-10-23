@@ -7,7 +7,7 @@ from scripts.build_industrial_incidents import digest
 from scripts.build_nrc_enriched import FIELDS as NRC_COLUMNS
 from scripts.build_csb_incidents import COLUMNS as CSB_COLUMNS
 from scripts.industrial_incident_io import gzip_csv_writer
-from scripts.index_lane_c_incidents import index_sources, search_source
+from scripts.index_lane_c_incidents import index_sources, search_source, audit_multiyear_source_coverage
 
 def staged(tmp_path):
     nrc=tmp_path/"nrc.csv.gz"
@@ -88,6 +88,11 @@ def test_annual_nrc_namespaces_do_not_merge_identical_native_ids(tmp_path):
     report=index_sources(db,[("nrc_2025",nrc,nm),("nrc_2024",nrc,older),
                              ("csb",csb,cm)],tmp_path/"namespaced-audit.json")
     assert report["total_indexed_ephemeral"]==5
+    evidence=audit_multiyear_source_coverage(db)
+    assert evidence["native_source_id_values_present_in_multiple_yearly_workbooks"]==2
+    assert evidence["same_native_id_cross_year_pairs"]==2
+    assert evidence["vintage_event_date_and_reported_geography"]["nrc_2025"]["coordinate_rows"]==1
+    assert any(x["received_workbook_namespace"]=="nrc_2024" and x["incident_calendar_year"]=="2025" for x in evidence["nrc_event_year_distribution_by_receipt_cohort"])
     assert report["sources"]["nrc_2024"]["indexed_rows_ephemeral"]==2
     assert report["sources"]["nrc_2025"]["indexed_rows_ephemeral"]==2
     assert search_source(db,source="nrc_2024")["items"][0]["source"]=="nrc_2024"
