@@ -1,0 +1,21 @@
+name: Lane B EPA isolated regression
+on:
+  push:
+    branches:
+      - 'ingest/epa-echo-tri-rcra-rmp-lane-b-20261023'
+  pull_request:
+    paths:
+      - 'scripts/lane_b_epa/**'
+      - '.github/workflows/lane-b-epa-tests.yml'
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Source-isolated importer regression
+        run: python -m unittest scripts.lane_b_epa.test_ingest -v
