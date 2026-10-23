@@ -57,6 +57,23 @@ jobs:
           print("ODIN actual publisher snapshot verified",len(data),"raw",len(accepted),"accepted",len(rejected),"rejected",
                 "counties",manifest["qa"]["distinct_county_fips"],"states",manifest["qa"]["distinct_state_values"])
           PY
+      - name: Diagnose publisher-reported start-time omissions without exposing incident details
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json,collections,pathlib
+          p=pathlib.Path("/tmp/lane-d/odin-public-snapshot/rejected.jsonl")
+          nulls=collections.Counter()
+          examples=collections.Counter()
+          for line in p.read_text().splitlines():
+              rec=json.loads(line)
+              if rec["reason"]!="invalid_reported_start": continue
+              start=rec["raw"].get("reportedstarttime")
+              nulls[type(start).__name__]+=1
+              examples["NULL" if start is None else ("EMPTY" if start=="" else "NONEMPTY")]+=1
+          print("ODIN rejected reportedstarttime types:",dict(nulls))
+          print("ODIN rejected timestamp emptiness:",dict(examples))
+          PY
       - name: Publish non-identifying actual source count and digest manifest
         if: always()
         uses: actions/upload-artifact@v4
