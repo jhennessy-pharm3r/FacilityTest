@@ -53,8 +53,15 @@ def workbook_probe(path):
             header = next(iterator, [])
             # Actual observed nonempty rows, not sheet.max_row.
             observed = sum(any(x is not None for x in row) for row in iterator)
+            candidates = []
+            for idx, values in enumerate(sh.iter_rows(max_row=12, values_only=True), 1):
+                words = [str(x or "").strip() for x in values]
+                matches = sum(bool(re.search(r"(?i)\\b(date|time|incident|release|company|facility|state|address|city|fatal|injur|report|id)\\b", x)) for x in words)
+                if matches >= 3:
+                    candidates.append({"row": idx, "candidate_field_names": words[:35]})
             results.append({"sheet": sh.title, "actual_nonempty_data_rows": observed,
-                            "header": [str(x or "")[:100] for x in header[:80]]})
+                            "header": [str(x or "")[:100] for x in header[:80]],
+                            "header_candidates": candidates})
         return results
     finally:
         book.close()
@@ -111,7 +118,8 @@ def main():
                             "bytes": value.get("downloaded_bytes"),
                             "tables": [{"table": t.get("sheet") or t.get("name"),
                                          "observed_rows": t.get("actual_nonempty_data_rows"),
-                                         "headers": t.get("header", [])[:25]}
+                                         "headers": t.get("header", [])[:25],
+                                         "header_candidates": t.get("header_candidates", [])}
                                         for t in value.get("content", [])],
                             "sha256": value.get("raw_sha256"),
                             "error": value.get("error"),
