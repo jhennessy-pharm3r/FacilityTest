@@ -143,3 +143,14 @@ def test_public_ingest_metadata_fail_closed_on_unreviewed_sources_and_false_coun
     output.write_text(json.dumps(payload))
     with pytest.raises(ValueError, match="Nonpositive"):
         published_external_ingestions(folder)
+
+
+
+def test_public_status_publisher_runs_as_standalone_script_outside_repo(tmp_path):
+    import subprocess
+    import sys
+    script = Path(__file__).resolve().parents[1] / "scripts" / "publish_source_status.py"
+    result = subprocess.run([sys.executable, str(script), "--help"],
+                            cwd=tmp_path, capture_output=True, text=True, timeout=20)
+    assert result.returncode == 0, result.stderr
+    assert "--merge-only" in result.stdout
