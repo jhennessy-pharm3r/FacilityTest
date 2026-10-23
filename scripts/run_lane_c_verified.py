@@ -137,6 +137,52 @@ def run(output):
             success = True
         except Exception as e:
             audit["blocked_items"].append({"source":"nrc_csb_content_or_index","error":type(e).__name__ + ": "+str(e)})
+        # Expand beyond a single annual report. Each NRC annual workbook has
+        # its own source-native SEQNOS namespace, so do NOT coalesce identical
+        # identifiers from different years or silently double count events.
+        audit["additional_nrc_cohorts"] = {}
+        for year in (2024, 2023):
+            url = f"https://nrc.uscg.mil/FOIAFiles/CY{year%100:02d}.xlsx"
+            yearly = {"source_url":url, "year":year, "dataset_role":"annual_report_cohort",
+                      "cross_year_auto_dedup":"NOT_PERFORMED"}
+            try:
+                yr_raw=work/f"nrc-CY{year%100:02d}.xlsx"
+                bytes_count, raw_sha = download(url, 60_000_000, yr_raw)
+                yearly["raw_bytes"]=bytes_count
+                yearly["raw_sha256"]=raw_sha
+                yr_file=work/f"nrc-{year}.csv.gz"
+                yr_manifest=output/f"nrc-{year}-manifest.json"
+                result=stage_nrc(yr_raw,yr_file,yr_manifest,year=year,minimum_rows=1000)
+                yr_second=stage_nrc(yr_raw,work/f"nrc-{year}-again.csv.gz",
+                                     work/f"nrc-{year}-again.json",year=year,minimum_rows=1000)
+                if result["normalized_sha256"] != yr_second["normalized_sha256"]:
+                    raise ValueError("NRC annual normalized SHA differed across same source rerun")
+                indexed=index_sources(work/f"nrc-{year}-source.sqlite",
+                    [("nrc",yr_file,yr_manifest)],work/f"nrc-{year}-index-audit.json")
+                query=search_source(work/f"nrc-{year}-source.sqlite",source="nrc",page_size=10)
+                if query["total"] != result["accepted_rows"]:
+                    raise ValueError("Annual source query count mismatch")
+                yearly.update({
+                    "state":"INDEXED_EPHEMERAL_NOT_DEPLOYED",
+                    "source_rows": result["nrc_reports"],
+                    "accepted":result["accepted_rows"],"rejected":result["rejected_rows"],
+                    "source_coordinates":result["coordinate_records"],
+                    "missing_coordinates":result["missing_coordinates"],
+                    "missing_joins":result["missing_cross_table_links"],
+                    "invalid_or_missing_dates":result["invalid_or_missing_incident_dates"],
+                    "normalized_sha256":result["normalized_sha256"],
+                    "ephemeral_indexed":indexed["total_indexed_ephemeral"],
+                    "repeatable_normalization":"PASS"
+                })
+            except Exception as error:
+                yearly["state"]="BLOCKED_INDEPENDENT_YEAR"
+                yearly["error"]=type(error).__name__+": "+str(error)[:350]
+                audit["blocked_items"].append({"source":f"nrc_{year}","error":yearly["error"]})
+            audit["additional_nrc_cohorts"][str(year)]=yearly
+        audit["total_ephemeral_indexed_all_independent_cohorts"] = (
+            audit.get("source_index",{}).get("total_indexed_ephemeral",0)
+            + sum(x.get("ephemeral_indexed",0) for x in audit["additional_nrc_cohorts"].values())
+        )
         # External access attempts do not prevent the two successful source
         # cohorts from being independently usable as staging.
         for name, url in PHMSA_OFFICIAL_URLS.items():
@@ -157,6 +203,8 @@ def run(output):
             "nrc":audit["source_cohorts"].get("nrc"),
             "csb":audit["source_cohorts"].get("csb"),
             "ephemeral_index":audit.get("source_index",{}).get("total_indexed_ephemeral"),
+            "additional_nrc_cohorts":audit.get("additional_nrc_cohorts"),
+            "total_ephemeral_indexed":audit.get("total_ephemeral_indexed_all_independent_cohorts"),
             "deterministic":audit.get("deterministic_repeated_sha256"),
             "phmsa":audit["phmsa"],
             "blocked_items":audit["blocked_items"],
