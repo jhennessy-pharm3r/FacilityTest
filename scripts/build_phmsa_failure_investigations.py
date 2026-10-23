@@ -266,7 +266,7 @@ def index(source_path,manifest_path,db_path):
                         row["detail_report_url"],json.dumps(row,ensure_ascii=False,sort_keys=True),
                         row["site_link_status"]))
             quick=conn.execute("PRAGMA quick_check").fetchone()[0]
-            total,opids=conn.execute("SELECT COUNT(*), COUNT(DISTINCT operator_id) FROM investigation_catalog").fetchone()
+            total,opids=conn.execute("SELECT COUNT(*), COUNT(DISTINCT NULLIF(operator_id,'')) FROM investigation_catalog").fetchone()
             n_candidates=conn.execute("SELECT COUNT(*) FROM investigation_catalog WHERE date_quality='posted_precedes_failure'").fetchone()[0]
             if quick!="ok" or total!=report["accepted_publisher_index_rows"] or opids!=report["distinct_nonempty_operator_ids"] or n_candidates!=report.get("posted_date_earlier_than_failure_date",0):
                 raise ValueError("PHMSA investigation SQL integrity/count/date anomaly mismatch")
