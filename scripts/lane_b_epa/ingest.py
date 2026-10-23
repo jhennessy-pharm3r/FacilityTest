@@ -23,7 +23,7 @@ def ingest(source,path,out,source_url=None,year=None):
     db.execute("CREATE TABLE observation(source TEXT,source_id TEXT,member TEXT,row_number INTEGER,payload TEXT,row_sha256 TEXT,latitude REAL,longitude REAL,PRIMARY KEY(source,member,row_number))")
     db.execute("CREATE INDEX idx_sourceid ON observation(source,source_id)")
     db.execute("CREATE TABLE rejected(member TEXT,row_number INTEGER,reason TEXT)")
-    scanned=accepted=rejected=coords=duplicates=0;seen=set();inventory={}
+    scanned=accepted=rejected=coords=duplicates=0;seen=set();inventory={};reject_reasons={}
     try:
         for item in members:
             member=item.filename if item else Path(path).name
@@ -36,15 +36,19 @@ def ingest(source,path,out,source_url=None,year=None):
                 if not identity:
                     inventory[member]={"state":"skipped_no_identity_column","observed_headers":keys[:70]}
                     continue
-                lat=next((k for k in ("LATITUDE","FAC_LATITUDE","LATITUDE83","12_LATITUDE") if k in keys),None)
-                lon=next((k for k in ("LONGITUDE","FAC_LONGITUDE","LONGITUDE83","13_LONGITUDE") if k in keys),None)
+                lat=next((k for k in ("LATITUDE","FAC_LATITUDE","LATITUDE83","12_LATITUDE","FAC_LAT") if k in keys),None)
+                lon=next((k for k in ("LONGITUDE","FAC_LONGITUDE","LONGITUDE83","13_LONGITUDE","FAC_LONG") if k in keys),None)
                 rows=0
                 for n,row in enumerate(reader,2):
                     scanned+=1;rows+=1
                     obj={name(k):(v or "").strip() for k,v in row.items() if k is not None}
                     sid=obj.get(identity,"")
                     if not sid or None in row:
-                        rejected+=1;db.execute("INSERT INTO rejected VALUES (?,?,?)",(member,n,"missing_id_or_malformed_row"));continue
+                        rejected+=1
+                        reason="malformed_csv" if None in row else "missing_native_id"
+                        reject_reasons[reason]=reject_reasons.get(reason,0)+1
+                        db.execute("INSERT INTO rejected VALUES (?,?,?)",(member,n,reason))
+                        continue
                     if (member,sid) in seen:duplicates+=1
                     seen.add((member,sid))
                     a=coordinate(obj.get(lat),-90,90) if lat else None
@@ -59,7 +63,7 @@ def ingest(source,path,out,source_url=None,year=None):
         indexed=db.execute("SELECT COUNT(*) FROM observation").fetchone()[0]
         check=db.execute("PRAGMA integrity_check").fetchone()[0]
         if indexed!=accepted or scanned!=accepted+rejected or check!="ok":raise AssertionError("reconciliation failed")
-        result=dict(source=source,state="INDEXED",deployment_state="NOT_DEPLOYED",retrieved_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),source_url=source_url,year=year,archive_sha256=digest.hexdigest(),scanned_rows=scanned,accepted_rows=accepted,rejected_rows=rejected,indexed_rows=indexed,valid_coordinate_pairs=coords,duplicate_member_ids=duplicates,archive_members=inventory,integrity=check,source_identity_only=True)
+        result=dict(source=source,state="INDEXED",deployment_state="NOT_DEPLOYED",retrieved_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),source_url=source_url,year=year,archive_sha256=digest.hexdigest(),scanned_rows=scanned,accepted_rows=accepted,rejected_rows=rejected,reject_reason_counts=reject_reasons,indexed_rows=indexed,valid_coordinate_pairs=coords,duplicate_member_ids=duplicates,archive_members=inventory,integrity=check,source_identity_only=True)
         (out/(source+".manifest.json")).write_text(json.dumps(result,indent=2)+"\n")
         return result
     except Exception:
