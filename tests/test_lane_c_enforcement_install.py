@@ -5,7 +5,7 @@ import sqlite3
 import pytest
 
 from scripts.build_phmsa_enforcement import REQUIRED,build,index_cases
-from scripts.lane_c_enforcement_install import package,verify,install,query
+from scripts.lane_c_enforcement_install import package,verify,install,query,rollback
 
 def example_source(tmp_path):
     repo=tmp_path/"repo"
@@ -62,6 +62,10 @@ def test_private_package_installed_separately_and_read_only_query(tmp_path):
             conn.execute("DELETE FROM enforcement_cases")
     again=install(bundle,root,"enforcement-test",repo_root=repo)
     assert again["state"]=="ALREADY_INSTALLED_CHECKSUM_VERIFIED"
+    install(bundle,root,"enforcement-replacement",repo_root=repo)
+    assert query(root,page_size=2,repo_root=repo)["release_id"]=="enforcement-replacement"
+    assert rollback(root,"enforcement-test",repo_root=repo)["active_release_id"]=="enforcement-test"
+    assert query(root,page_size=2,repo_root=repo)["release_id"]=="enforcement-test"
 
 def test_private_phmsa_bundle_rejects_tampering_before_activation(tmp_path):
     repo,raw,normalized,manifest,db=example_source(tmp_path)
