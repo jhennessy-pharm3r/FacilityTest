@@ -111,3 +111,38 @@ def test_indexed_prefix_source_lookup_and_safe_queries():
     assert any('idx_universal_source_identifier_lookup' in text for text in plans),plans
     assert search(conn,q='FEI%')['total']==0,'User wildcard must not enumerate other IDs'
     conn.close()
+
+
+def test_private_universal_api_accepts_combined_source_industry_country_filters(tmp_path,monkeypatch):
+    from fastapi.testclient import TestClient
+    from facilityrisk.app import app
+    from facilityrisk.db import connect,initialize
+    db_file=tmp_path/'combined-filters.sqlite'
+    monkeypatch.setenv('FACILITY_RISK_DB',str(db_file))
+    with connect(db_file) as c:
+        initialize(c)
+        import_records(c,'EPA_FRS',[
+            {'id':'110000099991','name':'General Warehouse','country':'US','industry':'493110'},
+            {'id':'110000099992','name':'General Hospital','country':'US','industry':'622110'}
+        ],'https://www.epa.gov/frs')
+        import_records(c,'OVERTURE',[
+            {'id':'place999','name':'General Warehouse','country':'CA','industry':'493110'}
+        ],'https://docs.overturemaps.org/')
+    with TestClient(app) as client:
+        found=client.get('/api/universal-facilities',params={
+          'q':'General','country':'US','industry':'493110','source':'EPA_FRS',
+          'limit':'25'})
+        assert found.status_code==200,found.text
+        response=found.json()
+        assert response['total']==1
+        assert response['items'][0]['name']=='General Warehouse'
+        assert response['items'][0]['coordinate_quality']=='unassessed'
+        assert response['items'][0]['site_status']=='source_observation'
+        data=client.get('/api/universal-facilities/'+response['items'][0]['id'])
+        assert data.status_code==200
+        assert data.json()['insured_coverage_status']=='unknown'
+        assert data.json()['risk_status']=='unassessed'
+        zero=client.get('/api/universal-facilities',params={
+          'q':'General','country':'CA','source':'EPA_FRS'})
+        assert zero.status_code==200 and zero.json()['total']==0
+        assert client.get('/api/universal-facilities?industry=Retail').json()['total']==0
