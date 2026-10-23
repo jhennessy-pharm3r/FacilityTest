@@ -12,27 +12,27 @@ Original responses are staged separately from normalized source observations. SH
 
 ## Observed live run — 2026-10-23
 
-**Content-level evidence:** [GitHub Actions run 39974657234](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39974657234), artifact `lane-a-fema-usfs-massgis-source-qa`, ID **12509934075**. Unit fixtures passed (**21 tests** on that revision), and [repository CI 39974668226](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39974668226) passed. The official-source workflow **correctly failed its full-completion gate** because FEMA access was intermittent and the separate MassGIS source was inaccessible. Subsequent commits add additional archive/manifest regression verification; inspect their own CI before accepting the current branch.
+**Content-level evidence:** [GitHub Actions run 39975409624](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39975409624), artifact `lane-a-fema-usfs-massgis-source-qa`, ID **12511281582**. Unit fixtures passed (**24 tests** on that revision), and [repository CI 39975417861](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39975417861) passed. That run downloaded all three FEMA geographic probes and all three USDA WHP raster probes. The independent `scripts.verify_lane_a_archive` gate **passed**, checking **10 retained original JSON responses**, SHA-256, accepted/rejected/indexed reconciliation and SQLite integrity. The overall source workflow was red solely because a separately attributed **optional** MassGIS source returned an inaccessible-layer error. A subsequent workflow edit makes that optional source non-blocking, without hiding the result. No national-completeness or production-deployment claim is made.
 
 | Stage / observed count | FEMA NFHL polygon QA | USDA WHP 2023 raster QA |
 | --- | ---: | ---: |
 | Geographic probes attempted | 3 bounding boxes | 3 points |
-| Successful geographic probes | 2 | 3 |
-| Original source records returned in successful probes | **12** | **3 pixels** |
-| Accepted and staged records | **12** | **3** |
+| Successful geographic probes | **3** | **3** |
+| Original source records returned in successful probes | **21** | **3 pixels** |
+| Accepted and staged records | **21** | **3** |
 | Rejected source records | **0 in successful responses** | **0** |
-| Distinct source keys / point observations indexed in source-only SQLite | **12** | **3** |
+| Distinct source keys / point observations indexed in source-only SQLite | **21** | **3** |
 | Nationwide dataset downloaded | **NO** | **NO** |
 | Corroborated physical facility matches | **0** | **0** |
 | Durable backend / live app deployment | **0** | **0** |
 
-**FEMA bounding boxes:** New Orleans **10** accepted polygons (query response explicitly flagged `exceededTransferLimit=true`, so incomplete, not exhaustive; raw SHA-256 `0e4bad104fec007642d48087920280183686081766bd02497658d5dcf7a4e67f`); Houston **network connection reset** (no count inferred); Sacramento **2** polygons (raw SHA-256 `dd8a056f68e9495a65e989ab22817ce9981e60f6caca512ebaf8fe97d29eccb3`). The retrieved polygons include both `AE` and `X` flood zones. A returned polygon is not intrinsically high risk. Real source native identifier examples: `22071C / 22071C_6650` and `06067C / 06067C_1223`.
+**FEMA bounding boxes:** New Orleans **10** accepted polygons (query response explicitly flagged `exceededTransferLimit=true`, so incomplete, not exhaustive; raw SHA-256 `0e4bad104fec007642d48087920280183686081766bd02497658d5dcf7a4e67f`); Houston **9** accepted polygons (raw SHA-256 `a777ddaf39428671276379021cb531cb2ce519d9881792eecf85c6b8299198c0`); Sacramento **2** accepted polygons (raw SHA-256 `dd8a056f68e9495a65e989ab22817ce9981e60f6caca512ebaf8fe97d29eccb3`). Across the actual index **8 polygons are `AE` and 13 are `X`**; a polygon observation is not intrinsically high risk. Query-level truncation for New Orleans remains a coverage limitation. Real source native identifier examples: `22071C / 22071C_6650` and `06067C / 06067C_1223`.
 
 **USFS point probes:** Tahoe WHP value **0** (raw SHA-256 `754d67da1e156b14a1a9de4945dcbec4e0461f05c1b617a9f3e2357771b9be9c`), Boise **231** (`ebb84747dd1948cfc1c7b383d30004d320d04da9a29505bde6924839cb5370df`), Denver **4155** (`0d765f5b8827e60484b28e4f3a4d5da7a2cd20c3fe511c6493e0593b47a852da`). These are raw continuous WHP raster values, **not normalized scores**, and no claim of insured property proximity is made.
 
-**Separate FEMA attribute-only diagnostic:** Same run successfully returned **2 response observations (1 per GET/POST transport)** to the *same* FEMA source key (`22071C / 22071C_40561`), 0 rejected, 2 indexed query receipts but **1 distinct source ID**. No geometry is returned by that diagnostic. **Do not add its 2 receipts to the 12 geometric polygons and call that 14 unique flood zones or 14 facilities**. This also proves the service was intermittently reachable and that a failed method is not proof of an empty official dataset.
+**Separate FEMA attribute-only diagnostic:** The 39975409624 run downloaded **2 additional attribute-only query receipts** (minimal GET and point GET), 0 rejected, 2 indexed query receipts but **2 distinct source keys**; POST failed and the legacy path returned 404. The earlier run 39974657234 demonstrated successful GET + POST for one source key. These are **transport method diagnostics without geometry**, separate from 21 polygon records. **Do not add attribute-only receipts to polygon counts or call them distinct insured properties.**
 
-**Earlier metadata confirmation:** [run 39974018063](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39974018063) fetched true FEMA flood polygon layer metadata including `geometryType=esriGeometryPolygon`, native ID field descriptions, original SHA-256 `6605b8063afefa8f44f604b44a920b2c5645ded739ec9558b24188e3bdedb358`. The same request failed intermittently in subsequent runs; success does not guarantee query availability.
+**Metadata confirmation:** [run 39975409624](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39975409624) fetched FEMA flood polygon metadata including `geometryType=esriGeometryPolygon`, native ID field descriptions and original response SHA-256 `c9ac9b35c1c5c8c0604f73c37c4e86caa80402a6f42533dbef769f2d5f842c4e`. A different earlier run fetched the same layer with a different response checksum, demonstrating that per-run archive evidence must be retained. Request success remains intermittently dependent on the government API.
 
 All reported accepted/rejected/indexed figures are **per successfully downloaded *samples***, not national counts; blocked queries have **unknown** source row totals, not zero. Source-only SQLite in GitHub Actions is disposable staging; the ZIP artifact has a retention period, not a production serving guarantee.
 
@@ -83,4 +83,4 @@ The example is a **schema illustration only**, not a corroborated facility or a 
 - Verify original source attribution/redistribution terms; coordinate with Lane E for durable private indexing, shared manifest/Source Health/UI, rollback and refresh monitoring. Only coordinator may merge; GitHub Pages cannot serve a national private geospatial database.
 - Carry an **unknown/unassessed** state where either source is absent, inaccessible, outdated or not geographically applicable. Do not call missing evidence “no risk.”
 
-**Current honest state:** real federal samples have been **DOWNLOADED and STAGED in ephemeral source-only CI indexes**, and isolated regression QA is passing. **Nationwide VERIFIED, durable INDEXED and DEPLOYED remain unmet.** The draft PR remains unmerged.
+**Current honest state:** real federal samples have been **DOWNLOADED and STAGED in ephemeral source-only CI indexes (21 FEMA geometries, 3 USDA raster pixels in documented run)**; content-level geometry/ID/coordinate checks, original response SHA-256, index reconciliation and fixture regressions pass. **Nationwide VERIFIED, untruncated complete flood-zone retrieval, durable INDEXED and DEPLOYED remain unmet.** The draft PR remains unmerged.
