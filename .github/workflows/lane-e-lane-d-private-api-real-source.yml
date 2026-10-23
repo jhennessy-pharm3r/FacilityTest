@@ -230,6 +230,46 @@ jobs:
           PY
           FIPS=$(python -c 'import json;print(json.load(open("/tmp/lane-e/coordinator_backend_acceptance.json"))["pnnl_county_fips_query"])')
           python scripts/verify_lane_d_live_service.py             --base-url http://127.0.0.1:8891 --county-fips "$FIPS"             --output /tmp/lane-e/live_http_verification.json
+      - name: Build production Docker image and mount actual readonly government indexes
+        shell: bash
+        run: |
+          docker build --pull -t facility-risk:lane-d-private-ci .
+          sudo chown 10001:10001 /tmp/lane-e/workspace
+          TOKEN=$(python -c 'import secrets; print(secrets.token_urlsafe(48))')
+          printf 'FACILITY_RISK_REQUIRE_AUTH=1\nFACILITY_RISK_AUTH_TOKEN=%s\nFACILITY_RISK_ENABLE_WRITES=0\nFACILITY_RISK_LANE_D_INDEX_ROOT=/app/source-index/lane-d\nFACILITY_RISK_LANE_D_ODIN_USE_APPROVED=0\n' "$TOKEN" > /tmp/lane-e/ci-private.env
+          chmod 600 /tmp/lane-e/ci-private.env
+          docker run --rm --detach --name lane-d-private-runtime-ci \
+            --publish 127.0.0.1:8892:8765 \
+            --env-file /tmp/lane-e/ci-private.env \
+            --volume /tmp/lane-e/live/lane-d:/app/source-index/lane-d:ro \
+            --volume /tmp/lane-e/workspace:/app/data:rw \
+            --read-only --tmpfs /tmp:rw,noexec,nosuid,size=64m \
+            --cap-drop ALL --security-opt no-new-privileges:true \
+            facility-risk:lane-d-private-ci
+          trap 'docker rm --force lane-d-private-runtime-ci > /dev/null 2>&1 || true; rm -f /tmp/lane-e/ci-private.env' EXIT
+          for i in $(seq 1 40); do
+            if curl --silent --fail --max-time 2 http://127.0.0.1:8892/api/health > /dev/null; then break; fi
+            sleep 1
+          done
+          export FACILITY_RISK_AUTH_TOKEN="$TOKEN"
+          FIPS=$(python -c 'import json;print(json.load(open("/tmp/lane-e/coordinator_backend_acceptance.json"))["pnnl_county_fips_query"])')
+          python scripts/verify_lane_d_live_service.py \
+            --base-url http://127.0.0.1:8892 \
+            --county-fips "$FIPS" \
+            --output /tmp/lane-e/docker_runtime_acceptance.json
+          python - <<'PY'
+          import json, pathlib
+          p=pathlib.Path("/tmp/lane-e/docker_runtime_acceptance.json")
+          result=json.loads(p.read_text())
+          assert result["private_authenticated_live_http_source_query_verified"]
+          assert result["unauthenticated_request_http_code"]==401
+          assert result["source_count_and_original_sha_verified"]["pnnl_2014_2023"]["accepted"]==2124183
+          result["runtime"]="ACTUAL_UNPRIVILEGED_READONLY_DOCKER_CONTAINER_EPHEMERAL_CI"
+          result["tenant_oidc_client_production_security_attested"]=False
+          result["persistent_private_host_and_backup_attested"]=False
+          p.write_text(json.dumps(result,indent=2)+"\n")
+          print("Verified Docker 8765->localhost 8892 source API: real PNNL/EIA/DOE, auth 401, immutable mounted, no insured-site inference")
+          PY
       - name: Publish aggregate-only backend acceptance evidence, no large source DB
         if: always()
         uses: actions/upload-artifact@v4
@@ -240,6 +280,7 @@ jobs:
           path: |
             /tmp/lane-e/coordinator_backend_acceptance.json
             /tmp/lane-e/live_http_verification.json
+            /tmp/lane-e/docker_runtime_acceptance.json
       - name: Remove ephemeral original source and staged research files
         if: always()
         shell: bash
