@@ -12,7 +12,10 @@ import json
 import math
 import os
 from pathlib import Path
-import resource
+try:
+    import resource
+except ImportError:  # Windows private operator workstation
+    resource=None
 import sqlite3
 from statistics import median
 import time
@@ -87,7 +90,7 @@ def benchmark(db_path,repeats=3,concurrency=4,*,cases=None):
         parallel_elapsed=time.perf_counter()-started
     else:
         parallel_elapsed=0
-    rss_kib=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    rss_kib=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss if resource else None
     return {'benchmark':'source_identity_sqlite_fts5',
         'data_scope':'official public EPA FRS identities only; not verified properties or client records',
         'database_path_hint':db_path.name,
