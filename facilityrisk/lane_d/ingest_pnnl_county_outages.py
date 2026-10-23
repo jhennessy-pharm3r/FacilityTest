@@ -155,6 +155,7 @@ def normalize(archive,output,years=EXPECTED_YEARS):
     stats=[]
     accepted_total,rejected_total=0,0
     kind_counts,reason_counts=Counter(),Counter()
+    exact_source_duplicate_rows=0
     fips,states=set(),set()
     published_start_min,published_start_max=None,None
     null_counts,native_event_ids=Counter(),set()
@@ -209,6 +210,7 @@ def normalize(archive,output,years=EXPECTED_YEARS):
                     actual=dict(row)
                     row_payload=json.dumps(actual,sort_keys=True,separators=(",",":"),ensure_ascii=False)
                     fingerprint=sha(row_payload.encode("utf-8"))
+                    member_exact[fingerprint]+=1
                     try:
                         if any(k is None or v is None for k,v in actual.items()):
                             raise ValueError("ragged_source_csv_row")
@@ -274,10 +276,13 @@ def normalize(archive,output,years=EXPECTED_YEARS):
                         db.commit()
                 if head_row_count!=member_good+member_bad:
                     raise ValueError("Unreconciled member original row count: "+member)
+                member_exact_duplicates=sum(v-1 for v in member_exact.values() if v>1)
+                exact_source_duplicate_rows+=member_exact_duplicates
                 stats.append({
                     "source_member":member,"source_year":year,"source_kind":kind,
                     "uncompressed_bytes":info.file_size,"member_sha256":member_sha,
                     "source_rows_scanned":head_row_count,"accepted":member_good,"rejected":member_bad,
+                    "exact_duplicate_source_rows_in_member":member_exact_duplicates,
                     "observed_min_start":min_ts,"observed_max_start":max_ts,
                     "null_metrics":dict(member_null),
                     "source_header":list(COLUMNS[kind]),
@@ -317,6 +322,7 @@ def normalize(archive,output,years=EXPECTED_YEARS):
         "missing_native_correlated_event_ids":native_empty_count,
         "unique_native_correlated_event_id_year_pairs":len(native_event_ids),
         "candidate_repeated_county_time_event_keys":sum(v-1 for v in natural_keys.values() if v>1),
+        "exact_duplicate_source_rows_within_same_table":exact_source_duplicate_rows,
         "cross_publication_year_episode_starts":dict(cross_year_starts),
         "durable_backend_indexed":0,"verified_insured_facility_outages":0,
         "verified_financial_claims":0,"deployed":0,
@@ -339,6 +345,7 @@ def normalize(archive,output,years=EXPECTED_YEARS):
         "accepted_by_source_kind","locally_indexed","distinct_state_names","unique_county_fips",
         "earliest_recorded_county_episode","latest_recorded_county_episode",
         "candidate_repeated_county_time_event_keys",
+        "exact_duplicate_source_rows_within_same_table",
         "unique_native_correlated_event_id_year_pairs")},indent=2))
     return receipt
 
