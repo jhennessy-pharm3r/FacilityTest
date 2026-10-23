@@ -22,8 +22,13 @@ python -m scripts.lane_b_epa.ingest --source tri --year 2024 --input /private/of
 | Source | Live download | Validated indexed records | Deployed |
 | --- | --- | --- | --- |
 | ECHO | NOT TESTED in this runtime (DNS/network blocked) | Unknown | No |
-| RCRAInfo | Official archive downloaded in GitHub Actions; initial schema runs rejected zero-row ingest; corrected ID_NUMBER mapping run pending | Unknown | No |
+| RCRAInfo | **Completed full national download, SHA256 + content QA** in [run 39971197481](https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39971197481) | **7,022,589 source table rows, 0 rejected** across 6 tables; facilities table 1,630,839 | No |
 | TRI | Official year-specific file not acquired in this runtime | Unknown | No |
 | RMP | Bulk download deliberately blocked by access constraints | 0 | No |
 
 Next gates: network-enabled complete official run; verify real member schemas and table semantics, original archives and checksum retention, unit semantics, rejected rows, geographic bounds, indexed query examples, application-specific API and durable deployment. Never mark VERIFIED based on passing fixtures or HTTP probes.
+
+## Verified national RCRA run — 2026-10-23
+- Original EPA archive checksum: `babf48b1e2388b7f27cfc186cb1e9eb0ecfa26f53476fc81908712e41dfe09f3`.
+- All 7,022,589 rows scanned/accepted/indexed; 0 rejected; SQLite integrity OK; 1,522,387 row coordinate pairs; 4,262,613 repeated facility IDs within table members (not an error: events/history are repeated by design).
+- Native handler ID: `ID_NUMBER`; NAD83 coordinate fields: `LATITUDE83`, `LONGITUDE83`. Counts by native table in `validation/rcra_20261023.json`. 1,630,839 facility-table records; do not equate total cross-table observations with physical properties. Indexed source is a **disposable Actions artifact** and has not been loaded into durable private serving.
