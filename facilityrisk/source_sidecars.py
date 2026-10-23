@@ -215,7 +215,10 @@ def frs_search(**filters):
             return 1 if time.monotonic() - started > 15.0 else 0
         conn.set_progress_handler(enforce_budget, 10_000)
         try:
-            results = universal_search(conn, source="EPA_FRS", **filters)
+            # This mounted artifact has been validated to contain EPA_FRS only.
+            # Avoid rejoining each FTS match against 5M source rows through a
+            # redundant correlated EXISTS predicate (cold search >15 seconds).
+            results = universal_search(conn, **filters)
         except sqlite3.OperationalError as exc:
             if time.monotonic() - started > 15.0:
                 raise SourceIndexUnavailable("National source query exceeded a 15-second budget") from exc
