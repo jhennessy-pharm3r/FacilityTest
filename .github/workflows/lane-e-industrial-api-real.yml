@@ -1,0 +1,134 @@
+name: Lane E original-source API validation with explicit partial-year blockers
+
+on:
+  push:
+    branches:
+      - 'integration/lane-e-industrial-private-api-*'
+    paths:
+      - 'facilityrisk/industrial_source_indices.py'
+      - 'facilityrisk/app.py'
+      - 'scripts/verify_lane_e_industrial_api.py'
+      - 'scripts/probe_lane_c_sources.py'
+      - 'scripts/run_lane_c_verified.py'
+      - 'tests/test_lane_c_download_retry.py'
+      - 'scripts/verify_private_host_industrial.py'
+      - 'facilityrisk/industrial_facility_screen.py'
+      - 'tests/test_industrial_private_api.py'
+      - '.github/workflows/lane-e-industrial-api-real.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lane-e-industrial-real-source-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  private-industrial-real:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install runtime, test and official-source importer dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Verify fail-closed role and 25-sector synthetic safety controls
+        run: python -m pytest -q tests/test_industrial_private_api.py
+      - name: Pre-provision isolated private source storage on disposable runner
+        run: |
+          mkdir -p -m 700 "$RUNNER_TEMP/private-industrial"
+          mkdir -m 700 -- "$RUNNER_TEMP/private-industrial/nrc-csb-root"
+          mkdir -m 700 -- "$RUNNER_TEMP/private-industrial/wms-root"
+          mkdir -p -- output
+      - name: REAL official NRC 2010-2026 and CSB -> SHA-verified read-only private installation
+        run: |
+          python scripts/run_lane_c_verified.py \
+            --output output/nrc-csb \
+            --private-bundle-dir "$RUNNER_TEMP/private-industrial/nrc-csb-bundle" \
+            --install-test-root "$RUNNER_TEMP/private-industrial/nrc-csb-root"
+      - name: REAL official PHMSA WMS enforcement -> separate private read-only installation
+        run: |
+          python scripts/probe_lane_c_phmsa_enforcement.py \
+            --output output/phmsa-wms \
+            --private-bundle-dir "$RUNNER_TEMP/private-industrial/wms-bundle" \
+            --install-test-root "$RUNNER_TEMP/private-industrial/wms-root"
+      - name: Authenticate and audit actual NRC/CSB available source-year namespaces plus PHMSA WMS
+        run: |
+          python scripts/verify_lane_e_industrial_api.py \
+            --incidents-root "$RUNNER_TEMP/private-industrial/nrc-csb-root" \
+            --wms-root "$RUNNER_TEMP/private-industrial/wms-root" \
+            --output output/api-verification-summary.json
+          python - <<'PY'
+          import json
+          m=json.load(open("output/api-verification-summary.json"))
+          missing=m["missing_official_nrc_years"]
+          if missing:
+              print("::warning title=Official NRC source-year coverage incomplete::" + ", ".join(missing) + " unavailable in authorized publisher distribution on this run; installed source API returns 503 (unknown), NOT zero incidents")
+          else:
+              print("All expected original source-year namespaces available and verified")
+          PY
+      - name: Re-open private read-only source releases in a fresh API process
+        run: |
+          python scripts/verify_lane_e_industrial_api.py \
+            --incidents-root "$RUNNER_TEMP/private-industrial/nrc-csb-root" \
+            --wms-root "$RUNNER_TEMP/private-industrial/wms-root" \
+            --output output/restarted-process-summary.json
+      - name: Serve ACTUAL official indexes via a running authenticated loopback FastAPI process and restart
+        run: |
+          set -eu
+          export FACILITY_RISK_LANE_C_ROOT="$RUNNER_TEMP/private-industrial/nrc-csb-root"
+          export FACILITY_RISK_PHMSA_WMS_ROOT="$RUNNER_TEMP/private-industrial/wms-root"
+          export FACILITY_RISK_DB="$RUNNER_TEMP/private-industrial/acceptance-workspace.sqlite"
+          export FACILITY_RISK_REQUIRE_AUTH=1
+          export FACILITY_RISK_ENABLE_WRITES=0
+          export FACILITY_RISK_AUTH_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
+          OBSERVATIONS="$(python -c "import json;print(json.load(open('output/api-verification-summary.json'))['accepted_source_observations'])")"
+          for pass in 1 2; do
+            python -m uvicorn facilityrisk.app:app --host 127.0.0.1 --port 8768 --no-access-log \
+              > "$RUNNER_TEMP/private-industrial/uvicorn-validation.log" 2>&1 &
+            pid=$!
+            trap 'kill "$pid" 2>/dev/null || true' EXIT
+            for attempt in $(seq 1 45); do
+              if curl -fsS http://127.0.0.1:8768/api/health > /dev/null 2>&1; then break; fi
+              if ! kill -0 "$pid" 2>/dev/null; then
+                echo "Loopback private API failed to start"
+                exit 1
+              fi
+              sleep 1
+            done
+            if [ "$pass" = 1 ]; then
+              output="output/actual-http-server-qa.json"
+            else
+              output="output/actual-http-server-restart-qa.json"
+            fi
+            python scripts/verify_private_host_industrial.py \
+              --base http://127.0.0.1:8768 \
+              --expected-observations "$OBSERVATIONS" \
+              --expected-wms-cases 5089 \
+              --output "$output"
+            kill "$pid"
+            wait "$pid" 2>/dev/null || true
+            trap - EXIT
+          done
+      - name: Remove all unredacted official-source originals, normalized rows and SQLite
+        if: always()
+        run: |
+          chmod -R u+w -- "$RUNNER_TEMP/private-industrial" 2>/dev/null || true
+          rm -rf -- "$RUNNER_TEMP/private-industrial"
+          test ! -e "$RUNNER_TEMP/private-industrial"
+      - name: Publish aggregate-only source and read-only API evidence (NO original data)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lane-e-industrial-private-real-api-audit
+          path: |
+            output/api-verification-summary.json
+            output/restarted-process-summary.json
+            output/actual-http-server-qa.json
+            output/actual-http-server-restart-qa.json
+            output/nrc-csb/*audit*.json
+            output/phmsa-wms/*.json
+          retention-days: 14
