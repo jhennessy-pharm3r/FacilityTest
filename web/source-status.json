@@ -1,7 +1,7 @@
 {
   "checks": [
     {
-      "checked_at": "2026-10-27T16:03:19+00:00",
+      "checked_at": "2026-10-28T16:50:11+00:00",
       "details": "HTTP 200; JSON response parsed; schema and facility matches not verified",
       "documentation": "https://www.epa.gov/frs/frs-api",
       "probe_url": "https://ofmpub.epa.gov/frs_public2/frs_rest_services.get_facilities?facility_name=pfizer&state_abbr=NC&output=JSON",
@@ -10,7 +10,7 @@
       "test_level": "documentation_or_connectivity_only"
     },
     {
-      "checked_at": "2026-10-27T16:03:19+00:00",
+      "checked_at": "2026-10-28T16:50:11+00:00",
       "details": "HTTP 200; JSON response parsed; schema and facility matches not verified",
       "documentation": "https://echo.epa.gov/tools/web-services",
       "probe_url": "https://echodata.epa.gov/echo/dfr_rest_services.get_dfr?p_id=110015778176&output=JSON",
@@ -19,7 +19,7 @@
       "test_level": "documentation_or_connectivity_only"
     },
     {
-      "checked_at": "2026-10-27T16:03:19+00:00",
+      "checked_at": "2026-10-28T16:50:11+00:00",
       "details": "HTTP 200; JSON response parsed; schema and facility matches not verified",
       "documentation": "https://earthquake.usgs.gov/fdsnws/event/1/",
       "probe_url": "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime=2024-01-01&endtime=2024-01-02&minmagnitude=6",
@@ -28,7 +28,7 @@
       "test_level": "documentation_or_connectivity_only"
     },
     {
-      "checked_at": "2026-10-27T16:03:19+00:00",
+      "checked_at": "2026-10-28T16:50:11+00:00",
       "details": "HTTP 200; JSON response parsed; schema and facility matches not verified",
       "documentation": "https://www.fema.gov/flood-maps/national-flood-hazard-layer",
       "probe_url": "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/28?f=json",
@@ -37,7 +37,7 @@
       "test_level": "documentation_or_connectivity_only"
     },
     {
-      "checked_at": "2026-10-27T16:03:19+00:00",
+      "checked_at": "2026-10-28T16:50:11+00:00",
       "details": "HTTP 200; JSON response parsed; schema and facility matches not verified",
       "documentation": "https://www.wri.org/aqueduct",
       "probe_url": "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/aqueduct_water_risk/FeatureServer/1?f=json",
@@ -46,7 +46,7 @@
       "test_level": "documentation_or_connectivity_only"
     },
     {
-      "checked_at": "2026-10-27T16:03:19+00:00",
+      "checked_at": "2026-10-28T16:50:11+00:00",
       "details": "Manual/scheduled official dataset export",
       "documentation": "https://www.fda.gov/about-fda/performance-data/fda-data-dashboard",
       "probe_url": "https://www.fda.gov/about-fda/performance-data/fda-data-dashboard",
@@ -55,7 +55,7 @@
       "test_level": "documentation_or_connectivity_only"
     },
     {
-      "checked_at": "2026-10-27T16:03:19+00:00",
+      "checked_at": "2026-10-28T16:50:11+00:00",
       "details": "Manual/scheduled official dataset export",
       "documentation": "https://www.ncei.noaa.gov/access/storm-events-database/",
       "probe_url": "https://www.ncei.noaa.gov/access/storm-events-database/",
@@ -66,7 +66,7 @@
   ],
   "extended_checks": [
     {
-      "checked_at": "2026-10-27T16:03:19+00:00",
+      "checked_at": "2026-10-28T16:50:11+00:00",
       "details": "Official source page reachable; dataset access, schema and facility match not tested",
       "documentation": "https://www.ncei.noaa.gov/stormevents/",
       "probe_url": "https://www.ncei.noaa.gov/stormevents/",
@@ -75,7 +75,7 @@
       "test_level": "documentation_or_connectivity_only"
     },
     {
-      "checked_at": "2026-10-27T16:03:19+00:00",
+      "checked_at": "2026-10-28T16:50:11+00:00",
       "details": "Official source page reachable; dataset access, schema and facility match not tested",
       "documentation": "https://nrc.uscg.mil/",
       "probe_url": "https://nrc.uscg.mil/",
@@ -84,7 +84,7 @@
       "test_level": "documentation_or_connectivity_only"
     },
     {
-      "checked_at": "2026-10-27T16:03:19+00:00",
+      "checked_at": "2026-10-28T16:50:11+00:00",
       "details": "Official source page reachable; dataset access, schema and facility match not tested",
       "documentation": "https://www.csb.gov/investigations/",
       "probe_url": "https://www.csb.gov/investigations/",
@@ -93,7 +93,7 @@
       "test_level": "documentation_or_connectivity_only"
     },
     {
-      "checked_at": "2026-10-27T16:03:19+00:00",
+      "checked_at": "2026-10-28T16:50:11+00:00",
       "details": "Official source page reachable; dataset access, schema and facility match not tested",
       "documentation": "https://www.usfa.fema.gov/neris/public/",
       "probe_url": "https://www.usfa.fema.gov/neris/public/",
@@ -102,7 +102,7 @@
       "test_level": "documentation_or_connectivity_only"
     },
     {
-      "checked_at": "2026-10-27T16:03:19+00:00",
+      "checked_at": "2026-10-28T16:50:11+00:00",
       "details": "Official source page reachable; dataset access, schema and facility match not tested",
       "documentation": "https://www.usfa.fema.gov/data-insights/nfirs/data/",
       "probe_url": "https://www.usfa.fema.gov/data-insights/nfirs/data/",
@@ -111,7 +111,7 @@
       "test_level": "documentation_or_connectivity_only"
     },
     {
-      "checked_at": "2026-10-27T16:03:19+00:00",
+      "checked_at": "2026-10-28T16:50:11+00:00",
       "details": "HTTPError: 404 Client Error: Not Found for url: https://www.fda.gov/apology_objects/abuse-detection-apology.html",
       "documentation": "https://www.fda.gov/about-fda/performance-data/fda-data-dashboard",
       "probe_url": "https://www.fda.gov/about-fda/performance-data/fda-data-dashboard",
@@ -120,7 +120,7 @@
       "test_level": "documentation_or_connectivity_only"
     },
     {
-      "checked_at": "2026-10-27T16:03:19+00:00",
+      "checked_at": "2026-10-28T16:50:11+00:00",
       "details": "Official source page reachable; dataset access, schema and facility match not tested",
       "documentation": "https://datasets.wri.org/datasets/aqueduct-floods-hazard-maps",
       "probe_url": "https://datasets.wri.org/datasets/aqueduct-floods-hazard-maps",
@@ -129,7 +129,7 @@
       "test_level": "documentation_or_connectivity_only"
     },
     {
-      "checked_at": "2026-10-27T16:03:19+00:00",
+      "checked_at": "2026-10-28T16:50:11+00:00",
       "details": "Official source page reachable; dataset access, schema and facility match not tested",
       "documentation": "https://www.eia.gov/electricity/data/eia861/",
       "probe_url": "https://www.eia.gov/electricity/data/eia861/",
@@ -138,7 +138,7 @@
       "test_level": "documentation_or_connectivity_only"
     },
     {
-      "checked_at": "2026-10-27T16:03:19+00:00",
+      "checked_at": "2026-10-28T16:50:11+00:00",
       "details": "Official OpenAPI paths parsed; site search and facility ID match still untested",
       "documentation": "https://data.epa.ie/api-list/leap-open-data/",
       "probe_url": "https://data.epa.ie/leap/swagger/v1/swagger.json",
@@ -147,7 +147,7 @@
       "test_level": "documentation_or_connectivity_only"
     },
     {
-      "checked_at": "2026-10-27T16:03:19+00:00",
+      "checked_at": "2026-10-28T16:50:11+00:00",
       "details": "Official source page reachable; dataset access, schema and facility match not tested",
       "documentation": "https://industry.eea.europa.eu/industrial-emissions/dataset",
       "probe_url": "https://industry.eea.europa.eu/industrial-emissions/dataset",
@@ -156,7 +156,7 @@
       "test_level": "documentation_or_connectivity_only"
     },
     {
-      "checked_at": "2026-10-27T16:03:19+00:00",
+      "checked_at": "2026-10-28T16:50:11+00:00",
       "details": "Official source page reachable; dataset access, schema and facility match not tested",
       "documentation": "https://open.canada.ca/data/en/dataset/40e01423-7728-429c-ac9d-2954385ccdfb",
       "probe_url": "https://open.canada.ca/data/en/dataset/40e01423-7728-429c-ac9d-2954385ccdfb",
@@ -165,7 +165,7 @@
       "test_level": "documentation_or_connectivity_only"
     },
     {
-      "checked_at": "2026-10-27T16:03:19+00:00",
+      "checked_at": "2026-10-28T16:50:11+00:00",
       "details": "Official source page reachable; dataset access, schema and facility match not tested",
       "documentation": "https://www.epa.gov/rsei",
       "probe_url": "https://www.epa.gov/rsei",
@@ -174,7 +174,7 @@
       "test_level": "documentation_or_connectivity_only"
     },
     {
-      "checked_at": "2026-10-27T16:03:19+00:00",
+      "checked_at": "2026-10-28T16:50:11+00:00",
       "details": "Official source page reachable; dataset access, schema and facility match not tested",
       "documentation": "https://wildfirerisk.org/download/",
       "probe_url": "https://wildfirerisk.org/download/",
@@ -183,7 +183,7 @@
       "test_level": "documentation_or_connectivity_only"
     },
     {
-      "checked_at": "2026-10-27T16:03:19+00:00",
+      "checked_at": "2026-10-28T16:50:11+00:00",
       "details": "Official source page reachable; dataset access, schema and facility match not tested",
       "documentation": "https://ucdp.uu.se/downloads/",
       "probe_url": "https://ucdp.uu.se/downloads/",
@@ -192,7 +192,7 @@
       "test_level": "documentation_or_connectivity_only"
     },
     {
-      "checked_at": "2026-10-27T16:03:19+00:00",
+      "checked_at": "2026-10-28T16:50:11+00:00",
       "details": "HTTPError: 403 Client Error: Forbidden for url: https://www.phmsa.dot.gov/hazmat-program-management-data-and-statistics/data-operations/incident-statistics",
       "documentation": "https://www.phmsa.dot.gov/hazmat-program-management-data-and-statistics/data-operations/incident-statistics",
       "probe_url": "https://www.phmsa.dot.gov/hazmat-program-management-data-and-statistics/data-operations/incident-statistics",
@@ -201,7 +201,7 @@
       "test_level": "documentation_or_connectivity_only"
     }
   ],
-  "generated_at": "2026-10-27T16:03:19+00:00",
+  "generated_at": "2026-10-28T16:50:11+00:00",
   "ingestions": [
     {
       "checked_at": "2026-10-26T13:18:26+00:00",
@@ -270,6 +270,6 @@
     }
   ],
   "meaning": "Connectivity and registered source-identity publication only. Not facility matching or peril screening.",
-  "run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/40536635960",
+  "run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/40729769131",
   "schema_version": "1.0"
 }
