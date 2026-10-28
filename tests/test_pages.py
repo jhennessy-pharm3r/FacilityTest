@@ -159,6 +159,10 @@ def test_full_national_wildfire_raster_has_distinct_source_grain_and_coverage_co
     workbench=(ROOT/'web'/'workbench-ui.js').read_text()
     insurance=(ROOT/'web'/'insurance-ui.js').read_text()
     assert 'usfs_whp2023_six_national_tiffs:' in app
+    assert 'ornl_eaglei_2025:' in app
+    assert 'publisher county x 15-minute readings (NOT outages)' in app
+    assert "'ornl_eaglei_2025'" in workbench
+    assert "'ornl_eaglei_2025'" in insurance
     assert '133,505,015 valid landscape cells in each product' in app
     assert 'CI staged only, not insured sites' in app
     assert "'usfs_whp2023_six_national_tiffs'" in workbench
