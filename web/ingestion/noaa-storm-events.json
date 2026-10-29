@@ -2,20 +2,20 @@
   "schema_version": "1.0",
   "source": "NOAA Storm Events Details",
   "state": "staged_source_artifact",
-  "records": 256816,
-  "checked_at": "2026-10-23T13:04:20+00:00",
+  "records": 268242,
+  "checked_at": "2026-10-29T11:29:12+00:00",
   "scope": "United States and adjoining waters; reported events for 2023-2026 only",
   "details": "Complete requested-year files normalized and archived as expiring GitHub Actions artifacts. Not installed on permanent backend; regional NOAA damage estimates are NOT losses or catastrophe overlays at any insured facility.",
   "documentation": "https://www.ncei.noaa.gov/pub/data/swdi/stormevents/csvfiles/",
-  "artifact_run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39958109221",
-  "manifest_sha256": "ec9e2d4732eafaae96e1bedee85cb1a5be2f2a9eb975a25987f459255fcc5327",
+  "artifact_run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/40865684162",
+  "manifest_sha256": "90709e3aa18d092347ace6e040a72c81e28bcc38cfd68a1bfd90b8b0f014df65",
   "record_years": [
     2023,
     2024,
     2025,
     2026
   ],
-  "point_coordinates_reported": 153437,
+  "point_coordinates_reported": 162140,
   "year_partitions": [
     {
       "year": 2023,
@@ -37,9 +37,9 @@
     },
     {
       "year": 2026,
-      "records": 39062,
-      "source_edition": "StormEvents_details-ftp_v1.0_d2026_c20260918.csv.gz",
-      "sha256": "61c1dfebdfb24d561bad4528a31659791cf9a83d74663dd4e97b1e0088003f44"
+      "records": 50488,
+      "source_edition": "StormEvents_details-ftp_v1.0_d2026_c20261026.csv.gz",
+      "sha256": "53e6118446f19a522abeb7ececca1dfdae3090117bc1297e2a774f21f13ee83a"
     }
   ]
 }
