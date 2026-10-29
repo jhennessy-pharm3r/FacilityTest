@@ -249,21 +249,21 @@
       "state": "private_index_not_deployed"
     },
     {
-      "artifact_run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39968194423",
-      "checked_at": "2026-10-23T14:17:31+00:00",
+      "artifact_run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/40883933542",
+      "checked_at": "2026-10-29T13:39:41+00:00",
       "details": "Official NOAA OR&R selected incidents; location reference points may be approximate. Potential release is NOT actual spilled volume, property damage or insured loss. Private indexed source not durably hosted.",
       "documentation": "https://incidentnews.noaa.gov/raw/index",
-      "records": 4946,
+      "records": 4949,
       "scope": "Selected NOAA scientific-response spill/chemical incidents, not all reported spills",
       "source": "NOAA IncidentNews Selected Spills",
       "state": "staged_source_artifact"
     },
     {
-      "artifact_run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39958109221",
-      "checked_at": "2026-10-23T13:04:20+00:00",
+      "artifact_run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/40865684162",
+      "checked_at": "2026-10-29T11:29:12+00:00",
       "details": "Complete requested-year files normalized and archived as expiring GitHub Actions artifacts. Not installed on permanent backend; regional NOAA damage estimates are NOT losses or catastrophe overlays at any insured facility.",
       "documentation": "https://www.ncei.noaa.gov/pub/data/swdi/stormevents/csvfiles/",
-      "records": 256816,
+      "records": 268242,
       "scope": "United States and adjoining waters; reported events for 2023-2026 only",
       "source": "NOAA Storm Events Details",
       "state": "staged_source_artifact"
