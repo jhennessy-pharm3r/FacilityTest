@@ -1,0 +1,64 @@
+name: Lane E official industrial publisher refresh monitor (metadata-only)
+
+on:
+  push:
+    branches:
+      - 'integration/lane-e-industrial-private-api-*'
+    paths:
+      - 'scripts/monitor_lane_c_official_refresh.py'
+      - 'tests/test_lane_e_official_refresh_monitor.py'
+      - '.github/workflows/lane-e-industrial-refresh-monitor.yml'
+  schedule:
+    # Only activates after coordinator merges this workflow into default main.
+    - cron: '23 8 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lane-e-official-refresh-monitor-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publisher-revalidation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install official read-only source and QA dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Test baseline comparison and fail-closed monitoring decisions
+        run: python -m pytest -q tests/test_lane_e_official_refresh_monitor.py
+      - name: Fetch ACTUAL provisional NRC/CSB first-party reports and manifest only
+        continue-on-error: true
+        run: python scripts/probe_lane_c_current_vintages.py --output output
+      - name: Fetch ACTUAL PHMSA WMS case-only official export and aggregate QA
+        continue-on-error: true
+        run: python scripts/probe_lane_c_phmsa_enforcement.py --output output
+      - name: Compare live publisher digests/accepted rows with independently validated baseline
+        run: |
+          test -f output/lane-c-current-vintage-audit.json
+          test -f output/phmsa-enforcement-inventory.json
+          if [ "${{ github.event_name }}" = "push" ]; then
+            python scripts/monitor_lane_c_official_refresh.py \
+              --current-audit output/lane-c-current-vintage-audit.json \
+              --wms-audit output/phmsa-enforcement-inventory.json \
+              --output output/official-refresh-decision.json
+          else
+            python scripts/monitor_lane_c_official_refresh.py \
+              --current-audit output/lane-c-current-vintage-audit.json \
+              --wms-audit output/phmsa-enforcement-inventory.json \
+              --output output/official-refresh-decision.json --strict
+          fi
+      - name: Upload aggregate provenance/QA only (no raw reports, no SQLite)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-e-official-publisher-source-health
+          path: output/*.json
+          if-no-files-found: ignore
+          retention-days: 30

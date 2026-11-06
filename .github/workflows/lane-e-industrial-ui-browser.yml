@@ -1,0 +1,45 @@
+name: Lane E private industrial Source Health browser smoke (synthetic safety)
+
+on:
+  push:
+    branches:
+      - 'integration/lane-e-industrial-private-api-*'
+    paths:
+      - 'web/industrial-ui.js'
+      - 'web/intelligence-ui.js'
+      - 'web/index.html'
+      - 'web/styles.css'
+      - 'tests/smoke_private_industrial_ui.py'
+      - '.github/workflows/lane-e-industrial-ui-browser.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  private-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install backend/API/browser test requirements
+        run: |
+          python -m pip install -r requirements-dev.txt 'playwright>=1.54,<2'
+          python -m playwright install --with-deps chromium
+      - name: Check industrial source UI JavaScript syntax
+        run: |
+          node --check web/industrial-ui.js
+          node --check web/intelligence-ui.js
+      - name: Start authenticated private API with 25-sector synthetic fixtures and exercise UI
+        run: python tests/smoke_private_industrial_ui.py
+      - name: Upload SYNTHETIC browser QA visual only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-e-private-industrial-ui-SYNTHETIC-smoke
+          path: /tmp/lane-e-private-industrial-synthetic-smoke.png
+          if-no-files-found: ignore
+          retention-days: 7
