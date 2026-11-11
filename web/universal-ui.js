@@ -119,8 +119,10 @@ async function inspect(id,updateURL=true){
   '<p class="note-line">Registration or place coordinates are not independently verified property points. Hazard layers, underwriting scores and policy protection are not inferred.</p>'+
   '<h3>Original source identifiers</h3><ul>'+provenance+'</ul>'+
   '<div class="registry-actions"><button class="btn" id="uf-assess">Start insurance exposure workbench</button>'+
+  '<button class="btn" id="uf-industrial">Screen industrial reports (review only)</button>'+
   '<button class="btn primary" id="uf-track">Add to private research workspace</button></div>'+
-  '<div id="uf-track-status" class="registry-status"></div></div></section>';
+  '<div id="uf-track-status" class="registry-status"></div>'+
+  '<div id="uf-industrial-results" class="registry-status" role="status"></div></div></section>';
  el.scrollIntoView({behavior:'smooth',block:'nearest'});
  }catch(e){el.textContent=e.message;}
 }
@@ -152,6 +154,56 @@ function mount(){
        window.dispatchEvent(new CustomEvent('facilityrisk:assess-site',{detail:{
          ...selected.site,source_identities:selected.source_identities,
          physical_property_verified:false,insured_coverage_status:'unknown'}}));return;
+     }
+     if(t.id==='uf-industrial'&&selected){
+       const target=document.getElementById('uf-industrial-results');
+       if(!target)return;
+       target.textContent='Checking authorized original-source industrial reports…';
+       t.disabled=true;
+       try{
+         const url='/api/universal-facilities/'+encodeURIComponent(selected.site.id)+'/industrial-screen?limit=20&radius_km=10';
+         const response=await fetch(url,{cache:'no-store'});
+         const payload=await response.json().catch(()=>({}));
+         if(!response.ok)throw Error(payload.detail||'Industrial source screen unavailable');
+         if(!target.isConnected)return;
+         target.replaceChildren();
+         const banner=document.createElement('p');
+         banner.textContent=payload.state==='REVIEWER_SOURCE_CANDIDATE_SCREEN_COMPLETED'
+           ?(payload.candidate_rows_before_display_limit||0)+' candidate source observations (only '+(payload.publisher_rows_examined||0)+' bounded region/source rows examined). NO confirmed site attribution, losses or claims.'
+           :(payload.site?.limitations||'Insufficient source-site location evidence; missing reports cannot imply low risk.');
+         target.appendChild(banner);
+         const note=document.createElement('p');
+         note.className='small-muted';
+         note.textContent='NRC notifications and CSB reports may overlap and may contain non-property coordinates. Original operator, street/site and independent outcome review required.';
+         target.appendChild(note);
+         const list=document.createElement('ul');
+         for(const hit of payload.results||[]){
+           const li=document.createElement('li');
+           li.textContent=hit.source+' / native ID '+hit.publisher_native_id+' / '+(hit.incident_date_as_reported||'date unknown')+
+             ' / reported '+(hit.reported_city||'?')+', '+(hit.reported_state||'?')+
+             ' / '+hit.candidate_checks.join(', ')+
+             (hit.reported_distance_km===null?'':' / approx '+hit.reported_distance_km+' km')+
+             ' — reviewer investigation required';
+           try{
+             const u=new URL(String(hit.source_url||''));
+             if(u.protocol==='https:'&&['nrc.uscg.mil','www.csb.gov'].includes(u.hostname)){
+               const link=document.createElement('a');link.href=u.href;link.target='_blank';link.rel='noopener noreferrer';
+               link.textContent=' · Agency source';li.appendChild(link);
+             }
+           }catch{}
+           list.appendChild(li);
+         }
+         target.appendChild(list);
+         if(payload.source_scan_capped){
+           const caution=document.createElement('p');
+           caution.textContent='Review incomplete: per-source region query cap was reached. No absence conclusion is valid.';
+           target.appendChild(caution);
+         }
+       }catch(error){
+         target.textContent='Source screen unavailable or individual reviewer sign-in required: '+error.message+
+           '. Do not infer an incident-free status.';
+       }finally{t.disabled=false;}
+       return;
      }
      if(t.id==='uf-track'&&selected){
        try{

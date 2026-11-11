@@ -38,6 +38,7 @@ jobs:
           node --check web/bi-scenario-ui.js
           node --check web/registry-ui.js
           node --check web/intelligence-ui.js
+          node --check web/industrial-ui.js
           node --check web/source-insights.js
           node --check web/public-api.js
       - name: Python tests
