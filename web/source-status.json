@@ -249,8 +249,8 @@
       "state": "private_index_not_deployed"
     },
     {
-      "artifact_run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/42049722186",
-      "checked_at": "2026-11-05T14:55:44+00:00",
+      "artifact_run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/43249084843",
+      "checked_at": "2026-11-12T15:33:49+00:00",
       "details": "Official NOAA OR&R selected incidents; location reference points may be approximate. Potential release is NOT actual spilled volume, property damage or insured loss. Private indexed source not durably hosted.",
       "documentation": "https://incidentnews.noaa.gov/raw/index",
       "records": 4952,
@@ -259,8 +259,8 @@
       "state": "staged_source_artifact"
     },
     {
-      "artifact_run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/42033035684",
-      "checked_at": "2026-11-05T13:08:20+00:00",
+      "artifact_run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/43229849581",
+      "checked_at": "2026-11-12T13:42:51+00:00",
       "details": "Complete requested-year files normalized and archived as expiring GitHub Actions artifacts. Not installed on permanent backend; regional NOAA damage estimates are NOT losses or catastrophe overlays at any insured facility.",
       "documentation": "https://www.ncei.noaa.gov/pub/data/swdi/stormevents/csvfiles/",
       "records": 268242,
