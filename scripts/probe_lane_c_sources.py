@@ -13,6 +13,7 @@ from pathlib import Path
 import tempfile
 import zipfile
 import requests
+from time import sleep
 from openpyxl import load_workbook
 from build_industrial_incidents import stage
 from build_nrc_enriched import stage_nrc
@@ -23,26 +24,41 @@ SOURCES = {
     "phmsa_hazardous_liquid_2010_present": ("https://www.phmsa.dot.gov/sites/phmsa.dot.gov/files/data_statistics/pipeline/accident_hazardous_liquid_jan2010_present.zip", 150_000_000),
 }
 def download(url, limit, path):
-    session = requests.Session()
-    with session.get(url, timeout=(20, 150), stream=True,
-                     headers={"User-Agent": "FacilityRisk-LaneC-SchemaProbe/1.0",
-                              "Accept-Encoding": "identity"}) as response:
-        response.raise_for_status()
-        if not response.url.startswith("https://"):
-            raise ValueError("Insecure official-source redirect")
+    """Bounded retries for interrupted official HTTPS streams; no partial acceptance."""
+    path = Path(path)
+    for attempt in range(3):
         size = 0
         digest = hashlib.sha256()
-        with path.open("wb") as target:
-            for chunk in response.iter_content(1024 * 1024):
-                if chunk:
-                    size += len(chunk)
-                    if size > limit:
-                        raise ValueError("Publisher export beyond safety limit")
-                    target.write(chunk)
-                    digest.update(chunk)
-    if size < 1024:
-        raise ValueError("Publisher file unexpectedly small")
-    return size, digest.hexdigest()
+        try:
+            with requests.Session() as session:
+                with session.get(url, timeout=(20, 150), stream=True,
+                                 headers={"User-Agent": "FacilityRisk-LaneC-SchemaProbe/1.0",
+                                          "Accept-Encoding": "identity"}) as response:
+                    response.raise_for_status()
+                    if not response.url.startswith("https://"):
+                        raise ValueError("Insecure official-source redirect")
+                    with path.open("wb") as target:
+                        for chunk in response.iter_content(1024 * 1024):
+                            if not chunk:
+                                continue
+                            size += len(chunk)
+                            if size > limit:
+                                raise ValueError("Publisher export beyond safety limit")
+                            target.write(chunk)
+                            digest.update(chunk)
+            if size < 1024:
+                raise ValueError("Publisher file unexpectedly small")
+            return size, digest.hexdigest()
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout,
+                requests.exceptions.ChunkedEncodingError):
+            path.unlink(missing_ok=True)
+            if attempt == 2:
+                raise
+            sleep(2 * (attempt + 1))
+        except Exception:
+            path.unlink(missing_ok=True)
+            raise
+
 def workbook_probe(path):
     with zipfile.ZipFile(path) as archive:
         if "xl/workbook.xml" not in archive.namelist():

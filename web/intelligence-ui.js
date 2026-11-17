@@ -249,7 +249,9 @@
     const mountRows=mounted?([
       ['EPA FRS source index',mounted.frs,'source_identities'],
       ['NOAA Storm Events index',mounted.noaa,'records'],
-      ['NOAA IncidentNews selected responses',mounted.incidentnews,'records']
+      ['NOAA IncidentNews selected responses',mounted.incidentnews,'records'],
+      ['USCG NRC + CSB original-source observations',mounted.industrial_incidents,'indexed_source_records'],
+      ['PHMSA WMS enforcement cases (not accidents)',mounted.phmsa_wms_enforcement,'indexed_source_records']
     ].map(([name,index,countKey])=>'<tr><td><strong>'+esc(name)+'</strong></td><td>'+
       esc(String(index?.state||'not_configured').replaceAll('_',' '))+'</td><td>'+
       (index?.[countKey]==null?'Not mounted':Number(index[countKey]).toLocaleString())+'</td><td>'+
@@ -328,6 +330,10 @@
         };
         laneFilter?.addEventListener('change',applyParallelFilters);
         stageFilter?.addEventListener('change',applyParallelFilters);
+        // Mount read-only native industrial lookups only inside authenticated UI.
+        if(!window.PublicRiskAPI && window.IndustrialUI && mounted){
+          window.IndustrialUI.mount(root,mounted,api);
+        }
       }
     }catch(e){if(root.isConnected)root.innerHTML=`<div class="loading-card">Unable to load research panel: ${esc(e.message)}</div>`;}
   }
