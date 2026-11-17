@@ -48,7 +48,7 @@ const SOURCE_RESEARCH={
   flood:['fema_nfhl'],wind:[],quake:[],fire:['usfs_whp2023_six_national_tiffs','usfs_whp_aggregates','usfs_whp'],
   storm:[],freeze:['eia861'],heat:['eia861'],landslide:[],
   industrial:['uscg_nrc','csb','epa_rmp_public','epa_tri'],
-  power:['eia861','pnnl_outages','odin_county'],water:['epa_echo'],
+  power:['eia861','ornl_eaglei_2025','pnnl_outages','odin_county'],water:['epa_echo'],
   data:['odin_feeds'],supplier:['baxter_bi'],access:['uscg_nrc'],
   temperature:['eia861']
 };
@@ -56,7 +56,7 @@ const SOURCE_SHORT={
   fema_nfhl:'FEMA flood polygon samples',usfs_whp:'USDA wildfire pixels',
   usfs_whp_aggregates:'USDA wildfire regional summaries',
   usfs_whp2023_six_national_tiffs:'WHP2023 full native 270m raster source (CI only)',
-  eia861:'EIA electric reliability',pnnl_outages:'DOE/PNNL county outages',
+  eia861:'EIA electric reliability',pnnl_outages:'DOE/PNNL county outages',ornl_eaglei_2025:'ORNL EAGLE-I 2025 county/15-min reports (not outage episodes)',
   odin_county:'ORNL ODIN outage snapshot',odin_feeds:'ORNL feed status',
   epa_echo:'EPA ECHO',epa_tri:'EPA TRI',epa_rmp_public:'Public EPA RMP',
   uscg_nrc:'USCG release notifications',csb:'CSB incidents',
