@@ -2,44 +2,44 @@
   "schema_version": "1.0",
   "source": "NOAA Storm Events Details",
   "state": "staged_source_artifact",
-  "records": 268242,
-  "checked_at": "2026-11-12T13:42:51+00:00",
+  "records": 281993,
+  "checked_at": "2026-11-19T14:22:22+00:00",
   "scope": "United States and adjoining waters; reported events for 2023-2026 only",
   "details": "Complete requested-year files normalized and archived as expiring GitHub Actions artifacts. Not installed on permanent backend; regional NOAA damage estimates are NOT losses or catastrophe overlays at any insured facility.",
   "documentation": "https://www.ncei.noaa.gov/pub/data/swdi/stormevents/csvfiles/",
-  "artifact_run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/43229849581",
-  "manifest_sha256": "bbf4f082ed27000fcca3524b94bcbf5aef7be97a29f3a1fa705911644f7b9719",
+  "artifact_run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/44542928861",
+  "manifest_sha256": "d6961a4802cf90f4d62813012269f4416c3b404c9127833f4da2f568e5a01ab4",
   "record_years": [
     2023,
     2024,
     2025,
     2026
   ],
-  "point_coordinates_reported": 162140,
+  "point_coordinates_reported": 172517,
   "year_partitions": [
     {
       "year": 2023,
       "records": 75593,
-      "source_edition": "StormEvents_details-ftp_v1.0_d2023_c20260323.csv.gz",
-      "sha256": "713784bed40d9e5a95b1d6240a654f865f3ef97703713105c7b35437270da134"
+      "source_edition": "StormEvents_details-ftp_v1.0_d2023_c20261118.csv.gz",
+      "sha256": "1eab8673bc640c11c17c34de95096a153039c739789fdcc69bb2fb00f79ebd66"
     },
     {
       "year": 2024,
-      "records": 69801,
-      "source_edition": "StormEvents_details-ftp_v1.0_d2024_c20260728.csv.gz",
-      "sha256": "2070b83eccab041b36360ab73645b9a249c3eefc5b92b5b3fc0cbba4d9fcc09c"
+      "records": 69802,
+      "source_edition": "StormEvents_details-ftp_v1.0_d2024_c20261118.csv.gz",
+      "sha256": "984da6273c2bff9d4cbb87089f6dd224fe91ba332601da9e8891a1a7bf937560"
     },
     {
       "year": 2025,
-      "records": 72360,
-      "source_edition": "StormEvents_details-ftp_v1.0_d2025_c20260819.csv.gz",
-      "sha256": "d9b46b4c6aae554723cadbb9691f3d5258371c02e530ba815d6fe41e4550149f"
+      "records": 73505,
+      "source_edition": "StormEvents_details-ftp_v1.0_d2025_c20261118.csv.gz",
+      "sha256": "3c84ecb771b18e9f8917a363004c7c97699b543427a87d7fa858cbe31e4f3e00"
     },
     {
       "year": 2026,
-      "records": 50488,
-      "source_edition": "StormEvents_details-ftp_v1.0_d2026_c20261026.csv.gz",
-      "sha256": "53e6118446f19a522abeb7ececca1dfdae3090117bc1297e2a774f21f13ee83a"
+      "records": 63093,
+      "source_edition": "StormEvents_details-ftp_v1.0_d2026_c20261118.csv.gz",
+      "sha256": "a97541f6b22acf4b2259830222fe00a5351543e5ab2e9ec96c277b43a1233545"
     }
   ]
 }
