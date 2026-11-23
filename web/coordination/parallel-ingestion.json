@@ -248,7 +248,7 @@
       "id": "D",
       "name": "Utilities and interruption",
       "pr_url": "https://github.com/jhennessy-pharm3r/FacilityTest/pull/77",
-      "gate": "Validated historical county outage rows, utility reliability, source feed snapshots and first-party corporate disruption evidence are temporary CI data only. No verified serving utility/meter at an insured site, live persistent index or paid BI claims. SEC original filings remain blocked.",
+      "gate": "Actual EIA-861/PNNL/OE417 and 2025 EAGLE-I source ingestion plus issuer disclosures validated in GitHub Actions. Lane D authenticated private API code merged (#91); source-only indexes are ephemeral runner outputs until a protected durable host installs SHA-verified releases. County/utility observations and published financial impacts do not prove insured property utility service, site outages, paid claims or policy coverage.",
       "sources": [
         {
           "id": "eia861",
@@ -313,6 +313,22 @@
           "run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/39984734680",
           "source_sha256": "44557bae7a5c8e02c611a14f75fe9e123d81d286f700b9fd88ac538edd910fe7",
           "notes": "277,360 exact repeated rows preserved/flagged across source tables; 1,846,823 distinct same-table rows. 1,385,389 county episodes are only ONE grain. CC BY 4.0 attribution required."
+        },
+        {
+          "id": "ornl_eaglei_2025",
+          "name": "ORNL EAGLE-I original 2025 county 15-minute customer-out readings",
+          "scope": "2025 original public CC BY 4.0 publisher CSV: 30,482,141 reported county x 15-minute source rows; 28,509,491 valid normalized publisher readings across 3,035 county FIPS. A separate 812,872-row county/day SQLite summary is a coarser grain, NOT an outage-event or insured facility index.",
+          "stage": "ci_indexed",
+          "scanned": 30482141,
+          "accepted": 28509491,
+          "rejected": 1972650,
+          "indexed_ci": 28509491,
+          "deployed": 0,
+          "verified_insured_sites": 0,
+          "valid_coordinates": null,
+          "run_url": "https://github.com/jhennessy-pharm3r/FacilityTest/actions/runs/40012114092",
+          "source_sha256": "4148a4a3b26e58024403cef98ccb324d1656f476613d6afff4451e33faf468c9",
+          "notes": "Original ORNL EAGLE-I 2025 Figshare v4 DOI 10.6084/m9.figshare.24237376.v4; SHA-256 of original 1,402,347,695-byte CSV checked. Of 30,482,141 rows, 28,509,491 valid, 1,972,650 rejected (invalid customer counts); 812,872 county-day summaries; 3,035 FIPS. ZERO production-host indexing. Published source readings may omit missing/zero reporting slots; absence is UNKNOWN, not continuity; do not count individual outages, meters, policies or claims. Year 2025 source is newer and distinct from 2014–2023 PNNL DERIVED outage observations, but overlapping research lineage is not additive."
         },
         {
           "id": "odin_county",
@@ -385,7 +401,7 @@
     "private_backend": "not_provisioned",
     "production_source_rows_deployed": 0,
     "approved_insured_physical_site_links": 0,
-    "worker_prs": "lane_a_lane_b_merged_other_lanes_open",
+    "worker_prs": "a_b_c_d_ingestion_merged_lane_d_wildfire_private_api_merged_industrial_private_api_open",
     "missing_gates": [
       "durable encrypted authenticated source-index installation with backup and scheduled refresh",
       "review-only physical-site geocoding/identity and source-to-location crosswalk",

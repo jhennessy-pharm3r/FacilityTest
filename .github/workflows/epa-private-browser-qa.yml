@@ -52,6 +52,16 @@ jobs:
           PY
           echo "FACILITY_RISK_LANE_B_RMP_DIRECTORY=$RUNNER_TEMP/epa_fixture_rmp" >> "$GITHUB_ENV"
           echo "FACILITY_RISK_DB=$RUNNER_TEMP/facilityrisk-private-ui-fixture.sqlite" >> "$GITHUB_ENV"
+      - name: Initialize isolated private research SQLite schema before concurrent browser requests
+        run: |
+          python - <<'PY'
+          from facilityrisk.db import connect, initialize
+          with connect() as conn:
+              initialize(conn)
+              assert conn.execute("SELECT COUNT(*) FROM facilities").fetchone()[0] == 0
+              assert conn.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+          print("SYNTHETIC_PRIVATE_WORKSPACE_INITIALIZED_BEFORE_HTTP")
+          PY
       - name: Start authenticated actual FastAPI app on loopback and exercise EPA tab
         run: |
           set -euo pipefail

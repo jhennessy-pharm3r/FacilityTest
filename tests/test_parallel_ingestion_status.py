@@ -20,7 +20,7 @@ def test_reviewed_lane_manifest_is_complete_reconciled_and_never_claims_deployme
     assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", doc["as_of"])
     assert doc["coordination_issue"] == GITHUB + "issues/73"
     assert [lane["id"] for lane in doc["lanes"]] == ["A", "B", "C", "D"]
-    assert len(sources) == sum(len(lane["sources"]) for lane in doc["lanes"]) == 21
+    assert len(sources) == sum(len(lane["sources"]) for lane in doc["lanes"]) == 22
     permitted = {"sample_ci_indexed", "ci_indexed", "staged_normalized",
                  "downloaded_qa", "access_blocked"}
     for lane in doc["lanes"]:
@@ -52,7 +52,7 @@ def test_reviewed_lane_manifest_is_complete_reconciled_and_never_claims_deployme
 
 def test_specific_official_workflow_counts_are_not_fabricated_or_summed_as_sites():
     doc, rows = load_sources()
-    assert len(rows) == 21
+    assert len(rows) == 22
     assert (rows['fema_nfhl']['accepted'], rows['usfs_whp']['accepted'],
             rows['usfs_whp_classified']['accepted'], rows['usfs_whp_aggregates']['accepted']) == (34, 70, 70, 35304)
     full = rows['usfs_whp2023_six_national_tiffs']
@@ -79,6 +79,17 @@ def test_specific_official_workflow_counts_are_not_fabricated_or_summed_as_sites
     assert rows['eia861']['accepted'] == 12923 and rows['eia861']['rejected'] == 3
     assert rows['eia_b1']['accepted'] == 72 and rows['eia_b2']['accepted'] == 158
     assert rows['pnnl_outages']['accepted'] == rows['pnnl_outages']['indexed_ci'] == 2124183
+    eaglei=rows['ornl_eaglei_2025']
+    assert (eaglei['scanned'],eaglei['accepted'],eaglei['rejected'],eaglei['indexed_ci']) == (
+        30482141,28509491,1972650,28509491)
+    assert eaglei['source_sha256']=='4148a4a3b26e58024403cef98ccb324d1656f476613d6afff4451e33faf468c9'
+    assert eaglei['run_url'].endswith('/40012114092')
+    assert '812,872-row county/day' in eaglei['scope']
+    assert '3,035' in eaglei['notes'] and 'ZERO production-host indexing' in eaglei['notes']
+    assert 'NOT an outage-event or insured facility index' in eaglei['scope']
+    assert eaglei['deployed']==eaglei['verified_insured_sites']==0
+    assert 'partial' not in doc['integration_status']['private_backend']
+
     assert rows['odin_county']['accepted'] == 558 and rows['odin_feeds']['accepted'] == 157
     assert rows['baxter_bi']['accepted'] == 3 and rows['sec_bi']['accepted'] is None
     assert sum(rows[key]['accepted'] for key in ('eia861', 'eia_b1', 'eia_b2')) == 13153
