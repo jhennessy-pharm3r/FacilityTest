@@ -16,6 +16,9 @@ services:
       FACILITY_RISK_NOAA_INDEX_MANIFEST: ${FACILITY_RISK_NOAA_INDEX_MANIFEST:-}
       FACILITY_RISK_INCIDENTNEWS_INDEX_PATH: ${FACILITY_RISK_INCIDENTNEWS_INDEX_PATH:-}
       FACILITY_RISK_INCIDENTNEWS_INDEX_MANIFEST: ${FACILITY_RISK_INCIDENTNEWS_INDEX_MANIFEST:-}
+      # Immutable source-only NRC/CSB and PHMSA enforcement releases.
+      FACILITY_RISK_LANE_C_ROOT: ${FACILITY_RISK_LANE_C_ROOT:-}
+      FACILITY_RISK_PHMSA_WMS_ROOT: ${FACILITY_RISK_PHMSA_WMS_ROOT:-}
       # Only an independently verified, installed immutable Lane A release; never a CI artifact path.
       FACILITY_RISK_LANE_A_INDEX_ROOT: ${FACILITY_RISK_LANE_A_INDEX_ROOT:-}
       # Full independently SHA-verified USDA original 270m GeoTIFF publication.
@@ -37,7 +40,7 @@ services:
     volumes:
       - ./data:/app/data
       # Indexes are immutable, source-only, and separate from the client workspace.
-      - ./source-index:/app/source-index:ro
+      - ${FACILITY_RISK_PRIVATE_SOURCE_HOST_DIR:-./source-index}:/app/source-index:ro
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=64m

@@ -1,0 +1,126 @@
+name: Lane E 25 actual EPA FRS source identities x NRC/CSB industrial screen
+
+on:
+  push:
+    branches:
+      - 'integration/lane-e-industrial-private-api-*'
+    paths:
+      - 'scripts/screen_25_real_frs_source_sites.py'
+      - 'tests/test_lane_e_real_frs_25_screen.py'
+      - '.github/workflows/lane-e-25-real-frs-screen.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: lane-e-25-frs-official-report-screen-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  real-frs-source-identity-candidates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 115
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install source-only QA dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Run negative tests without labeling synthetic 25 as real
+        run: python -m pytest -q tests/test_lane_e_real_frs_25_screen.py
+      - name: Find last completed REAL official full EPA FRS index artifact (may have expired)
+        id: frs
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const runs = await github.rest.actions.listWorkflowRuns({
+              owner, repo, workflow_id: "validate-frs-index.yml",
+              status: "success", per_page: 40
+            });
+            for(const run of runs.data.workflow_runs){
+              const arts = await github.rest.actions.listWorkflowRunArtifacts({
+                owner, repo, run_id: run.id, per_page: 60
+              });
+              const frs = arts.data.artifacts.find(a =>
+                a.name === "epa-frs-indexed-registry" && !a.expired
+              );
+              if(frs){
+                core.setOutput("source_run_id", String(run.id));
+                core.setOutput("available","true");
+                core.info("Official indexed FRS artifact available from run "+run.id);
+                return;
+              }
+            }
+            core.setOutput("available","false");
+            core.warning("No unexpired validated full 5M+ EPA FRS source index artifact. NO fabricated 25-site proof. Rebuild the official FRS pipeline before real source-identity screen.");
+      - name: Download latest validated official real EPA FRS source-only index
+        if: steps.frs.outputs.available == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ steps.frs.outputs.source_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          name: epa-frs-indexed-registry
+          path: "${{ runner.temp }}/frs-official-index"
+      - name: Verify selected official FRS index publisher provenance (not insured properties)
+        if: steps.frs.outputs.available == 'true'
+        run: |
+          test -f "$RUNNER_TEMP/frs-official-index/full-frs-index.sqlite"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p=Path(os.environ["RUNNER_TEMP"])/"frs-official-index"
+          m=json.loads((p/"full-frs-index-qa.json").read_text())
+          if (m.get("source_record_count",0)<5_000_000 or
+              m.get("sqlite_quick_check")!="ok" or
+              m.get("source")!="EPA FRS public reporting identities" or
+              (p/"full-frs-index.sqlite").stat().st_size!=m.get("database_bytes")):
+            raise SystemExit("Official EPA FRS QA/provenance integrity failed")
+          print("National official FRS publisher-identity records:",m["source_record_count"])
+          print("Physical insured properties independently validated by publisher index:",0)
+          PY
+      - name: Stage real NRC/CSB source index privately, never publish agency report rows
+        if: steps.frs.outputs.available == 'true'
+        run: |
+          mkdir -p -m 700 "$RUNNER_TEMP/lane-e-25-frs"
+          mkdir -m 700 -- "$RUNNER_TEMP/lane-e-25-frs/source-root"
+          python scripts/run_lane_c_verified.py --output output/lane-c \
+            --private-bundle-dir "$RUNNER_TEMP/lane-e-25-frs/raw-bundle" \
+            --install-test-root "$RUNNER_TEMP/lane-e-25-frs/source-root"
+      - name: Screen 25 REAL official source identities across industry and geography
+        if: steps.frs.outputs.available == 'true'
+        run: |
+          python scripts/screen_25_real_frs_source_sites.py \
+            --frs-index "$RUNNER_TEMP/frs-official-index/full-frs-index.sqlite" \
+            --industrial-root "$RUNNER_TEMP/lane-e-25-frs/source-root" \
+            --output output/actual-25-frs-source-identity-screen-summary.json
+      - name: Record unavailable official FRS release honestly
+        if: steps.frs.outputs.available != 'true'
+        run: |
+          mkdir -p -- output
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          Path("output/actual-25-frs-source-identity-screen-summary.json").write_text(json.dumps({
+            "state":"NOT_TESTED_FULL_EPA_FRS_ARTIFACT_UNAVAILABLE",
+            "official_frs_25_real_source_identities_screened":0,
+            "independently_validated_insured_properties":0,
+            "required_resolution":"Run official EPA FRS national source staging and full index validation; provide unexpired source-only SQLite before industrial report screen."
+          },indent=2))
+          PY
+      - name: Remove all real FRS/NRC original source and private SQLite files
+        if: always()
+        run: |
+          chmod -R u+w -- "$RUNNER_TEMP/lane-e-25-frs" "$RUNNER_TEMP/frs-official-index" 2>/dev/null || true
+          rm -rf -- "$RUNNER_TEMP/lane-e-25-frs" "$RUNNER_TEMP/frs-official-index"
+      - name: Upload only aggregate QA, never 25 source identity names/addresses
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-e-real-frs-25-identity-screen-AGGREGATE-ONLY
+          path: output/actual-25-frs-source-identity-screen-summary.json
+          retention-days: 14
+          if-no-files-found: ignore
